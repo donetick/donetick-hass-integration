@@ -2,7 +2,8 @@
 
 This integration connects Home Assistant to Donetick. and Add a Homeassistant Todo so user can view the current tasks in homeasssitant
 
-**Disclaimer:** This integration currently provides a read-only view for Home Assistant. There are no plans to expand its functionality at this time.
+**Disclaimer:** This integration will allow you to mark the task as done from Homeassistant but it will always use the user that own the api key to mark the task as done.
+
 
 
 ### Installation

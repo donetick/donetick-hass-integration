@@ -51,4 +51,25 @@ class DonetickTask:
     def from_json_list(cls, data: List[dict]) -> List["DonetickTask"]:
         """Create a list of DonetickTasks from JSON data."""
         return [cls.from_json(task) for task in data]
+
+@dataclass
+class DonetickThing:
+    """Donetick thing model."""
+    id: int
+    name: str
+    state: str
+
+    @classmethod
+    def from_json(cls, data: dict) -> "DonetickThing":
+        """Create a DonetickThing from JSON data."""
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            state=data["state"],
+        )
+
+    @classmethod
+    def from_json_list(cls, data: List[dict]) -> List["DonetickThing"]:
+        """Create a list of DonetickThings from JSON data."""
+        return [cls.from_json(thing) for thing in data]
     

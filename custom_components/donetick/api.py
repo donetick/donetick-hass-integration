@@ -72,3 +72,32 @@ class DonetickApiClient:
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick response: %s", err)
             return []
+
+    async def async_get_things(self) -> List[dict]:
+        """Get things from Donetick."""
+        headers = {
+            "secretkey": f"{self._token}",
+            "Content-Type": "application/json",
+        }
+        
+        try:
+            async with self._session.get(
+                f"{self._base_url}/eapi/v1/thing",
+                headers=headers,
+                timeout=API_TIMEOUT
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                
+                if not isinstance(data, list) :
+                    _LOGGER.error("Unexpected response format from Donetick API")
+                    return []
+                
+                return data
+                
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error fetching things from Donetick: %s", err)
+            raise
+        except (KeyError, ValueError, json.JSONDecodeError) as err:
+            _LOGGER.error("Error parsing Donetick response: %s", err)
+            return []
