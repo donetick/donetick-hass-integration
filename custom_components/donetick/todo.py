@@ -18,7 +18,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS
+from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
 from .api import DonetickApiClient
 from .model import DonetickTask, DonetickMember
 
@@ -37,12 +37,13 @@ async def async_setup_entry(
         session,
     )
 
+    refresh_interval_seconds = config_entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
         name="donetick_todo",
         update_method=client.async_get_tasks,
-        update_interval=timedelta(minutes=15),
+        update_interval=timedelta(seconds=refresh_interval_seconds),
     )
 
     await coordinator.async_config_entry_first_refresh()
