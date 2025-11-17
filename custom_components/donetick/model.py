@@ -57,6 +57,22 @@ class DonetickAssignee:
     user_id: int
 
 @dataclass
+class DonetickLabel:
+    """Donetick label model."""
+    id: Optional[int]
+    name: str
+    color: Optional[str] = None
+
+    @classmethod
+    def from_json(cls, data: dict) -> "DonetickLabel":
+        return cls(
+            id=data.get("id"),
+            name=data.get("name", ""),
+            color=data.get("color"),
+        )
+
+
+@dataclass
 class DonetickTask:
     """Donetick task model."""
     id: int
@@ -71,6 +87,9 @@ class DonetickTask:
     frequency_metadata: str
     assigned_to: Optional[int] = None
     description: Optional[str] = None
+    labels_v2: Optional[List[DonetickLabel]] = None
+    label_names: Optional[List[str]] = None
+    label_names_normalized: Optional[List[str]] = None
     
     @classmethod
     def from_json(cls, data: dict) -> "DonetickTask":
@@ -80,6 +99,14 @@ class DonetickTask:
         if data.get("assignedTo"):
             if isinstance(data["assignedTo"], int):
                 assigned_to = data["assignedTo"]
+        labels_v2: Optional[List[DonetickLabel]] = None
+        label_names: List[str] = []
+        if isinstance(data.get("labelsV2"), list):
+            labels_v2 = [DonetickLabel.from_json(label) for label in data["labelsV2"]]
+            label_names = [label.name for label in labels_v2 if label.name]
+        elif data.get("labels"):
+            label_names = [label.strip() for label in data["labels"].split(",") if label.strip()]
+        label_names_normalized = [name.lower() for name in label_names]
           
         return cls(
             id=data["id"],
@@ -93,7 +120,10 @@ class DonetickTask:
             frequency=data["frequency"],
             frequency_metadata=data["frequencyMetadata"],
             assigned_to=assigned_to,
-            description=data.get("description")
+            description=data.get("description"),
+            labels_v2=labels_v2,
+            label_names=label_names or None,
+            label_names_normalized=label_names_normalized or None,
         )
     
     @classmethod

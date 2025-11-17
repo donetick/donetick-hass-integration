@@ -1,7 +1,7 @@
 """Todo for Donetick integration."""
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from homeassistant.components.todo import (
     TodoItem,
@@ -17,12 +17,76 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import slugify
 
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
+from .const import (
+    DOMAIN,
+    CONF_URL,
+    CONF_TOKEN,
+    CONF_SHOW_DUE_IN,
+    CONF_CREATE_UNIFIED_LIST,
+    CONF_CREATE_ASSIGNEE_LISTS,
+    CONF_CREATE_LABEL_LISTS,
+    CONF_REFRESH_INTERVAL,
+    DEFAULT_REFRESH_INTERVAL,
+)
 from .api import DonetickApiClient
 from .model import DonetickTask, DonetickMember
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _normalize_label_name(name: Optional[str]) -> Optional[str]:
+    """Return a normalized version of a label name for matching."""
+    if not name:
+        return None
+    normalized = name.strip().lower()
+    return normalized or None
+
+
+def _label_key(label_id: Optional[int], normalized_name: Optional[str]) -> Optional[str]:
+    if label_id is not None:
+        return f"id_{label_id}"
+    if normalized_name:
+        return f"name_{normalized_name}"
+    return None
+
+
+def _collect_label_descriptors(tasks: List[DonetickTask]) -> List[Dict[str, Any]]:
+    """Collect unique labels present in the task list."""
+    label_map: Dict[str, Dict[str, Any]] = {}
+    for task in tasks:
+        if not task or not task.is_active:
+            continue
+        if task.labels_v2:
+            for label in task.labels_v2:
+                normalized_name = _normalize_label_name(label.name)
+                key = _label_key(label.id, normalized_name)
+                if not key:
+                    continue
+                if key not in label_map:
+                    display_name = label.name or f"Label {label.id}"
+                    label_map[key] = {
+                        "label_id": label.id,
+                        "label_name": display_name,
+                        "normalized_name": normalized_name,
+                        "color": label.color,
+                    }
+        elif task.label_names:
+            for name in task.label_names:
+                normalized_name = _normalize_label_name(name)
+                key = _label_key(None, normalized_name)
+                if not key:
+                    continue
+                if key not in label_map:
+                    label_map[key] = {
+                        "label_id": None,
+                        "label_name": name,
+                        "normalized_name": normalized_name,
+                        "color": None,
+                    }
+    return sorted(label_map.values(), key=lambda item: item["label_name"].lower())
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -69,6 +133,28 @@ async def async_setup_entry(
             
     except Exception as e:
         _LOGGER.error("Failed to get circle members: %s", e)
+    
+    # Create per-label lists if enabled
+    create_label_lists = config_entry.options.get(
+        CONF_CREATE_LABEL_LISTS,
+        config_entry.data.get(CONF_CREATE_LABEL_LISTS, False),
+    )
+    if create_label_lists:
+        label_descriptors = _collect_label_descriptors(coordinator.data or [])
+        _LOGGER.debug("Label lists enabled in config. Found %d labels", len(label_descriptors))
+        for descriptor in label_descriptors:
+            entity = DonetickLabelTasksList(
+                coordinator,
+                config_entry,
+                descriptor["label_id"],
+                descriptor["label_name"],
+                descriptor["normalized_name"],
+                descriptor["color"],
+            )
+            entity._circle_members = circle_members
+            entities.append(entity)
+    else:
+        _LOGGER.debug("Label lists not enabled in config")
     
     # Create per-assignee lists if enabled (check options first, then data)
     create_assignee_lists = config_entry.options.get(CONF_CREATE_ASSIGNEE_LISTS, config_entry.data.get(CONF_CREATE_ASSIGNEE_LISTS, False))
@@ -310,6 +396,70 @@ class DonetickAssigneeTasksList(DonetickTodoListBase):
     def _filter_tasks(self, tasks):
         """Return tasks assigned to this member."""
         return [task for task in tasks if task.is_active and task.assigned_to == self._member.user_id]
+
+
+class DonetickLabelTasksList(DonetickTodoListBase):
+    """Donetick label-specific tasks list entity."""
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        label_id: Optional[int],
+        label_name: str,
+        normalized_name: Optional[str],
+        color: Optional[str] = None,
+    ) -> None:
+        super().__init__(coordinator, config_entry)
+        self._label_id = label_id
+        self._label_name = label_name or "Label"
+        self._normalized_name = normalized_name
+        self._label_color = color
+        slug_source = slugify(self._label_name) if self._label_name else None
+        if not slug_source and self._normalized_name:
+            slug_source = self._normalized_name.replace(" ", "_")
+        if not slug_source:
+            slug_source = f"label_{label_id or 'unknown'}"
+        if label_id is not None:
+            slug_source = f"{slug_source}_{label_id}"
+        self._attr_unique_id = f"dt_{config_entry.entry_id}_label_{slug_source}"
+        self._attr_name = f"{self._label_name} Tasks"
+
+    def _filter_tasks(self, tasks):
+        """Return tasks matching this label."""
+        matched_tasks: List[DonetickTask] = []
+        for task in tasks:
+            if not task.is_active:
+                continue
+            if self._task_matches_label(task):
+                matched_tasks.append(task)
+        return matched_tasks
+
+    def _task_matches_label(self, task: DonetickTask) -> bool:
+        if self._label_id is not None and task.labels_v2:
+            for label in task.labels_v2:
+                if label.id == self._label_id:
+                    return True
+        if self._normalized_name:
+            normalized_names = task.label_names_normalized or []
+            if self._normalized_name in normalized_names:
+                return True
+        return False
+
+    @property
+    def extra_state_attributes(self):
+        attrs = super().extra_state_attributes
+        attrs = dict(attrs) if attrs else {}
+        attrs.update(
+            {
+                "label_id": self._label_id,
+                "label_name": self._label_name,
+            }
+        )
+        if self._label_color:
+            attrs["label_color"] = self._label_color
+        return attrs
+
 
 # Keep the old class for backward compatibility
 class DonetickTodoListEntity(DonetickAllTasksList):

@@ -30,6 +30,10 @@
                     "create_assignee_lists": {
                         "name": "Create individual task lists per person",
                         "description": "Create separate todo lists for each person assigned to tasks"
+                    },
+                    "create_label_lists": {
+                        "name": "Create per-label task lists",
+                        "description": "Create separate todo lists for each Donetick label"
                     }
                 }
             }
@@ -52,6 +56,10 @@
                     "create_assignee_lists": {
                         "name": "Create individual task lists per person",
                         "description": "Create separate todo lists for each person assigned to tasks"
+                    },
+                    "create_label_lists": {
+                        "name": "Create per-label task lists",
+                        "description": "Create separate todo lists for each Donetick label"
                     }
                 }
             }

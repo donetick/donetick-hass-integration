@@ -16,7 +16,7 @@ from homeassistant.helpers.selector import (
     DurationSelectorConfig,
 )
 
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
+from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS, CONF_CREATE_LABEL_LISTS, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
 from .api import DonetickApiClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ class DonetickConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_SHOW_DUE_IN: user_input.get(CONF_SHOW_DUE_IN, 7),
                 CONF_CREATE_UNIFIED_LIST: user_input.get(CONF_CREATE_UNIFIED_LIST, True),
                 CONF_CREATE_ASSIGNEE_LISTS: user_input.get(CONF_CREATE_ASSIGNEE_LISTS, False),
+                CONF_CREATE_LABEL_LISTS: user_input.get(CONF_CREATE_LABEL_LISTS, False),
                 CONF_REFRESH_INTERVAL: refresh_interval
             }
             
@@ -107,6 +108,7 @@ class DonetickConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_SHOW_DUE_IN, default=7): vol.Coerce(int),
                 vol.Optional(CONF_CREATE_UNIFIED_LIST, default=True): bool,
                 vol.Optional(CONF_CREATE_ASSIGNEE_LISTS, default=False): bool,
+                vol.Optional(CONF_CREATE_LABEL_LISTS, default=False): bool,
                 vol.Optional(CONF_REFRESH_INTERVAL, default=_seconds_to_time_config(DEFAULT_REFRESH_INTERVAL)): DurationSelector(
                     DurationSelectorConfig(enable_day=False, allow_negative=False)
                 ),
@@ -140,6 +142,7 @@ class DonetickOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_SHOW_DUE_IN: user_input.get(CONF_SHOW_DUE_IN, 7),
                 CONF_CREATE_UNIFIED_LIST: user_input.get(CONF_CREATE_UNIFIED_LIST, True),
                 CONF_CREATE_ASSIGNEE_LISTS: user_input.get(CONF_CREATE_ASSIGNEE_LISTS, False),
+                CONF_CREATE_LABEL_LISTS: user_input.get(CONF_CREATE_LABEL_LISTS, False),
                 CONF_REFRESH_INTERVAL: refresh_interval
             }
 
@@ -170,6 +173,10 @@ class DonetickOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_CREATE_ASSIGNEE_LISTS,
                     default=self.entry.data.get(CONF_CREATE_ASSIGNEE_LISTS, False)
+                ): bool,
+                vol.Optional(
+                    CONF_CREATE_LABEL_LISTS,
+                    default=self.entry.data.get(CONF_CREATE_LABEL_LISTS, False)
                 ): bool,
                 vol.Optional(
                     CONF_REFRESH_INTERVAL, 
