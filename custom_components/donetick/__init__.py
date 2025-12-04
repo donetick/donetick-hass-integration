@@ -6,7 +6,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN
+from .const import (
+    DOMAIN,
+    CONF_URL,
+    CONF_TOKEN,
+    CONF_SHOW_DUE_IN,
+    CONF_SHOW_ONLY_TODAY,
+)
 from .api import DonetickApiClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,7 +57,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {
         CONF_URL: entry.data[CONF_URL],
         CONF_TOKEN: entry.data[CONF_TOKEN],
-        CONF_SHOW_DUE_IN: entry.data.get(CONF_SHOW_DUE_IN,7),
+        CONF_SHOW_DUE_IN: entry.data.get(CONF_SHOW_DUE_IN, 7),
+        CONF_SHOW_ONLY_TODAY: entry.data.get(CONF_SHOW_ONLY_TODAY, False),
     }
     
     # Register services before setting up platforms

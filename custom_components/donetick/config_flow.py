@@ -16,7 +16,17 @@ from homeassistant.helpers.selector import (
     DurationSelectorConfig,
 )
 
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
+from .const import (
+    DOMAIN,
+    CONF_URL,
+    CONF_TOKEN,
+    CONF_SHOW_DUE_IN,
+    CONF_SHOW_ONLY_TODAY,
+    CONF_CREATE_UNIFIED_LIST,
+    CONF_CREATE_ASSIGNEE_LISTS,
+    CONF_REFRESH_INTERVAL,
+    DEFAULT_REFRESH_INTERVAL,
+)
 from .api import DonetickApiClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -91,6 +101,7 @@ class DonetickConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             final_data = {
                 **self._server_data,
                 CONF_SHOW_DUE_IN: user_input.get(CONF_SHOW_DUE_IN, 7),
+                CONF_SHOW_ONLY_TODAY: user_input.get(CONF_SHOW_ONLY_TODAY, False),
                 CONF_CREATE_UNIFIED_LIST: user_input.get(CONF_CREATE_UNIFIED_LIST, True),
                 CONF_CREATE_ASSIGNEE_LISTS: user_input.get(CONF_CREATE_ASSIGNEE_LISTS, False),
                 CONF_REFRESH_INTERVAL: refresh_interval
@@ -105,6 +116,7 @@ class DonetickConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="options",
             data_schema=vol.Schema({
                 vol.Optional(CONF_SHOW_DUE_IN, default=7): vol.Coerce(int),
+                vol.Optional(CONF_SHOW_ONLY_TODAY, default=False): bool,
                 vol.Optional(CONF_CREATE_UNIFIED_LIST, default=True): bool,
                 vol.Optional(CONF_CREATE_ASSIGNEE_LISTS, default=False): bool,
                 vol.Optional(CONF_REFRESH_INTERVAL, default=_seconds_to_time_config(DEFAULT_REFRESH_INTERVAL)): DurationSelector(
@@ -138,6 +150,7 @@ class DonetickOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_URL: self.entry.data.get(CONF_URL),
                 CONF_TOKEN: self.entry.data.get(CONF_TOKEN),
                 CONF_SHOW_DUE_IN: user_input.get(CONF_SHOW_DUE_IN, 7),
+                CONF_SHOW_ONLY_TODAY: user_input.get(CONF_SHOW_ONLY_TODAY, False),
                 CONF_CREATE_UNIFIED_LIST: user_input.get(CONF_CREATE_UNIFIED_LIST, True),
                 CONF_CREATE_ASSIGNEE_LISTS: user_input.get(CONF_CREATE_ASSIGNEE_LISTS, False),
                 CONF_REFRESH_INTERVAL: refresh_interval
@@ -163,6 +176,10 @@ class DonetickOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_SHOW_DUE_IN,
                     default=self.entry.data.get(CONF_SHOW_DUE_IN, 7)
                 ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_SHOW_ONLY_TODAY,
+                    default=self.entry.data.get(CONF_SHOW_ONLY_TODAY, False)
+                ): bool,
                 vol.Optional(
                     CONF_CREATE_UNIFIED_LIST,
                     default=self.entry.data.get(CONF_CREATE_UNIFIED_LIST, True)

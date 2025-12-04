@@ -14,6 +14,7 @@
                 "description": "Choose how you'd like to organize your Donetick tasks in Home Assistant",
                 "data": {
                     "show_due_in": "Days ahead to show upcoming tasks",
+                    "show_only_today": "Show tasks due today or overdue",
                     "create_unified_list": "Create \"All Tasks\" list",
                     "create_assignee_lists": "Create individual task lists per person"
                 }
@@ -27,6 +28,7 @@
                 "description": "Adjust your Donetick integration settings",
                 "data": {
                     "show_due_in": "Days ahead to show upcoming tasks",
+                    "show_only_today": "Show tasks due today or overdue",
                     "create_unified_list": "Create \"All Tasks\" list",
                     "create_assignee_lists": "Create individual task lists per person"
                 }

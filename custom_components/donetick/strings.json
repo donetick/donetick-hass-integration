@@ -23,6 +23,10 @@
                         "name": "Days ahead to show upcoming tasks",
                         "description": "Show tasks due within this many days (0 shows all tasks)"
                     },
+                    "show_only_today": {
+                        "name": "Show tasks due today or overdue",
+                        "description": "Hide tasks until their calendar day begins"
+                    },
                     "create_unified_list": {
                         "name": "Create \"All Tasks\" list",
                         "description": "Show all household tasks in a single todo list"
@@ -44,6 +48,10 @@
                     "show_due_in": {
                         "name": "Days ahead to show upcoming tasks",
                         "description": "Show tasks due within this many days (0 shows all tasks)"
+                    },
+                    "show_only_today": {
+                        "name": "Show tasks due today or overdue",
+                        "description": "Hide tasks until their calendar day begins"
                     },
                     "create_unified_list": {
                         "name": "Create \"All Tasks\" list",
