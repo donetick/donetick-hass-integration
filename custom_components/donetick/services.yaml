@@ -101,6 +101,33 @@ update_task:
       selector:
         text:
 
+skip_task:
+  name: Skip Task
+  description: Skip a recurring task, advancing to the next scheduled occurrence without recording a completion
+  fields:
+    task_id:
+      name: Task ID
+      description: The ID of the task to skip
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    completed_by:
+      name: Completed By User ID
+      description: The Donetick user ID to attribute the skip to (optional)
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      name: Config Entry ID
+      description: The specific Donetick integration to use (optional, uses first if not specified)
+      required: false
+      selector:
+        text:
+
 delete_task:
   name: Delete Task
   description: Delete a Donetick task

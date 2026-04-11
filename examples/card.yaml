@@ -1,0 +1,55 @@
+type: custom:auto-entities
+card:
+  type: entities
+  title: Chores
+  show_header_toggle: false
+filter:
+  include:
+    - attributes:
+        task_id: "*"
+      domain: sensor
+      options:
+        type: custom:mushroom-template-card
+        primary: "{{ states(entity) }}"
+        secondary: >-
+          {% set due = state_attr(entity, 'next_due_date') %}
+          {% if due %}
+            {% set due_dt = as_datetime(due) %}
+            {% set diff = (due_dt - now()).days %}
+            {% if diff < 0 %}Overdue by {{ -diff }}d
+            {% elif diff == 0 %}Due today
+            {% elif diff == 1 %}Due tomorrow
+            {% else %}Due in {{ diff }}d
+            {% endif %}
+          {% else %}No due date
+          {% endif %}
+          {% if state_attr(entity, 'assigned_to') %}
+           · Assigned: {{ state_attr(entity, 'assigned_to') }}
+          {% endif %}
+        icon: mdi:checkbox-marked-circle-outline
+        icon_color: >-
+          {% set due = state_attr(entity, 'next_due_date') %}
+          {% if due %}
+            {% set diff = (as_datetime(due) - now()).days %}
+            {% if diff < 0 %}red
+            {% elif diff == 0 %}orange
+            {% elif diff <= 2 %}amber
+            {% else %}green
+            {% endif %}
+          {% else %}grey
+          {% endif %}
+        tap_action:
+          action: perform-action
+          perform_action: script.donetick_complete_chore
+          data:
+            entity_id: "{{ entity }}"
+        hold_action:
+          action: perform-action
+          perform_action: script.donetick_postpone_chore
+          data:
+            entity_id: "{{ entity }}"
+            days: 1
+sort:
+  method: attribute
+  attribute: next_due_date
+  numeric: false

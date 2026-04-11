@@ -1,13 +1,13 @@
 """Todo for Donetick integration."""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.todo import (
     TodoItem,
     TodoItemStatus,
     TodoListEntity,
-    TodoListEntityFeature, 
+    TodoListEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -18,7 +18,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
+from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS
 from .api import DonetickApiClient
 from .model import DonetickTask, DonetickMember
 
@@ -30,23 +30,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Donetick todo platform."""
-    session = async_get_clientsession(hass)
-    client = DonetickApiClient(
-        hass.data[DOMAIN][config_entry.entry_id][CONF_URL],
-        hass.data[DOMAIN][config_entry.entry_id][CONF_TOKEN],
-        session,
-    )
-
-    refresh_interval_seconds = config_entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name="donetick_todo",
-        update_method=client.async_get_tasks,
-        update_interval=timedelta(seconds=refresh_interval_seconds),
-    )
-
-    await coordinator.async_config_entry_first_refresh()
+    config = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = config["coordinator"]
+    client = config["client"]
 
     entities = []
     

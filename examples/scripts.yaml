@@ -1,0 +1,76 @@
+donetick_complete_chore:
+  alias: "Complete Chore"
+  fields:
+    entity_id:
+      description: "The chore sensor entity"
+      required: true
+      selector:
+        entity:
+          filter:
+            - integration: donetick
+              domain: sensor
+    completed_by:
+      description: "User ID of who completed it (optional)"
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+  sequence:
+    - action: donetick.complete_task
+      data:
+        task_id: "{{ state_attr(entity_id, 'task_id') | int }}"
+        completed_by: "{{ completed_by | default(state_attr(entity_id, 'assigned_to_user_id'), omit) }}"
+
+donetick_skip_chore:
+  alias: "Skip Chore"
+  description: "Skip a recurring chore, advancing to the next scheduled occurrence based on its frequency settings"
+  fields:
+    entity_id:
+      description: "The chore sensor entity"
+      required: true
+      selector:
+        entity:
+          filter:
+            - integration: donetick
+              domain: sensor
+    completed_by:
+      description: "User ID to attribute the skip to (optional)"
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+  sequence:
+    - action: donetick.skip_task
+      data:
+        task_id: "{{ state_attr(entity_id, 'task_id') | int }}"
+        completed_by: "{{ completed_by | default(state_attr(entity_id, 'assigned_to_user_id'), omit) }}"
+
+donetick_postpone_chore:
+  alias: "Postpone Chore"
+  description: "Shift due date by an arbitrary number of days (for ad-hoc delays; use Skip Chore to advance to the next scheduled occurrence)"
+  fields:
+    entity_id:
+      description: "The chore sensor entity"
+      required: true
+      selector:
+        entity:
+          filter:
+            - integration: donetick
+              domain: sensor
+    days:
+      description: "Number of days to postpone"
+      required: true
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 30
+          mode: box
+  sequence:
+    - action: donetick.update_task
+      data:
+        task_id: "{{ state_attr(entity_id, 'task_id') | int }}"
+        due_date: >-
+          {{ (as_datetime(state_attr(entity_id, 'next_due_date')) + timedelta(days=days)).isoformat() }}

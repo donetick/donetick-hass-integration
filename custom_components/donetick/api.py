@@ -289,6 +289,35 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick update task response: %s", err)
             raise
 
+    async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
+        """Skip a task, advancing to the next scheduled occurrence without recording a completion."""
+        headers = {
+            "secretkey": f"{self._token}",
+            "Content-Type": "application/json",
+        }
+
+        params = {}
+        if completed_by:
+            params["completedBy"] = completed_by
+
+        try:
+            async with self._session.post(
+                f"{self._base_url}/eapi/v1/chore/{choreId}/skip",
+                headers=headers,
+                params=params,
+                timeout=API_TIMEOUT
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                return DonetickTask.from_json(data)
+
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error skipping task in Donetick: %s", err)
+            raise
+        except (KeyError, ValueError, json.JSONDecodeError) as err:
+            _LOGGER.error("Error parsing Donetick skip task response: %s", err)
+            raise
+
     async def async_delete_task(self, task_id: int) -> bool:
         """Delete a task"""
         headers = {
