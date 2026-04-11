@@ -12,7 +12,7 @@ from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_
 from .api import DonetickApiClient
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT]
+PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
 
 
 SERVICE_COMPLETE_TASK = "complete_task"
