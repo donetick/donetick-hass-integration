@@ -5,7 +5,6 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -27,15 +26,23 @@ async def async_setup_chore_sensors(
     config = hass.data[DOMAIN][config_entry.entry_id]
     coordinator = config["coordinator"]
 
+    # Dictionary to track entity objects by task_id for proper removal
+    entity_tracker = {}
+    
     entities = []
     if coordinator.data:
         for task in coordinator.data:
             if task.is_active:
-                entities.append(DonetickChoreSensor(coordinator, config_entry, task.id))
+                entity = DonetickChoreSensor(coordinator, config_entry, task.id)
+                entities.append(entity)
+                entity_tracker[task.id] = entity
 
     _LOGGER.debug("Creating %d chore sensor entities", len(entities))
     if entities:
         async_add_entities(entities)
+
+    # Store entity tracker in config for access by the update listener
+    config["chore_sensor_entities"] = entity_tracker
 
     # Listen for coordinator updates to add/remove sensors as chores change
     _track_new_chores(hass, coordinator, config_entry, async_add_entities)
@@ -62,21 +69,24 @@ def _track_new_chores(
         new_ids = current_ids - known_ids
         removed_ids = known_ids - current_ids
 
+        config = hass.data[DOMAIN].get(config_entry.entry_id, {})
+        entity_tracker = config.get("chore_sensor_entities", {})
+
         if new_ids:
-            new_entities = [
-                DonetickChoreSensor(coordinator, config_entry, task_id)
-                for task_id in new_ids
-            ]
+            new_entities = []
+            for task_id in new_ids:
+                entity = DonetickChoreSensor(coordinator, config_entry, task_id)
+                new_entities.append(entity)
+                entity_tracker[task_id] = entity
             async_add_entities(new_entities)
 
         if removed_ids:
-            registry = er.async_get(hass)
             for task_id in removed_ids:
-                unique_id = f"dt_chore_{config_entry.entry_id}_{task_id}"
-                entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
-                if entity_id:
-                    _LOGGER.debug("Removing sensor for inactive chore %s", task_id)
-                    registry.async_remove(entity_id)
+                entity = entity_tracker.pop(task_id, None)
+                if entity:
+                    _LOGGER.debug("Removing sensor for deleted/inactive chore %s", task_id)
+                    # Call async_remove to properly remove from entity platform and registry
+                    hass.async_create_task(entity.async_remove())
 
         known_ids = current_ids
 
