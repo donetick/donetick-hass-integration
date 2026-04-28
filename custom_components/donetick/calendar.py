@@ -1,7 +1,10 @@
 """Calendar platform for Donetick."""
+import json
 import logging
 from datetime import datetime, date, timedelta
-from typing import List, Optional
+from typing import List, Optional, Union
+
+from dateutil.relativedelta import relativedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
@@ -95,7 +98,9 @@ def _generate_occurrences(
         return []
 
     # Recurring: compute the interval as a timedelta
-    delta = _frequency_to_delta(task.frequency_type, task.frequency)
+    delta = _frequency_to_delta(
+        task.frequency_type, task.frequency, task.frequency_metadata
+    )
     if delta is None:
         # Unsupported frequency — just show the next due date
         if range_start <= anchor < range_end:
@@ -112,7 +117,7 @@ def _generate_occurrences(
     current = anchor
 
     # Walk backwards to find occurrences before anchor but still in range
-    if current > range_start and delta.days > 0:
+    if current > range_start:
         while current - delta >= range_start:
             current = current - delta
 
@@ -134,18 +139,49 @@ def _generate_occurrences(
     return events
 
 
-def _frequency_to_delta(frequency_type: str, frequency: int) -> Optional[timedelta]:
-    """Convert a Donetick frequency type + multiplier to a timedelta."""
+def _frequency_to_delta(
+    frequency_type: str,
+    frequency: int,
+    frequency_metadata: Optional[str] = None,
+) -> Optional[Union[timedelta, relativedelta]]:
+    """Convert a Donetick frequency type + multiplier to a delta."""
     freq = max(frequency, 1)
-    if frequency_type == "daily" or frequency_type == "interval":
+    if frequency_type == "daily":
         return timedelta(days=freq)
     if frequency_type == "weekly" or frequency_type == "days_of_the_week":
         return timedelta(weeks=freq)
     if frequency_type == "monthly" or frequency_type == "day_of_the_month":
-        return timedelta(days=30 * freq)
+        return relativedelta(months=freq)
     if frequency_type == "yearly":
-        return timedelta(days=365 * freq)
+        return relativedelta(years=freq)
+    if frequency_type == "interval":
+        unit = _parse_interval_unit(frequency_metadata)
+        if unit == "hours":
+            # All-day calendar can't represent sub-day cadence; show daily.
+            return timedelta(days=1)
+        if unit == "days":
+            return timedelta(days=freq)
+        if unit == "weeks":
+            return timedelta(weeks=freq)
+        if unit == "months":
+            return relativedelta(months=freq)
+        if unit == "years":
+            return relativedelta(years=freq)
     # adaptive and others — can't reliably predict
+    return None
+
+
+def _parse_interval_unit(metadata) -> Optional[str]:
+    """Extract the 'unit' field from frequency_metadata (dict or JSON string)."""
+    if not metadata:
+        return None
+    if isinstance(metadata, dict):
+        return metadata.get("unit")
+    if isinstance(metadata, str):
+        try:
+            return json.loads(metadata).get("unit")
+        except (json.JSONDecodeError, AttributeError, TypeError):
+            return None
     return None
 
 
