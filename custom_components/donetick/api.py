@@ -26,12 +26,18 @@ class DonetickApiClient:
             "Content-Type": "application/json",
         }
         
+        _LOGGER.debug("GET %s/eapi/v1/chore", self._base_url)
+        
         try:
             async with self._session.get(
                 f"{self._base_url}/eapi/v1/chore",
                 headers=headers,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("GET %s failed: %s %s - Response: %s", 
+                                response.url, response.status, response.reason, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 
@@ -40,7 +46,7 @@ class DonetickApiClient:
                     return []
                 
                 return [DonetickTask.from_json(task) for task in data]
-                
+
         except aiohttp.ClientError as err:
             _LOGGER.error("Error fetching tasks from Donetick: %s", err)
             raise
@@ -55,12 +61,18 @@ class DonetickApiClient:
             "Content-Type": "application/json",
         }
         
+        _LOGGER.debug("GET %s/eapi/v1/circle/members", self._base_url)
+        
         try:
             async with self._session.get(
                 f"{self._base_url}/eapi/v1/circle/members",
                 headers=headers,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("GET %s failed: %s %s - Response: %s", 
+                                response.url, response.status, response.reason, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 
@@ -69,7 +81,7 @@ class DonetickApiClient:
                     return []
                 
                 return [DonetickMember.from_json(member) for member in data]
-                
+
         except aiohttp.ClientError as err:
             _LOGGER.error("Error fetching circle members from Donetick: %s", err)
             raise
@@ -84,12 +96,18 @@ class DonetickApiClient:
             "Content-Type": "application/json",
         }
         
+        _LOGGER.debug("GET %s/eapi/v1/things", self._base_url)
+        
         try:
             async with self._session.get(
                 f"{self._base_url}/eapi/v1/things",
                 headers=headers,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("GET %s failed: %s %s - Response: %s", 
+                                response.url, response.status, response.reason, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 
@@ -98,7 +116,7 @@ class DonetickApiClient:
                     return []
                 
                 return [DonetickThing.from_json(thing) for thing in data]
-                
+
         except aiohttp.ClientError as err:
             _LOGGER.error("Error fetching things from Donetick: %s", err)
             raise
@@ -113,16 +131,22 @@ class DonetickApiClient:
             "Content-Type": "application/json",
         }
         
+        _LOGGER.debug("GET %s/eapi/v1/things/%s/state", self._base_url, thing_id)
+        
         try:
             async with self._session.get(
                 f"{self._base_url}/eapi/v1/things/{thing_id}/state",
                 headers=headers,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("GET %s failed: %s %s - Response: %s", 
+                                response.url, response.status, response.reason, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 return data.get("state")
-                
+
         except aiohttp.ClientError as err:
             _LOGGER.error("Error fetching thing state from Donetick: %s", err)
             raise
@@ -138,6 +162,7 @@ class DonetickApiClient:
         }
         
         params = {"state": state}
+        _LOGGER.debug("GET %s/eapi/v1/things/%s/state with params: %s", self._base_url, thing_id, params)
         
         try:
             async with self._session.get(
@@ -146,9 +171,13 @@ class DonetickApiClient:
                 params=params,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("GET %s failed: %s %s - Params: %s - Response: %s", 
+                                response.url, response.status, response.reason, params, response_text)
                 response.raise_for_status()
                 return True
-                
+        
         except aiohttp.ClientError as err:
             _LOGGER.error("Error setting thing state in Donetick: %s", err)
             raise
@@ -169,6 +198,8 @@ class DonetickApiClient:
         if increment is not None:
             params["op"] = increment
         
+        _LOGGER.debug("GET %s/eapi/v1/things/%s/state/change with params: %s", self._base_url, thing_id, params)
+        
         try:
             async with self._session.get(
                 f"{self._base_url}/eapi/v1/things/{thing_id}/state/change",
@@ -176,10 +207,14 @@ class DonetickApiClient:
                 params=params,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("GET %s failed: %s %s - Params: %s - Response: %s", 
+                                response.url, response.status, response.reason, params, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 return data.get("state")
-                
+
         except aiohttp.ClientError as err:
             _LOGGER.error("Error changing thing state in Donetick: %s", err)
             raise
@@ -202,6 +237,8 @@ class DonetickApiClient:
         else:
             _LOGGER.debug("No completedBy parameter - using default")
 
+        _LOGGER.debug("POST %s/eapi/v1/chore/%s/complete with params: %s", self._base_url, choreId, params)
+
         try:
             async with self._session.post(
                 f"{self._base_url}/eapi/v1/chore/{choreId}/complete",
@@ -209,6 +246,10 @@ class DonetickApiClient:
                 params=params,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("POST %s failed: %s %s - Params: %s - Response: %s", 
+                                response.url, response.status, response.reason, params, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 return DonetickTask.from_json(data)
@@ -235,6 +276,8 @@ class DonetickApiClient:
         if created_by:
             payload["createdBy"] = created_by
 
+        _LOGGER.debug("POST %s/eapi/v1/chore with payload: %s", self._base_url, payload)
+
         try:
             async with self._session.post(
                 f"{self._base_url}/eapi/v1/chore",
@@ -242,6 +285,10 @@ class DonetickApiClient:
                 json=payload,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("POST %s failed: %s %s - Payload: %s - Response: %s", 
+                                response.url, response.status, response.reason, payload, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 return DonetickTask.from_json(data)
@@ -271,6 +318,8 @@ class DonetickApiClient:
         if not payload:
             raise ValueError("At least one field must be provided for update")
 
+        _LOGGER.debug("PUT %s/eapi/v1/chore/%s with payload: %s", self._base_url, task_id, payload)
+
         try:
             async with self._session.put(
                 f"{self._base_url}/eapi/v1/chore/{task_id}",
@@ -278,10 +327,14 @@ class DonetickApiClient:
                 json=payload,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("PUT %s failed: %s %s - Payload: %s - Response: %s", 
+                                response.url, response.status, response.reason, payload, response_text)
                 response.raise_for_status()
                 data = await response.json()
                 return DonetickTask.from_json(data)
-
+        
         except aiohttp.ClientError as err:
             _LOGGER.error("Error updating task in Donetick: %s", err)
             raise
@@ -325,12 +378,18 @@ class DonetickApiClient:
             "Content-Type": "application/json",
         }
 
+        _LOGGER.debug("DELETE %s/eapi/v1/chore/%s", self._base_url, task_id)
+
         try:
             async with self._session.delete(
                 f"{self._base_url}/eapi/v1/chore/{task_id}",
                 headers=headers,
                 timeout=API_TIMEOUT
             ) as response:
+                if not response.ok:
+                    response_text = await response.text()
+                    _LOGGER.error("DELETE %s failed: %s %s - Response: %s", 
+                                response.url, response.status, response.reason, response_text)
                 response.raise_for_status()
                 return True
 
