@@ -1,6 +1,6 @@
 """Todo for Donetick integration."""
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.todo import (
@@ -95,6 +95,18 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         """Filter tasks based on entity type. Override in subclasses."""
         return tasks
 
+    def _apply_due_window(self, tasks):
+        """Apply the configured upcoming task window to filtered tasks."""
+        show_due_in = self._config_entry.data.get(CONF_SHOW_DUE_IN, 7)
+        if show_due_in is None:
+            return tasks
+
+        cutoff = datetime.now(timezone.utc) + timedelta(days=show_due_in)
+        return [
+            task for task in tasks
+            if task.next_due_date is not None and task.next_due_date <= cutoff
+        ]
+
     @property
     def todo_items(self) -> list[TodoItem] | None: 
         """Return a list of todo items."""
@@ -102,6 +114,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             return None
         
         filtered_tasks = self._filter_tasks(self.coordinator.data)
+        filtered_tasks = self._apply_due_window(filtered_tasks)
         return [
             TodoItem(
                 summary=task.name,
