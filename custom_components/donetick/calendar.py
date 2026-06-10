@@ -157,8 +157,17 @@ def _is_date_only_due(value: datetime) -> bool:
         (0, 0, 0, 0),
         (23, 59, 0, 0),
         (23, 59, 59, 0),
+        (23, 59, 59, 999000),
         (23, 59, 59, 999999),
     }
+
+
+def _task_has_due_time(task: DonetickTask) -> bool:
+    """Return true only when Donetick reports an explicit scheduled time."""
+    if _metadata_dict(task) or task.frequency_type in RECURRING_FREQUENCY_TYPES:
+        return _metadata_time(task) is not None
+
+    return task.next_due_date is not None and not _is_date_only_due(task.next_due_date)
 
 
 def _best_task_start(task: DonetickTask) -> Optional[datetime | date]:
@@ -169,7 +178,7 @@ def _best_task_start(task: DonetickTask) -> Optional[datetime | date]:
     if task.next_due_date is None:
         return None
 
-    if _is_date_only_due(task.next_due_date):
+    if not _task_has_due_time(task):
         return task.next_due_date.date()
 
     return task.next_due_date
@@ -226,9 +235,9 @@ def _task_to_event(task: DonetickTask, members: List[DonetickMember]) -> Optiona
 
 def _normalize_occurrence_start(task: DonetickTask, due_value: datetime) -> datetime | date:
     """Normalize a due datetime to the display start used by the calendar."""
-    if _is_date_only_due(due_value):
-        return due_value.date()
-    return due_value
+    if _task_has_due_time(task):
+        return due_value
+    return due_value.date()
 
 
 def _scheduled_task_event(
