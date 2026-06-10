@@ -47,6 +47,14 @@ RECURRING_FREQUENCY_TYPES = {
     "adaptive",
 }
 
+# Only these recurrence types are safe to project without fully parsing frequencyMetadata.
+PROJECTABLE_FREQUENCY_TYPES = {
+    "daily",
+    "weekly",
+    "interval",
+    "yearly",
+}
+
 
 def _get_member_name(members: List[DonetickMember], user_id: Optional[int]) -> Optional[str]:
     """Resolve a user ID to a display name."""
@@ -151,6 +159,19 @@ def _generate_occurrences(
 
     # Non-recurring: single event
     if task.frequency_type not in RECURRING_FREQUENCY_TYPES:
+        event = CalendarEvent(
+            summary=task.name,
+            start=anchor,
+            end=_event_end(anchor, event_duration),
+            description=description,
+            uid=f"donetick_{task.id}",
+        )
+        if _event_in_range(event, range_start, range_end):
+            return [event]
+        return []
+
+    # Recurring: only project patterns we can model correctly from the current task shape.
+    if task.frequency_type not in PROJECTABLE_FREQUENCY_TYPES:
         event = CalendarEvent(
             summary=task.name,
             start=anchor,
