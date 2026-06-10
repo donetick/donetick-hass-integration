@@ -163,9 +163,9 @@ def _is_date_only_due(value: datetime) -> bool:
 
 
 def _task_has_due_time(task: DonetickTask) -> bool:
-    """Return true only when Donetick reports an explicit scheduled time."""
-    if _metadata_dict(task) or task.frequency_type in RECURRING_FREQUENCY_TYPES:
-        return _metadata_time(task) is not None
+    """Return true when the task has a meaningful due time."""
+    if _metadata_time(task) is not None:
+        return True
 
     return task.next_due_date is not None and not _is_date_only_due(task.next_due_date)
 
