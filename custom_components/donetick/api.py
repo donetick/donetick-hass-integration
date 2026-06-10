@@ -7,7 +7,7 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import API_TIMEOUT
-from .model import DonetickTask, DonetickThing, DonetickMember
+from .model import DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
 _LOGGER = logging.getLogger(__name__)
 
 class DonetickApiClient:
@@ -19,12 +19,16 @@ class DonetickApiClient:
         self._token = token
         self._session = session
 
-    async def async_get_tasks(self) -> List[DonetickTask]:
-        """Get tasks from Donetick."""
-        headers = {
+    def _headers(self) -> dict:
+        """Return headers for Donetick API requests."""
+        return {
             "secretkey": f"{self._token}",
             "Content-Type": "application/json",
         }
+
+    async def async_get_tasks(self) -> List[DonetickTask]:
+        """Get tasks from Donetick."""
+        headers = self._headers()
         
         try:
             async with self._session.get(
@@ -50,10 +54,7 @@ class DonetickApiClient:
 
     async def async_get_circle_members(self) -> List[DonetickMember]:
         """Get circle members from Donetick."""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
         
         try:
             async with self._session.get(
@@ -79,10 +80,7 @@ class DonetickApiClient:
 
     async def async_get_things(self) -> List[DonetickThing]:
         """Get things from Donetick."""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
         
         try:
             async with self._session.get(
@@ -108,10 +106,7 @@ class DonetickApiClient:
 
     async def async_get_thing_state(self, thing_id: int) -> Optional[str]:
         """Get the current state of a thing."""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
         
         try:
             async with self._session.get(
@@ -132,10 +127,7 @@ class DonetickApiClient:
 
     async def async_set_thing_state(self, thing_id: int, state: str) -> bool:
         """Set the state of a thing directly."""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
         
         params = {"state": state}
         
@@ -158,10 +150,7 @@ class DonetickApiClient:
 
     async def async_change_thing_state(self, thing_id: int, new_state: str = None, increment: int = None) -> Optional[str]:
         """Change the state of a thing using the change endpoint."""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
         
         params = {}
         if new_state is not None:
@@ -189,10 +178,7 @@ class DonetickApiClient:
 
     async def async_complete_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
         """Complete a task"""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
 
         # Add completed_by parameter if provided
         params = {}
@@ -222,10 +208,7 @@ class DonetickApiClient:
 
     async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None) -> DonetickTask:
         """Create a new task"""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
 
         payload = {"name": name}
         if description:
@@ -255,10 +238,7 @@ class DonetickApiClient:
 
     async def async_update_task(self, task_id: int, name: str = None, description: str = None, due_date: str = None) -> DonetickTask:
         """Update an existing task"""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
 
         payload = {}
         if name:
@@ -291,10 +271,7 @@ class DonetickApiClient:
 
     async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
         """Skip a task, advancing to the next scheduled occurrence without recording a completion."""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
 
         params = {}
         if completed_by:
@@ -320,10 +297,7 @@ class DonetickApiClient:
 
     async def async_delete_task(self, task_id: int) -> bool:
         """Delete a task"""
-        headers = {
-            "secretkey": f"{self._token}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
 
         try:
             async with self._session.delete(
@@ -340,3 +314,67 @@ class DonetickApiClient:
         except Exception as err:
             _LOGGER.error("Error deleting task: %s", err)
             return False
+
+    async def async_get_task_detail(self, task_id: int) -> Optional[DonetickTask]:
+        """Get detailed task timing data when the full API endpoint is available."""
+        try:
+            async with self._session.get(
+                f"{self._base_url}/api/v1/chores/{task_id}/details",
+                headers=self._headers(),
+                timeout=API_TIMEOUT
+            ) as response:
+                if response.status in (401, 403, 404):
+                    _LOGGER.debug("Donetick task detail endpoint unavailable: HTTP %s", response.status)
+                    return None
+
+                response.raise_for_status()
+                data = await response.json()
+                detail = data.get("res", data) if isinstance(data, dict) else data
+
+                if not isinstance(detail, dict):
+                    _LOGGER.debug("Unexpected Donetick task detail response format")
+                    return None
+
+                return DonetickTask.from_json(detail)
+
+        except aiohttp.ClientError as err:
+            _LOGGER.debug("Unable to fetch Donetick task detail %d: %s", task_id, err)
+            return None
+        except (KeyError, ValueError, json.JSONDecodeError) as err:
+            _LOGGER.debug("Unable to parse Donetick task detail %d: %s", task_id, err)
+            return None
+
+    async def async_get_task_history(self, days: int = 30, include_members: bool = True) -> List[DonetickChoreHistory]:
+        """Get recent chore history when the full API endpoint is available."""
+        params = {
+            "limit": max(days, 1),
+            "members": "true" if include_members else "false",
+        }
+
+        try:
+            async with self._session.get(
+                f"{self._base_url}/api/v1/chores/history",
+                headers=self._headers(),
+                params=params,
+                timeout=API_TIMEOUT
+            ) as response:
+                if response.status in (401, 403, 404):
+                    _LOGGER.debug("Donetick task history endpoint unavailable: HTTP %s", response.status)
+                    return []
+
+                response.raise_for_status()
+                data = await response.json()
+                history = data.get("res", data) if isinstance(data, dict) else data
+
+                if not isinstance(history, list):
+                    _LOGGER.debug("Unexpected Donetick task history response format")
+                    return []
+
+                return DonetickChoreHistory.from_json_list(history)
+
+        except aiohttp.ClientError as err:
+            _LOGGER.debug("Unable to fetch Donetick task history: %s", err)
+            return []
+        except (KeyError, ValueError, json.JSONDecodeError) as err:
+            _LOGGER.debug("Unable to parse Donetick task history: %s", err)
+            return []
