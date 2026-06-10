@@ -82,6 +82,7 @@ class DonetickTask:
     priority: int
     labels: Optional[Any]
     is_active: bool
+    is_rolling: bool
     frequency_type: str
     frequency: int
     frequency_metadata: Optional[Any]
@@ -112,6 +113,7 @@ class DonetickTask:
             priority=data.get("priority", 0),
             labels=data.get("labels") or data.get("labelsV2"),
             is_active=data.get("isActive", True),
+            is_rolling=data.get("isRolling", False),
             frequency_type=data.get("frequencyType", "once"),
             frequency=data.get("frequency") or 1,
             frequency_metadata=data.get("frequencyMetadata"),
