@@ -269,7 +269,7 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick update task response: %s", err)
             raise
 
-    async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
+    async def async_skip_task(self, choreId: int, completed_by: int = None) -> Optional[DonetickTask]:
         """Skip a task, advancing to the next scheduled occurrence without recording a completion."""
         headers = self._headers()
 
@@ -285,7 +285,17 @@ class DonetickApiClient:
                 timeout=API_TIMEOUT
             ) as response:
                 response.raise_for_status()
-                data = await response.json()
+
+                if response.status == 204:
+                    _LOGGER.debug("Donetick skip task returned no content for task %d", choreId)
+                    return None
+
+                raw_body = await response.text()
+                if not raw_body.strip():
+                    _LOGGER.debug("Donetick skip task returned an empty response for task %d", choreId)
+                    return None
+
+                data = json.loads(raw_body)
                 return DonetickTask.from_json(data)
 
         except aiohttp.ClientError as err:
