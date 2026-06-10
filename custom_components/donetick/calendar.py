@@ -35,27 +35,6 @@ HISTORY_STATUS_LABELS = {
     6: "Rescheduled",
 }
 
-# Frequency types that represent recurring chores
-RECURRING_FREQUENCY_TYPES = {
-    "daily",
-    "weekly",
-    "monthly",
-    "yearly",
-    "interval",
-    "days_of_the_week",
-    "day_of_the_month",
-    "adaptive",
-}
-
-# Only these recurrence types are safe to project without fully parsing frequencyMetadata.
-PROJECTABLE_FREQUENCY_TYPES = {
-    "daily",
-    "weekly",
-    "interval",
-    "yearly",
-}
-
-
 def _get_member_name(members: List[DonetickMember], user_id: Optional[int]) -> Optional[str]:
     """Resolve a user ID to a display name."""
     if user_id is None:
@@ -75,6 +54,16 @@ def _task_description(task: DonetickTask, members: List[DonetickMember]) -> str:
     return description
 
 
+def _is_date_only_due(value: datetime) -> bool:
+    """Return true when a due datetime is acting like an all-day date marker."""
+    return (value.hour, value.minute, value.second, value.microsecond) in {
+        (0, 0, 0, 0),
+        (23, 59, 0, 0),
+        (23, 59, 59, 0),
+        (23, 59, 59, 999999),
+    }
+
+
 def _best_task_start(task: DonetickTask) -> Optional[datetime | date]:
     """Return the best start time for an active/scheduled task."""
     if task.status in (CHORE_STATUS_IN_PROGRESS, CHORE_STATUS_PAUSED):
@@ -83,7 +72,10 @@ def _best_task_start(task: DonetickTask) -> Optional[datetime | date]:
     if task.next_due_date is None:
         return None
 
-    return task.next_due_date.date()
+    if _is_date_only_due(task.next_due_date):
+        return task.next_due_date.date()
+
+    return task.next_due_date
 
 
 def _event_end(start: datetime | date, duration: timedelta) -> datetime | date:
@@ -133,115 +125,6 @@ def _task_to_event(task: DonetickTask, members: List[DonetickMember]) -> Optiona
         description=_task_description(task, members),
         uid=f"donetick_{task.id}",
     )
-
-
-def _generate_occurrences(
-    task: DonetickTask,
-    members: List[DonetickMember],
-    range_start: datetime,
-    range_end: datetime,
-) -> List[CalendarEvent]:
-    """Generate calendar events for a task within a date range.
-
-    For non-recurring tasks, returns the single event if it falls in range.
-    For recurring tasks, projects future occurrences based on frequency_type and frequency.
-    """
-    anchor = _best_task_start(task)
-    if anchor is None:
-        return []
-
-    description = _task_description(task, members)
-    event_duration = (
-        DEFAULT_LOGGED_DURATION
-        if task.status in (CHORE_STATUS_IN_PROGRESS, CHORE_STATUS_PAUSED)
-        else DEFAULT_SCHEDULED_DURATION
-    )
-
-    # Non-recurring: single event
-    if task.frequency_type not in RECURRING_FREQUENCY_TYPES:
-        event = CalendarEvent(
-            summary=task.name,
-            start=anchor,
-            end=_event_end(anchor, event_duration),
-            description=description,
-            uid=f"donetick_{task.id}",
-        )
-        if _event_in_range(event, range_start, range_end):
-            return [event]
-        return []
-
-    # Recurring: only project patterns we can model correctly from the current task shape.
-    if task.frequency_type not in PROJECTABLE_FREQUENCY_TYPES:
-        event = CalendarEvent(
-            summary=task.name,
-            start=anchor,
-            end=_event_end(anchor, event_duration),
-            description=description,
-            uid=f"donetick_{task.id}",
-        )
-        if _event_in_range(event, range_start, range_end):
-            return [event]
-        return []
-
-    # Recurring: compute the interval as a timedelta
-    delta = _frequency_to_delta(task.frequency_type, task.frequency)
-    if delta is None:
-        # Unsupported frequency, just show the next due date.
-        event = CalendarEvent(
-            summary=task.name,
-            start=anchor,
-            end=_event_end(anchor, event_duration),
-            description=description,
-            uid=f"donetick_{task.id}",
-        )
-        if _event_in_range(event, range_start, range_end):
-            return [event]
-        return []
-
-    events: List[CalendarEvent] = []
-    current = anchor
-    current_key = _comparison_datetime(current)
-    range_start_key = _comparison_datetime(range_start)
-    range_end_key = _comparison_datetime(range_end)
-
-    # Walk backwards to find occurrences before anchor but still in range.
-    if current_key > range_start_key and delta.total_seconds() > 0:
-        while current_key - delta >= range_start_key:
-            current = current - delta
-            current_key = current_key - delta
-
-    # Walk forward through the range.
-    while current_key < range_end_key:
-        event = CalendarEvent(
-            summary=task.name,
-            start=current,
-            end=_event_end(current, event_duration),
-            description=description,
-            uid=f"donetick_{task.id}_{current.isoformat()}",
-        )
-        if _event_in_range(event, range_start, range_end):
-            events.append(event)
-        current = current + delta
-        current_key = current_key + delta
-        if len(events) >= 365:
-            break
-
-    return events
-
-
-def _frequency_to_delta(frequency_type: str, frequency: int) -> Optional[timedelta]:
-    """Convert a Donetick frequency type + multiplier to a timedelta."""
-    freq = max(frequency, 1)
-    if frequency_type == "daily" or frequency_type == "interval":
-        return timedelta(days=freq)
-    if frequency_type == "weekly" or frequency_type == "days_of_the_week":
-        return timedelta(weeks=freq)
-    if frequency_type == "monthly" or frequency_type == "day_of_the_month":
-        return timedelta(days=30 * freq)
-    if frequency_type == "yearly":
-        return timedelta(days=365 * freq)
-    # Adaptive and others cannot be reliably predicted.
-    return None
 
 
 def _history_to_event(
@@ -296,15 +179,6 @@ def _history_to_event(
     )
 
 
-def _event_day(event: CalendarEvent) -> date:
-    """Return the local calendar day for an event start."""
-    if isinstance(event.start, datetime):
-        if event.start.tzinfo is not None:
-            return event.start.astimezone().date()
-        return event.start.date()
-    return event.start
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -316,7 +190,12 @@ async def async_setup_entry(
     client = data["client"]
     circle_members = data.get("circle_members", [])
 
-    async_add_entities([DonetickCalendar(coordinator, client, circle_members, entry)])
+    async_add_entities(
+        [
+            DonetickCalendar(coordinator, client, circle_members, entry),
+            DonetickActivityCalendar(coordinator, client, circle_members, entry),
+        ]
+    )
 
 
 class DonetickCalendar(CoordinatorEntity, CalendarEntity):
@@ -384,9 +263,7 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
             if isinstance(end_date, datetime)
             else datetime.combine(end_date, datetime.min.time())
         )
-        tasks_by_id = {task.id: task for task in tasks}
-
-        scheduled_events: List[CalendarEvent] = []
+        events: List[CalendarEvent] = []
         for task in tasks:
             if not task.is_active:
                 continue
@@ -396,44 +273,81 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
                     task.start_time = detail.start_time
                     task.timer_updated_at = detail.timer_updated_at
                     task.duration = detail.duration
-            scheduled_events.extend(
-                _generate_occurrences(task, self._circle_members, range_start, range_end)
-            )
+            event = _task_to_event(task, self._circle_members)
+            if event is not None and _event_in_range(event, range_start, range_end):
+                events.append(event)
 
-        events: List[CalendarEvent] = []
-        history_days_by_chore: dict[int, set[date]] = {}
+        events.sort(key=_event_sort_key)
+        return events
+
+
+class DonetickActivityCalendar(CoordinatorEntity, CalendarEntity):
+    """A calendar entity representing Donetick chore activity history."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Activity Log"
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator,
+        client: DonetickApiClient,
+        circle_members: List[DonetickMember],
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the activity log calendar."""
+        super().__init__(coordinator)
+        self._client = client
+        self._circle_members = circle_members
+        self._attr_unique_id = f"{entry.entry_id}_activity_calendar"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{entry.entry_id}_chores")},
+            "name": "Donetick Chores",
+            "manufacturer": "Donetick",
+        }
+
+    @property
+    def event(self) -> Optional[CalendarEvent]:
+        """Return the next upcoming event."""
+        return None
+
+    async def async_get_events(
+        self,
+        hass: HomeAssistant,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> List[CalendarEvent]:
+        """Return activity log events within a date range."""
+        tasks: List[DonetickTask] = self.coordinator.data or []
+        range_start = (
+            start_date
+            if isinstance(start_date, datetime)
+            else datetime.combine(start_date, datetime.min.time())
+        )
+        range_end = (
+            end_date
+            if isinstance(end_date, datetime)
+            else datetime.combine(end_date, datetime.min.time())
+        )
+        tasks_by_id = {task.id: task for task in tasks}
+
         now = datetime.now(timezone.utc)
         range_start_key = _comparison_datetime(range_start)
         range_end_key = _comparison_datetime(range_end)
         now_key = _comparison_datetime(now)
-        if range_start_key <= now_key and (range_end_key - range_start_key).days <= HISTORY_LOOKBACK_DAYS:
-            history_days = max((now_key - range_start_key).days + 1, 1)
-            histories = await self._client.async_get_task_history(
-                min(history_days, HISTORY_LOOKBACK_DAYS),
-                include_members=True,
-            )
-            for history in histories:
-                event = _history_to_event(history, tasks_by_id, self._circle_members)
-                if event is not None and _event_in_range(event, range_start, range_end):
-                    history_days_by_chore.setdefault(history.chore_id, set()).add(_event_day(event))
-                    events.append(event)
+        if range_start_key > now_key or (range_end_key - range_start_key).days > HISTORY_LOOKBACK_DAYS:
+            return []
 
-        for event in scheduled_events:
-            uid = event.uid or ""
-            if not uid.startswith("donetick_") or uid.startswith("donetick_history_"):
+        history_days = max((now_key - range_start_key).days + 1, 1)
+        histories = await self._client.async_get_task_history(
+            min(history_days, HISTORY_LOOKBACK_DAYS),
+            include_members=True,
+        )
+
+        events: List[CalendarEvent] = []
+        for history in histories:
+            event = _history_to_event(history, tasks_by_id, self._circle_members)
+            if event is not None and _event_in_range(event, range_start, range_end):
                 events.append(event)
-                continue
-
-            chore_id = uid.removeprefix("donetick_").split("_", 1)[0]
-            try:
-                chore_id_int = int(chore_id)
-            except ValueError:
-                events.append(event)
-                continue
-
-            if _event_day(event) in history_days_by_chore.get(chore_id_int, set()):
-                continue
-            events.append(event)
 
         events.sort(key=_event_sort_key)
         return events
