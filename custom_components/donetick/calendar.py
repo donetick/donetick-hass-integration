@@ -72,7 +72,10 @@ def _best_task_start(task: DonetickTask) -> Optional[datetime | date]:
     if task.status in (CHORE_STATUS_IN_PROGRESS, CHORE_STATUS_PAUSED):
         return task.start_time or task.timer_updated_at or task.updated_at or task.next_due_date
 
-    return task.next_due_date
+    if task.next_due_date is None:
+        return None
+
+    return task.next_due_date.date()
 
 
 def _event_end(start: datetime | date, duration: timedelta) -> datetime | date:
@@ -272,6 +275,15 @@ def _history_to_event(
     )
 
 
+def _event_day(event: CalendarEvent) -> date:
+    """Return the local calendar day for an event start."""
+    if isinstance(event.start, datetime):
+        if event.start.tzinfo is not None:
+            return event.start.astimezone().date()
+        return event.start.date()
+    return event.start
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -353,7 +365,7 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
         )
         tasks_by_id = {task.id: task for task in tasks}
 
-        events: List[CalendarEvent] = []
+        scheduled_events: List[CalendarEvent] = []
         for task in tasks:
             if not task.is_active:
                 continue
@@ -363,10 +375,12 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
                     task.start_time = detail.start_time
                     task.timer_updated_at = detail.timer_updated_at
                     task.duration = detail.duration
-            events.extend(
+            scheduled_events.extend(
                 _generate_occurrences(task, self._circle_members, range_start, range_end)
             )
 
+        events: List[CalendarEvent] = []
+        history_days_by_chore: dict[int, set[date]] = {}
         now = datetime.now(timezone.utc)
         range_start_key = _comparison_datetime(range_start)
         range_end_key = _comparison_datetime(range_end)
@@ -380,7 +394,25 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
             for history in histories:
                 event = _history_to_event(history, tasks_by_id, self._circle_members)
                 if event is not None and _event_in_range(event, range_start, range_end):
+                    history_days_by_chore.setdefault(history.chore_id, set()).add(_event_day(event))
                     events.append(event)
+
+        for event in scheduled_events:
+            uid = event.uid or ""
+            if not uid.startswith("donetick_") or uid.startswith("donetick_history_"):
+                events.append(event)
+                continue
+
+            chore_id = uid.removeprefix("donetick_").split("_", 1)[0]
+            try:
+                chore_id_int = int(chore_id)
+            except ValueError:
+                events.append(event)
+                continue
+
+            if _event_day(event) in history_days_by_chore.get(chore_id_int, set()):
+                continue
+            events.append(event)
 
         events.sort(key=_event_sort_key)
         return events
