@@ -2,7 +2,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Optional, List
 from homeassistant.components.todo import (
     TodoItem,
     TodoItemStatus,
@@ -11,6 +11,22 @@ from homeassistant.components.todo import (
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    """Parse a Donetick timestamp, returning None for empty or invalid values."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        _LOGGER.debug("Unable to parse Donetick datetime: %s", value)
+        return None
 
 @dataclass
 class DonetickMember:
@@ -64,13 +80,21 @@ class DonetickTask:
     next_due_date: Optional[datetime]
     status: int
     priority: int
-    labels: Optional[str]
+    labels: Optional[Any]
     is_active: bool
+    is_rolling: bool
     frequency_type: str
     frequency: int
-    frequency_metadata: str
+    frequency_metadata: Optional[Any]
     assigned_to: Optional[int] = None
     description: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    last_completed_date: Optional[datetime] = None
+    last_completed_by: Optional[int] = None
+    duration: Optional[int] = None
+    start_time: Optional[datetime] = None
+    timer_updated_at: Optional[datetime] = None
     
     @classmethod
     def from_json(cls, data: dict) -> "DonetickTask":
@@ -84,22 +108,74 @@ class DonetickTask:
         return cls(
             id=data["id"],
             name=data["name"],
-            next_due_date=datetime.fromisoformat(data["nextDueDate"].replace('Z', '+00:00')) if data.get("nextDueDate") else None,
-            status=data["status"],
-            priority=data["priority"],
-            labels=data["labels"],
-            is_active=data["isActive"],
-            frequency_type=data["frequencyType"],
-            frequency=data["frequency"],
-            frequency_metadata=data["frequencyMetadata"],
+            next_due_date=_parse_datetime(data.get("nextDueDate")),
+            status=data.get("status", 0),
+            priority=data.get("priority", 0),
+            labels=data.get("labels") or data.get("labelsV2"),
+            is_active=data.get("isActive", True),
+            is_rolling=data.get("isRolling", False),
+            frequency_type=data.get("frequencyType", "once"),
+            frequency=data.get("frequency") or 1,
+            frequency_metadata=data.get("frequencyMetadata"),
             assigned_to=assigned_to,
-            description=data.get("description")
+            description=data.get("description"),
+            created_at=_parse_datetime(data.get("createdAt")),
+            updated_at=_parse_datetime(data.get("updatedAt")),
+            last_completed_date=_parse_datetime(data.get("lastCompletedDate")),
+            last_completed_by=data.get("lastCompletedBy"),
+            duration=data.get("duration"),
+            start_time=_parse_datetime(data.get("startTime")),
+            timer_updated_at=_parse_datetime(data.get("timerUpdatedAt")),
         )
     
     @classmethod
     def from_json_list(cls, data: List[dict]) -> List["DonetickTask"]:
         """Create a list of DonetickTasks from JSON data."""
         return [cls.from_json(task) for task in data]
+
+
+@dataclass
+class DonetickChoreHistory:
+    """Donetick chore history model."""
+    id: int
+    chore_id: int
+    performed_at: Optional[datetime]
+    completed_by: Optional[int]
+    assigned_to: Optional[int]
+    due_date: Optional[datetime]
+    status: int
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    duration: Optional[int] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    timer_updated_at: Optional[datetime] = None
+
+    @classmethod
+    def from_json(cls, data: dict) -> "DonetickChoreHistory":
+        """Create a DonetickChoreHistory from JSON data."""
+        return cls(
+            id=data["id"],
+            chore_id=data["choreId"],
+            performed_at=_parse_datetime(data.get("performedAt")),
+            completed_by=data.get("completedBy"),
+            assigned_to=data.get("assignedTo"),
+            due_date=_parse_datetime(data.get("dueDate")),
+            status=data.get("status", 0),
+            notes=data.get("notes"),
+            created_at=_parse_datetime(data.get("createdAt")),
+            updated_at=_parse_datetime(data.get("updatedAt")),
+            duration=data.get("duration"),
+            start_time=_parse_datetime(data.get("startTime")),
+            end_time=_parse_datetime(data.get("endTime")),
+            timer_updated_at=_parse_datetime(data.get("timerUpdatedAt")),
+        )
+
+    @classmethod
+    def from_json_list(cls, data: List[dict]) -> List["DonetickChoreHistory"]:
+        """Create a list of DonetickChoreHistory objects from JSON data."""
+        return [cls.from_json(history) for history in data]
 
 @dataclass 
 class DonetickThing:
