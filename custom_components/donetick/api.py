@@ -110,13 +110,13 @@ class DonetickApiClient:
         
         try:
             async with self._session.get(
-                f"{self._base_url}/eapi/v1/things/{thing_id}/state",
+                f"{self._base_url}/eapi/v1/things/{thing_id}",
                 headers=headers,
                 timeout=API_TIMEOUT
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
-                return data.get("state")
+                return data.get("thing", {}).get("state")
                 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error fetching thing state from Donetick: %s", err)
