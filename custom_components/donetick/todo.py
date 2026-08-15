@@ -1,7 +1,9 @@
 """Todo for Donetick integration."""
 import logging
+
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import traceback
 
 from homeassistant.components.todo import (
     TodoItem,
@@ -18,9 +20,9 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_ASSIGNEE_LISTS
+from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_SHOW_NO_DUE_DATE, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_PROJECT_LISTS, CONF_CREATE_ASSIGNEE_LISTS
 from .api import DonetickApiClient
-from .model import DonetickTask, DonetickMember
+from .model import DonetickProject, DonetickTask, DonetickMember
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +70,22 @@ async def async_setup_entry(
                 entities.append(entity)
     else:
         _LOGGER.debug("Assignee lists not enabled in config")
+
+    # Create per-project lists if enabled (check options first, then data)
+    create_project_lists = config_entry.options.get(CONF_CREATE_PROJECT_LISTS, config_entry.data.get(CONF_CREATE_PROJECT_LISTS, False))
+    if create_project_lists:
+        _LOGGER.debug("Project lists enabled in config")
+        try:
+            projects = await client.async_get_projects()
+            _LOGGER.debug("Found %d projects", len(projects))
+            for project in projects:
+                entity = DonetickProjectTasksList(coordinator, config_entry, project)
+                entity._project_id = project.id
+                entity._project_name = project.name
+                entity._circle_members = circle_members
+                entities.append(entity)
+        except Exception as e:
+            _LOGGER.error("Failed to get projects: %s", e)
     
     _LOGGER.debug("Creating %d total entities", len(entities))
     async_add_entities(entities)
@@ -97,14 +115,19 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
 
     def _apply_due_window(self, tasks):
         """Apply the configured upcoming task window to filtered tasks."""
+        show_no_due_date = self._config_entry.data.get(CONF_SHOW_NO_DUE_DATE, True)
         show_due_in = self._config_entry.data.get(CONF_SHOW_DUE_IN, 7)
         if show_due_in is None:
-            return tasks
+            if show_no_due_date:
+                return tasks
+            else:
+                return [ task for task in tasks if task.next_due_date is not None ]
 
         cutoff = datetime.now(timezone.utc) + timedelta(days=show_due_in)
         return [
             task for task in tasks
-            if task.next_due_date is not None and task.next_due_date <= cutoff
+            if (show_no_due_date and (task.next_due_date is None or task.next_due_date <= cutoff)) or
+                (not show_no_due_date and task.next_due_date is not None and task.next_due_date <= cutoff)
         ]
 
     @property
@@ -112,9 +135,11 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         """Return a list of todo items."""
         if self.coordinator.data is None:
             return None
-        
+        _LOGGER.debug("Generating todo items for entity %s (start with %d)", self._attr_name, len(self.coordinator.data))
         filtered_tasks = self._filter_tasks(self.coordinator.data)
+        _LOGGER.debug("Generating todo items for entity %s (after filtering to: %d)", self._attr_name, len(filtered_tasks))
         filtered_tasks = self._apply_due_window(filtered_tasks)
+        _LOGGER.debug("Generating todo items for entity %s (after applying due window: %d)", self._attr_name, len(filtered_tasks))
         return [
             TodoItem(
                 summary=task.name,
@@ -137,6 +162,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         attributes = {
             "config_entry_id": self._config_entry.entry_id,
             "donetick_url": self._config_entry.data[CONF_URL],
+            "donetick_project_id": hasattr(self, '_project') and self._project.id or None,
         }
         
         # Add circle members data for custom card user selection
@@ -167,6 +193,11 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             if hasattr(self, '_member'):
                 created_by = self._member.user_id
             
+            project_id = None
+            if hasattr(self, '_project'):
+                project_id = self._project.id
+            _LOGGER.debug("Creating task '%s' in project %d by user %d", item.summary, project_id, created_by)
+
             # Convert due date to RFC3339 format if provided
             due_date = None
             if item.due:
@@ -176,9 +207,10 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                 name=item.summary,
                 description=item.description,
                 due_date=due_date,
-                created_by=created_by
+                created_by=created_by,
+                project_id=project_id
             )
-            _LOGGER.info("Created task '%s' with ID %d", item.summary, result.id)
+            _LOGGER.info("Created task '%s' in project %s with ID %d", item.summary, getattr(self, '_project_id', None), result.id)
             
         except Exception as e:
             _LOGGER.error("Failed to create task '%s': %s", item.summary, e)
@@ -207,13 +239,14 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                 _LOGGER.debug("Completing task %s", item.uid)
                 # Determine who should complete this task using smart logic
                 completed_by = await self._get_completion_user_id(client, item, context)
+                _LOGGER.debug("Traceback: %s", traceback.format_stack())
                 
                 res = await client.async_complete_task(task_id, completed_by)
                 if res.frequency_type != "once":
                     _LOGGER.debug("Task %s is recurring, updating next due date", res.name)
                     item.status = TodoItemStatus.NEEDS_ACTION
                     item.due = res.next_due_date
-                    self.async_update_todo_item(item)
+                    self.async_update_todo_item(item, context)
             else:
                 # Update task properties (summary, description, due date)
                 _LOGGER.debug("Updating task %d properties", task_id)
@@ -227,7 +260,8 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                     task_id=task_id,
                     name=item.summary,
                     description=item.description,
-                    due_date=due_date
+                    due_date=due_date,
+                    project_id=getattr(self, '_project_id', None)
                 )
                 _LOGGER.info("Updated task %d", task_id)
                 
@@ -270,6 +304,23 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             _LOGGER.debug("Using assignee from specific list: %s (ID: %d)", self._member.display_name, self._member.user_id)
             return self._member.user_id
         
+        # Attempt to map the current calling user to a circle member by username
+        circle_members = getattr(self, '_circle_members', [])
+        _LOGGER.debug("Attempting to map calling user to circle member, %d members available (Context: %s)", len(circle_members), context)
+        if len(circle_members) > 0:
+            _LOGGER.debug("Context: %s", context)
+            if context and context.user_id:
+                user_id = context.user_id
+                # Fetch the user object if you need the actual text username
+                user = await self.hass.auth.async_get_user(user_id)
+                _LOGGER.debug("Current context user: %s (ID: %s)", user.name if user else "Unknown", user_id)
+                if user:
+                    caller_username = user.name
+                    for member in circle_members:
+                        if member.username == caller_username:
+                            _LOGGER.debug("Mapped calling user '%s' to circle member '%s' (ID: %d)", caller_username, member.display_name, member.user_id)
+                            return member.user_id
+
         # If completing from "All Tasks", find the task's original assignee
         task_id = int(item.uid.split("--")[0])
         if self.coordinator.data:
@@ -295,6 +346,22 @@ class DonetickAllTasksList(DonetickTodoListBase):
     def _filter_tasks(self, tasks):
         """Return all active tasks."""
         return [task for task in tasks if task.is_active]
+
+class DonetickProjectTasksList(DonetickTodoListBase):
+    """Donetick Project-specific Tasks List entity."""
+
+    def __init__(self, coordinator: DataUpdateCoordinator, config_entry: ConfigEntry, project: DonetickProject) -> None:
+        """Initialize the Project Tasks List."""
+        super().__init__(coordinator, config_entry)
+        self._project = project
+        self._attr_unique_id = f"dt_{config_entry.entry_id}_project_{project.id}_tasks"
+        self._attr_name = f"{project.name} Tasks"
+
+    def _filter_tasks(self, tasks):
+        """Return tasks belonging to this project."""
+        filtered_tasks = [task for task in tasks if task.is_active and task.project_id == self._project_id]
+        _LOGGER.debug("Project %d has %d tasks", self._project_id, len(filtered_tasks))
+        return filtered_tasks
 
 class DonetickAssigneeTasksList(DonetickTodoListBase):
     """Donetick Assignee-specific Tasks List entity."""

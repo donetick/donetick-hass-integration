@@ -5,54 +5,18 @@
                 "title": "Connect to Donetick",
                 "description": "Set up your Donetick integration",
                 "data": {
-                    "url": {
-                        "name":"Donetick URL",
-                        "default":"https://app.donetick.com"
-                    },
-                    "token":{
-                        "name": "API Token",
-                        "default":""
-                    }
+                    "url": "Donetick URL",
+                    "token": "API Token"
                 }
             },
             "options": {
                 "title": "Organize Your Tasks",
                 "description": "Choose how you'd like to organize your Donetick tasks in Home Assistant",
                 "data": {
-                    "show_due_in": {
-                        "name": "Days ahead to show upcoming tasks",
-                        "description": "Show tasks due within this many days (0 shows all tasks)"
-                    },
-                    "create_unified_list": {
-                        "name": "Create \"All Tasks\" list",
-                        "description": "Show all household tasks in a single todo list"
-                    },
-                    "create_assignee_lists": {
-                        "name": "Create individual task lists per person",
-                        "description": "Create separate todo lists for each person assigned to tasks"
-                    }
-                }
-            }
-        }
-    },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Configure Donetick Options",
-                "description": "Adjust your Donetick integration settings",
-                "data": {
-                    "show_due_in": {
-                        "name": "Days ahead to show upcoming tasks",
-                        "description": "Show tasks due within this many days (0 shows all tasks)"
-                    },
-                    "create_unified_list": {
-                        "name": "Create \"All Tasks\" list",
-                        "description": "Show all household tasks in a single todo list"
-                    },
-                    "create_assignee_lists": {
-                        "name": "Create individual task lists per person",
-                        "description": "Create separate todo lists for each person assigned to tasks"
-                    }
+                    "show_due_in": "Days ahead to show upcoming tasks",
+                    "create_unified_list": "Create \"All Tasks\" list",
+                    "create_project_lists": "Create individual task lists per project",
+                    "create_assignee_lists": "Create individual task lists per person"
                 }
             }
         },
@@ -62,7 +26,19 @@
             "unknown": "Unexpected error"
         }
     },
-    "config": {
+    "options": {
+        "step": {
+            "init": {
+                "title": "Configure Donetick Options",
+                "description": "Adjust your Donetick integration settings",
+                "data": {
+                    "show_due_in": "Days ahead to show upcoming tasks",
+                    "create_unified_list": "Create \"All Tasks\" list",
+                    "create_project_lists": "Create individual task lists per project",
+                    "create_assignee_lists": "Create individual task lists per person"
+                }
+            }
+        },
         "error": {
             "cannot_connect": "Failed to connect to Donetick",
             "invalid_auth": "Invalid authentication",
