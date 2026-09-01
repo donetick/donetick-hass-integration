@@ -239,7 +239,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                 _LOGGER.debug("Completing task %s", item.uid)
                 # Determine who should complete this task using smart logic
                 completed_by = await self._get_completion_user_id(client, item, context)
-                _LOGGER.debug("Traceback: %s", traceback.format_stack())
+                _LOGGER.debug("Completing task %s as user %s", item.uid, completed_by)
                 
                 res = await client.async_complete_task(task_id, completed_by)
                 if res.frequency_type != "once":
