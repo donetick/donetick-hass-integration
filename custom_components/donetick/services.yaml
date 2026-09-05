@@ -63,6 +63,112 @@ create_task:
       selector:
         text:
 
+create_chore:
+  name: Create Chore (Full API)
+  description: Create a Donetick chore with recurrence, assignment strategy, and priority
+  fields:
+    name:
+      name: Chore Name
+      description: The name of the chore
+      required: true
+      selector:
+        text:
+    description:
+      name: Description
+      description: Chore description (optional)
+      required: false
+      selector:
+        text:
+          multiline: true
+    next_due_date:
+      name: Next Due Date
+      description: Next due date in RFC3339 format
+      required: false
+      selector:
+        text:
+    frequency_type:
+      name: Frequency Type
+      description: How the chore repeats
+      required: false
+      default: once
+      selector:
+        select:
+          options:
+            - once
+            - daily
+            - weekly
+            - monthly
+            - yearly
+            - adaptive
+            - interval
+            - days_of_the_week
+            - day_of_the_month
+            - trigger
+            - no_repeat
+    frequency:
+      name: Frequency
+      description: Repeat interval, or day number for day_of_the_month
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 1
+          mode: box
+    frequency_metadata:
+      name: Frequency Metadata
+      description: Donetick metadata such as days, months, unit, time, and timezone
+      required: false
+      selector:
+        object:
+    assignee_ids:
+      name: Assignee User IDs
+      description: List of Donetick user IDs eligible for assignment
+      required: false
+      selector:
+        object:
+    assigned_to:
+      name: Assigned To User ID
+      description: Donetick user ID currently assigned to the chore
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+    assign_strategy:
+      name: Assignment Strategy
+      description: Strategy used to select the next assignee; inferred when omitted
+      required: false
+      selector:
+        select:
+          options:
+            - no_assignee
+            - least_assigned
+            - least_completed
+            - random
+            - keep_last_assigned
+            - random_except_last_assigned
+            - round_robin
+    priority:
+      name: Priority
+      description: Donetick priority value
+      required: false
+      default: 0
+      selector:
+        number:
+          mode: box
+    is_rolling:
+      name: Rolling Schedule
+      description: Schedule the next occurrence relative to completion
+      required: false
+      selector:
+        boolean:
+    config_entry_id:
+      name: Config Entry ID
+      description: The specific Donetick integration to use (optional, uses first if not specified)
+      required: false
+      selector:
+        text:
+
 update_task:
   name: Update Task
   description: Update an existing Donetick task

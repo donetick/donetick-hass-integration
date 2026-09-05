@@ -24,7 +24,8 @@ A Home Assistant integration for Donetick that provides support for managing tod
   - **Text**: Text input things
 
 ### 🔧 Services
-- `donetick.create_task` - Create new tasks
+- `donetick.create_task` - Create basic tasks through the backwards-compatible eAPI
+- `donetick.create_chore` - Create chores through the full API with recurrence, assignment strategy, and priority
 - `donetick.update_task` - Update existing tasks  
 - `donetick.delete_task` - Delete tasks
 - `donetick.complete_task` - Mark tasks complete with user attribution

@@ -11,6 +11,7 @@ dependencies = [
 dev = [
     "pytest>=8,<9",
     "pytest-asyncio>=0.24,<1",
+    "voluptuous>=0.15,<1",
 ]
 
 [tool.pytest.ini_options]

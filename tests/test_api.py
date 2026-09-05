@@ -8,10 +8,20 @@ from custom_components.donetick.api import DonetickApiClient
 
 
 class FakeResponse:
-    def __init__(self, payload: object, status: int = 200) -> None:
+    def __init__(
+        self,
+        payload: object,
+        status: int = 200,
+        *,
+        status_error: Exception | None = None,
+        json_error: Exception | None = None,
+    ) -> None:
         self.payload = payload
         self.status = status
+        self.status_error = status_error
+        self.json_error = json_error
         self.raise_for_status_called = False
+        self.json_called = False
 
     async def __aenter__(self):
         return self
@@ -21,8 +31,13 @@ class FakeResponse:
 
     def raise_for_status(self) -> None:
         self.raise_for_status_called = True
+        if self.status_error:
+            raise self.status_error
 
     async def json(self) -> object:
+        self.json_called = True
+        if self.json_error:
+            raise self.json_error
         return self.payload
 
 
@@ -82,3 +97,31 @@ async def test_create_chore_rejects_response_without_integer_id(
 
     with pytest.raises(ValueError, match="Unexpected Donetick create chore response"):
         await client.async_create_chore({"name": "Clean kitchen"})
+
+
+async def test_create_chore_propagates_http_errors_before_reading_json() -> None:
+    response = FakeResponse({}, status_error=RuntimeError("HTTP 500"))
+    session = RecordingSession(response)
+    client = DonetickApiClient(
+        "https://donetick.example", "test-token", cast(Any, session)
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 500"):
+        await client.async_create_chore({"name": "Clean kitchen"})
+
+    assert response.raise_for_status_called
+    assert not response.json_called
+
+
+async def test_create_chore_propagates_json_decode_errors() -> None:
+    response = FakeResponse({}, json_error=RuntimeError("invalid JSON"))
+    session = RecordingSession(response)
+    client = DonetickApiClient(
+        "https://donetick.example", "test-token", cast(Any, session)
+    )
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        await client.async_create_chore({"name": "Clean kitchen"})
+
+    assert response.raise_for_status_called
+    assert response.json_called
