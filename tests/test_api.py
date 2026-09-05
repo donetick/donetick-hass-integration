@@ -86,6 +86,30 @@ async def test_create_chore_posts_full_api_payload_and_returns_id() -> None:
     assert response.raise_for_status_called
 
 
+async def test_complete_chore_posts_actual_performer_to_full_api() -> None:
+    response = FakeResponse({"res": {"id": 42}})
+    session = RecordingSession(response)
+    client = DonetickApiClient(
+        "https://donetick.example/", "test-token", cast(Any, session)
+    )
+
+    await client.async_complete_chore(42, completed_by=7)
+
+    assert session.calls == [
+        {
+            "method": "POST",
+            "url": "https://donetick.example/api/v1/chores/42/do",
+            "headers": {
+                "secretkey": "test-token",
+                "Content-Type": "application/json",
+            },
+            "json": {"completedBy": 7},
+            "timeout": 10,
+        }
+    ]
+    assert response.raise_for_status_called
+
+
 @pytest.mark.parametrize("response_payload", [{}, {"res": "42"}, {"res": True}])
 async def test_create_chore_rejects_response_without_integer_id(
     response_payload: object,

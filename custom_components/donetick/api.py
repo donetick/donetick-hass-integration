@@ -257,6 +257,24 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick create chore response: %s", err)
             raise ValueError("Unexpected Donetick create chore response") from err
 
+    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
+        """Record a Full-API completion for a circle member."""
+        try:
+            async with self._session.post(
+                f"{self._base_url}/api/v1/chores/{chore_id}/do",
+                headers=self._headers(),
+                json={"completedBy": completed_by},
+                timeout=cast(Any, API_TIMEOUT),
+            ) as response:
+                response.raise_for_status()
+                await response.json()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error completing chore in Donetick: %s", err)
+            raise
+        except (KeyError, TypeError, json.JSONDecodeError) as err:
+            _LOGGER.error("Error parsing Donetick complete chore response: %s", err)
+            raise ValueError("Unexpected Donetick complete chore response") from err
+
     async def async_update_task(self, task_id: int, name: str = None, description: str = None, due_date: str = None) -> DonetickTask:
         """Update an existing task"""
         headers = self._headers()

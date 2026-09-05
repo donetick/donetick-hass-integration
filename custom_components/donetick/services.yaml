@@ -25,6 +25,33 @@ complete_task:
       selector:
         text:
 
+complete_chore:
+  name: Complete Chore (Full API)
+  description: Complete a Donetick chore while recording any circle member as the actual performer. The configured Donetick API token must belong to a circle admin or manager.
+  fields:
+    chore_id:
+      name: Chore ID
+      description: The ID of the chore to complete.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    completed_by:
+      name: Completed By User ID
+      description: The Donetick circle member who actually completed the chore.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      name: Config Entry ID
+      description: The specific loaded Donetick integration to use.
+      required: false
+      selector:
+        text:
+
 create_task:
   name: Create Task
   description: Create a new Donetick task

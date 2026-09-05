@@ -31,6 +31,7 @@ PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, P
 
 
 SERVICE_COMPLETE_TASK = "complete_task"
+SERVICE_COMPLETE_CHORE = "complete_chore"
 SERVICE_CREATE_TASK = "create_task"
 SERVICE_CREATE_CHORE = "create_chore"
 SERVICE_UPDATE_TASK = "update_task"
@@ -40,6 +41,12 @@ SERVICE_SKIP_TASK = "skip_task"
 COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Required("task_id"): vol.Coerce(int),
     vol.Optional("completed_by"): vol.Coerce(int),
+    vol.Optional("config_entry_id"): cv.string,
+})
+
+COMPLETE_CHORE_SCHEMA = vol.Schema({
+    vol.Required("chore_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Required("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -130,7 +137,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register services before setting up platforms
     async def complete_task_handler(call: ServiceCall) -> None:
         await async_complete_task_service(hass, call)
-    
+
+    async def complete_chore_handler(call: ServiceCall) -> None:
+        await async_complete_chore_service(hass, call)
+
     async def create_task_handler(call: ServiceCall) -> None:
         await async_create_task_service(hass, call)
 
@@ -151,6 +161,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         SERVICE_COMPLETE_TASK,
         complete_task_handler,
         schema=COMPLETE_TASK_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_COMPLETE_CHORE,
+        complete_chore_handler,
+        schema=COMPLETE_CHORE_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
@@ -235,6 +251,37 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
 
     except Exception as e:
         _LOGGER.error("Failed to complete task %d: %s", task_id, e)
+
+
+async def async_complete_chore_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Complete a chore while recording the actual circle member who did it."""
+    config_entry_id = call.data.get("config_entry_id")
+    entry = await _get_config_entry(hass, config_entry_id)
+    if not entry:
+        raise HomeAssistantError("No matching Donetick config entry found")
+
+    try:
+        config = hass.data[DOMAIN][entry.entry_id]
+    except KeyError as err:
+        raise HomeAssistantError(
+            f"Donetick config entry {entry.entry_id} is not loaded"
+        ) from err
+
+    try:
+        await config["client"].async_complete_chore(
+            call.data["chore_id"], call.data["completed_by"]
+        )
+    except Exception as err:
+        raise HomeAssistantError(f"Failed to complete Donetick chore: {err}") from err
+
+    try:
+        await config["coordinator"].async_request_refresh()
+    except Exception as err:
+        raise HomeAssistantError(
+            "Donetick chore was completed, but Home Assistant refresh failed: "
+            f"{err}"
+        ) from err
+
 
 async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the create_task service call."""
@@ -409,6 +456,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             service_names = (
                 SERVICE_COMPLETE_TASK,
+                SERVICE_COMPLETE_CHORE,
                 SERVICE_CREATE_TASK,
                 SERVICE_CREATE_CHORE,
                 SERVICE_UPDATE_TASK,

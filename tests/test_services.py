@@ -69,6 +69,14 @@ class RecordingClient:
         return 42
 
 
+class CompletionClient:
+    def __init__(self) -> None:
+        self.completions: list[tuple[int, int]] = []
+
+    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
+        self.completions.append((chore_id, completed_by))
+
+
 class FailingClient:
     async def async_create_chore(self, payload: dict[str, Any]) -> int:
         raise RuntimeError("Donetick unavailable")
@@ -77,6 +85,31 @@ class FailingClient:
 class FailingCoordinator:
     async def async_request_refresh(self) -> None:
         raise RuntimeError("refresh unavailable")
+
+
+async def test_complete_chore_service_records_actual_performer_and_refreshes() -> None:
+    entry = FakeConfigEntry()
+    hass = FakeHass(entry)
+    await integration.async_setup_entry(hass, entry)
+    client = CompletionClient()
+    hass.data[integration.DOMAIN][entry.entry_id]["client"] = client
+
+    handler, schema = hass.services.registered[(integration.DOMAIN, "complete_chore")]
+    await handler(
+        SimpleNamespace(
+            data=schema(
+                {
+                    "chore_id": 42,
+                    "completed_by": 7,
+                    "config_entry_id": entry.entry_id,
+                }
+            )
+        )
+    )
+
+    assert client.completions == [(42, 7)]
+    coordinator = hass.data[integration.DOMAIN][entry.entry_id]["coordinator"]
+    assert coordinator.refresh_count == 1
 
 
 async def test_create_chore_service_calls_full_api_and_refreshes_coordinator() -> None:
