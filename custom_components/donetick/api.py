@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime
 import json
-from typing import List, Optional
+from typing import Any, List, Mapping, Optional, cast
 import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -235,6 +235,27 @@ class DonetickApiClient:
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick create task response: %s", err)
             raise
+
+    async def async_create_chore(self, payload: Mapping[str, Any]) -> int:
+        """Create a chore through Donetick's full API and return its ID."""
+        try:
+            async with self._session.post(
+                f"{self._base_url}/api/v1/chores",
+                headers=self._headers(),
+                json=payload,
+                timeout=cast(Any, API_TIMEOUT),
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                if not isinstance(data, dict) or type(data.get("res")) is not int:
+                    raise ValueError("Unexpected Donetick create chore response")
+                return data["res"]
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error creating chore in Donetick: %s", err)
+            raise
+        except (KeyError, TypeError, json.JSONDecodeError) as err:
+            _LOGGER.error("Error parsing Donetick create chore response: %s", err)
+            raise ValueError("Unexpected Donetick create chore response") from err
 
     async def async_update_task(self, task_id: int, name: str = None, description: str = None, due_date: str = None) -> DonetickTask:
         """Update an existing task"""
