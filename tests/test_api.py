@@ -86,14 +86,14 @@ async def test_create_chore_posts_full_api_payload_and_returns_id() -> None:
     assert response.raise_for_status_called
 
 
-async def test_complete_chore_posts_actual_performer_to_full_api() -> None:
+async def test_complete_chore_impersonates_assignee_and_records_performer() -> None:
     response = FakeResponse({"res": {"id": 42}})
     session = RecordingSession(response)
     client = DonetickApiClient(
         "https://donetick.example/", "test-token", cast(Any, session)
     )
 
-    await client.async_complete_chore(42, completed_by=7)
+    await client.async_complete_chore(42, completed_by=7, assigned_to=3)
 
     assert session.calls == [
         {
@@ -102,12 +102,28 @@ async def test_complete_chore_posts_actual_performer_to_full_api() -> None:
             "headers": {
                 "secretkey": "test-token",
                 "Content-Type": "application/json",
+                "X-Impersonate-User-ID": "3",
             },
             "json": {"completedBy": 7},
             "timeout": 10,
         }
     ]
     assert response.raise_for_status_called
+
+
+async def test_complete_chore_omits_impersonation_without_assignee() -> None:
+    response = FakeResponse({"res": {"id": 42}})
+    session = RecordingSession(response)
+    client = DonetickApiClient(
+        "https://donetick.example/", "test-token", cast(Any, session)
+    )
+
+    await client.async_complete_chore(42, completed_by=7)
+
+    assert session.calls[0]["headers"] == {
+        "secretkey": "test-token",
+        "Content-Type": "application/json",
+    }
 
 
 @pytest.mark.parametrize("response_payload", [{}, {"res": "42"}, {"res": True}])

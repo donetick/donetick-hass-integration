@@ -71,10 +71,12 @@ class RecordingClient:
 
 class CompletionClient:
     def __init__(self) -> None:
-        self.completions: list[tuple[int, int]] = []
+        self.completions: list[tuple[int, int, int | None]] = []
 
-    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
-        self.completions.append((chore_id, completed_by))
+    async def async_complete_chore(
+        self, chore_id: int, completed_by: int, assigned_to: int | None = None
+    ) -> None:
+        self.completions.append((chore_id, completed_by, assigned_to))
 
 
 class FailingClient:
@@ -83,7 +85,9 @@ class FailingClient:
 
 
 class FailingCompletionClient:
-    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
+    async def async_complete_chore(
+        self, chore_id: int, completed_by: int, assigned_to: int | None = None
+    ) -> None:
         raise RuntimeError("Donetick unavailable")
 
 
@@ -106,13 +110,14 @@ async def test_complete_chore_service_records_actual_performer_and_refreshes() -
                 {
                     "chore_id": 42,
                     "completed_by": 7,
+                    "assigned_to": 3,
                     "config_entry_id": entry.entry_id,
                 }
             )
         )
     )
 
-    assert client.completions == [(42, 7)]
+    assert client.completions == [(42, 7, 3)]
     coordinator = hass.data[integration.DOMAIN][entry.entry_id]["coordinator"]
     assert coordinator.refresh_count == 1
 
@@ -171,7 +176,7 @@ async def test_complete_chore_service_reports_remote_success_when_refresh_fails(
         )
 
     assert isinstance(error.value.__cause__, RuntimeError)
-    assert client.completions == [(42, 7)]
+    assert client.completions == [(42, 7, None)]
 
 
 async def test_create_chore_service_calls_full_api_and_refreshes_coordinator() -> None:

@@ -27,7 +27,12 @@ complete_task:
 
 complete_chore:
   name: Complete Chore (Full API)
-  description: Complete a Donetick chore while recording any circle member as the actual performer. The configured Donetick API token must belong to a circle admin or manager.
+  description: >-
+    Complete a Donetick chore and record the circle member who actually did it.
+    The configured API token must belong to a circle admin or manager. When the
+    chore is assigned to another member, provide assigned_to so Donetick can
+    authorize the completion as that assignee; completed_by remains the actual
+    performer.
   fields:
     chore_id:
       name: Chore ID
@@ -41,6 +46,17 @@ complete_chore:
       name: Completed By User ID
       description: The Donetick circle member who actually completed the chore.
       required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    assigned_to:
+      name: Assigned To User ID
+      description: >-
+        Optional circle member currently assigned to the chore. The integration
+        uses this ID only to authorize the Full-API completion as the assignee;
+        it does not replace completed_by.
+      required: false
       selector:
         number:
           min: 1

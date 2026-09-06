@@ -47,6 +47,7 @@ COMPLETE_TASK_SCHEMA = vol.Schema({
 COMPLETE_CHORE_SCHEMA = vol.Schema({
     vol.Required("chore_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Required("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("assigned_to"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -269,7 +270,9 @@ async def async_complete_chore_service(hass: HomeAssistant, call: ServiceCall) -
 
     try:
         await config["client"].async_complete_chore(
-            call.data["chore_id"], call.data["completed_by"]
+            call.data["chore_id"],
+            call.data["completed_by"],
+            assigned_to=call.data.get("assigned_to"),
         )
     except Exception as err:
         raise HomeAssistantError(f"Failed to complete Donetick chore: {err}") from err

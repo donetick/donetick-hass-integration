@@ -19,12 +19,15 @@ class DonetickApiClient:
         self._token = token
         self._session = session
 
-    def _headers(self) -> dict:
+    def _headers(self, impersonate_user_id: int | None = None) -> dict:
         """Return headers for Donetick API requests."""
-        return {
+        headers = {
             "secretkey": f"{self._token}",
             "Content-Type": "application/json",
         }
+        if impersonate_user_id is not None:
+            headers["X-Impersonate-User-ID"] = str(impersonate_user_id)
+        return headers
 
     async def async_get_tasks(self) -> List[DonetickTask]:
         """Get tasks from Donetick."""
@@ -260,12 +263,14 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick create chore response: %s", err)
             raise ValueError("Unexpected Donetick create chore response") from err
 
-    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
+    async def async_complete_chore(
+        self, chore_id: int, completed_by: int, assigned_to: int | None = None
+    ) -> None:
         """Record a Full-API completion for a circle member."""
         try:
             async with self._session.post(
                 f"{self._base_url}/api/v1/chores/{chore_id}/do",
-                headers=self._headers(),
+                headers=self._headers(impersonate_user_id=assigned_to),
                 json={"completedBy": completed_by},
                 timeout=cast(Any, API_TIMEOUT),
             ) as response:
