@@ -82,6 +82,11 @@ class FailingClient:
         raise RuntimeError("Donetick unavailable")
 
 
+class FailingCompletionClient:
+    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
+        raise RuntimeError("Donetick unavailable")
+
+
 class FailingCoordinator:
     async def async_request_refresh(self) -> None:
         raise RuntimeError("refresh unavailable")
@@ -110,6 +115,63 @@ async def test_complete_chore_service_records_actual_performer_and_refreshes() -
     assert client.completions == [(42, 7)]
     coordinator = hass.data[integration.DOMAIN][entry.entry_id]["coordinator"]
     assert coordinator.refresh_count == 1
+
+
+async def test_complete_chore_service_surfaces_api_failure_without_refresh() -> None:
+    entry = FakeConfigEntry()
+    hass = FakeHass(entry)
+    await integration.async_setup_entry(hass, entry)
+    hass.data[integration.DOMAIN][entry.entry_id]["client"] = FailingCompletionClient()
+    handler, schema = hass.services.registered[(integration.DOMAIN, "complete_chore")]
+
+    with pytest.raises(HomeAssistantError, match="Donetick unavailable") as error:
+        await handler(
+            SimpleNamespace(data=schema({"chore_id": 42, "completed_by": 7}))
+        )
+
+    assert isinstance(error.value.__cause__, RuntimeError)
+    coordinator = hass.data[integration.DOMAIN][entry.entry_id]["coordinator"]
+    assert coordinator.refresh_count == 0
+
+
+async def test_complete_chore_service_rejects_unloaded_config_entry() -> None:
+    entry = FakeConfigEntry()
+    hass = FakeHass(entry)
+
+    with pytest.raises(HomeAssistantError, match="is not loaded") as error:
+        await integration.async_complete_chore_service(
+            hass,
+            SimpleNamespace(
+                data={
+                    "chore_id": 42,
+                    "completed_by": 7,
+                    "config_entry_id": entry.entry_id,
+                }
+            ),
+        )
+
+    assert isinstance(error.value.__cause__, KeyError)
+
+
+async def test_complete_chore_service_reports_remote_success_when_refresh_fails() -> None:
+    entry = FakeConfigEntry()
+    hass = FakeHass(entry)
+    await integration.async_setup_entry(hass, entry)
+    client = CompletionClient()
+    hass.data[integration.DOMAIN][entry.entry_id]["client"] = client
+    hass.data[integration.DOMAIN][entry.entry_id]["coordinator"] = FailingCoordinator()
+    handler, schema = hass.services.registered[(integration.DOMAIN, "complete_chore")]
+
+    with pytest.raises(
+        HomeAssistantError,
+        match="chore was completed, but Home Assistant refresh failed",
+    ) as error:
+        await handler(
+            SimpleNamespace(data=schema({"chore_id": 42, "completed_by": 7}))
+        )
+
+    assert isinstance(error.value.__cause__, RuntimeError)
+    assert client.completions == [(42, 7)]
 
 
 async def test_create_chore_service_calls_full_api_and_refreshes_coordinator() -> None:

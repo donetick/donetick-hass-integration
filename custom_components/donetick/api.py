@@ -247,9 +247,12 @@ class DonetickApiClient:
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
-                if not isinstance(data, dict) or type(data.get("res")) is not int:
+                if not isinstance(data, dict):
                     raise ValueError("Unexpected Donetick create chore response")
-                return data["res"]
+                result = data.get("res")
+                if not isinstance(result, int) or isinstance(result, bool):
+                    raise ValueError("Unexpected Donetick create chore response")
+                return result
         except aiohttp.ClientError as err:
             _LOGGER.error("Error creating chore in Donetick: %s", err)
             raise
