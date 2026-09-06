@@ -8,6 +8,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: "ubuntu-24.04"
+    steps:
+      - name: Check out repository
+        uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262" # v4
+      - name: Install uv
+        uses: "astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e" # v6
+        with:
+          enable-cache: true
+      - name: Install Python
+        run: "uv python install 3.11.15"
+      - name: Install dependencies
+        run: "uv sync --frozen --dev --python 3.11.15"
+      - name: Run tests
+        run: "uv run --frozen pytest"
+
   validate-hacs:
     runs-on: "ubuntu-latest"
     steps:
