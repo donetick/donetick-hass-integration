@@ -8,6 +8,7 @@ from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
 from .api import DonetickApiClient
 
@@ -40,6 +41,7 @@ UPDATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("name"): cv.string,
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
+    vol.Optional("force_unarchive", default=False): cv.boolean,
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -223,12 +225,13 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     name = call.data.get("name")
     description = call.data.get("description")
     due_date = call.data.get("due_date")
+    force_unarchive = call.data.get("force_unarchive", False)
     config_entry_id = call.data.get("config_entry_id")
     
     # Find the config entry to use
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
-        return
+        raise HomeAssistantError("No matching Donetick integration found for update_task")
     
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
@@ -236,12 +239,19 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     coordinator = config["coordinator"]
 
     try:
-        result = await client.async_update_task(task_id, name, description, due_date)
+        result = await client.async_update_task(task_id, name, description, due_date, force_unarchive)
         _LOGGER.info("Task %d updated successfully", task_id)
         await coordinator.async_request_refresh()
 
     except Exception as e:
         _LOGGER.error("Failed to update task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to update Donetick task {task_id}: {e}") from e
+
+    if not result.is_active:
+        raise HomeAssistantError(
+            f"Donetick task {task_id} was updated but remains archived. "
+            "Set force_unarchive to true to reactivate it."
+        )
 
 async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the delete_task service call."""

@@ -236,7 +236,7 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick create task response: %s", err)
             raise
 
-    async def async_update_task(self, task_id: int, name: str = None, description: str = None, due_date: str = None) -> DonetickTask:
+    async def async_update_task(self, task_id: int, name: str = None, description: str = None, due_date: str = None, force_unarchive: bool = False) -> DonetickTask:
         """Update an existing task"""
         headers = self._headers()
 
@@ -247,6 +247,8 @@ class DonetickApiClient:
             payload["description"] = description
         if due_date:
             payload["dueDate"] = due_date
+        if force_unarchive:
+            payload["forceUnarchive"] = True
 
         if not payload:
             raise ValueError("At least one field must be provided for update")
@@ -260,7 +262,18 @@ class DonetickApiClient:
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
-                return DonetickTask.from_json(data)
+                task = DonetickTask.from_json(data)
+                if due_date:
+                    requested_date = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
+                    if task.next_due_date is None or (
+                        task.next_due_date.date() != requested_date.date()
+                        if len(due_date) == 10
+                        else task.next_due_date != requested_date
+                    ):
+                        raise ValueError("Donetick did not apply the requested due date")
+                if force_unarchive and not task.is_active:
+                    raise ValueError("Donetick did not reactivate the task; update the Donetick server")
+                return task
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error updating task in Donetick: %s", err)

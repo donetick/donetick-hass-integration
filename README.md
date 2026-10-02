@@ -25,7 +25,7 @@ A Home Assistant integration for Donetick that provides support for managing tod
 
 ### 🔧 Services
 - `donetick.create_task` - Create new tasks
-- `donetick.update_task` - Update existing tasks  
+- `donetick.update_task` - Update existing tasks. Set `force_unarchive: true` to reactivate an archived task while updating it; the action reports an error if the task remains archived. This requires a Donetick server with `forceUnarchive` support.
 - `donetick.delete_task` - Delete tasks
 - `donetick.complete_task` - Mark tasks complete with user attribution
 
