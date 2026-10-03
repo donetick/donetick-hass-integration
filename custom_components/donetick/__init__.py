@@ -8,6 +8,7 @@ from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
 from .api import DonetickApiClient
 
@@ -40,6 +41,7 @@ UPDATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("name"): cv.string,
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
+    vol.Optional("assigned_to"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -223,12 +225,16 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     name = call.data.get("name")
     description = call.data.get("description")
     due_date = call.data.get("due_date")
+    assigned_to = call.data.get("assigned_to")
     config_entry_id = call.data.get("config_entry_id")
+
+    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")):
+        raise HomeAssistantError("Provide at least one task field to update")
     
     # Find the config entry to use
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
-        return
+        raise HomeAssistantError("No matching Donetick integration found for update_task")
     
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
@@ -236,12 +242,16 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     coordinator = config["coordinator"]
 
     try:
-        result = await client.async_update_task(task_id, name, description, due_date)
+        if any(field in call.data for field in ("name", "description", "due_date")):
+            await client.async_update_task(task_id, name, description, due_date)
+        if assigned_to is not None:
+            await client.async_assign_task(task_id, assigned_to)
         _LOGGER.info("Task %d updated successfully", task_id)
         await coordinator.async_request_refresh()
 
     except Exception as e:
         _LOGGER.error("Failed to update task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to update Donetick task {task_id}: {e}") from e
 
 async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the delete_task service call."""

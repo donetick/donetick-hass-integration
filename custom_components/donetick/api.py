@@ -1,6 +1,6 @@
 """API client for Donetick."""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import List, Optional
 import aiohttp
@@ -267,6 +267,25 @@ class DonetickApiClient:
             raise
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick update task response: %s", err)
+            raise
+
+    async def async_assign_task(self, task_id: int, assigned_to: int) -> None:
+        """Assign a task to one of its existing assignees."""
+        payload = {
+            "assignee": assigned_to,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            async with self._session.put(
+                f"{self._base_url}/api/v1/chores/{task_id}/assignee",
+                headers=self._headers(),
+                json=payload,
+                timeout=API_TIMEOUT,
+            ) as response:
+                response.raise_for_status()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error assigning Donetick task %d: %s", task_id, err)
             raise
 
     async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
