@@ -73,7 +73,7 @@ class DonetickThingBase(Entity):
         """Return device information."""
         return {
             "identifiers": {(DOMAIN, "things")},
-            "name": "Donetick Things",
+            "name": "Donetick Dev Things",
             "manufacturer": "Donetick",
             "model": "Things",
         }

@@ -2,8 +2,8 @@
     "config": {
         "step": {
             "user": {
-                "title": "Connect to Donetick",
-                "description": "Set up your Donetick integration",
+                "title": "Connect to Donetick Dev",
+                "description": "Set up your Donetick Dev integration",
                 "data": {
                     "url": {
                         "name":"Donetick URL",
@@ -38,8 +38,8 @@
     "options": {
         "step": {
             "init": {
-                "title": "Configure Donetick Options",
-                "description": "Adjust your Donetick integration settings",
+                "title": "Configure Donetick Dev Options",
+                "description": "Adjust your Donetick Dev integration settings",
                 "data": {
                     "show_due_in": {
                         "name": "Days ahead to show upcoming tasks",

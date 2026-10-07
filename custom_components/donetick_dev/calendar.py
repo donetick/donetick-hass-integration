@@ -582,7 +582,7 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
         self._attr_unique_id = f"{entry.entry_id}_calendar"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{entry.entry_id}_chores")},
-            "name": "Donetick Chores",
+            "name": "Donetick Dev Chores",
             "manufacturer": "Donetick",
         }
 
@@ -663,7 +663,7 @@ class DonetickActivityCalendar(CoordinatorEntity, CalendarEntity):
         self._attr_unique_id = f"{entry.entry_id}_activity_calendar"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{entry.entry_id}_chores")},
-            "name": "Donetick Chores",
+            "name": "Donetick Dev Chores",
             "manufacturer": "Donetick",
         }
 

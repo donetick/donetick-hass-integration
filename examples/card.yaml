@@ -40,12 +40,12 @@ filter:
           {% endif %}
         tap_action:
           action: perform-action
-          perform_action: script.donetick_complete_chore
+          perform_action: script.donetick_dev_complete_chore
           data:
             entity_id: "{{ entity }}"
         hold_action:
           action: perform-action
-          perform_action: script.donetick_postpone_chore
+          perform_action: script.donetick_dev_postpone_chore
           data:
             entity_id: "{{ entity }}"
             days: 1

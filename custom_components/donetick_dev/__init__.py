@@ -71,7 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name="donetick_chores",
+        name=f"{DOMAIN}_chores",
         update_method=client.async_get_tasks,
         update_interval=timedelta(seconds=refresh_interval_seconds),
     )
@@ -156,30 +156,10 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
     completed_by = call.data.get("completed_by")
     config_entry_id = call.data.get("config_entry_id")
     
-    # Find the config entry to use
-    entry = None
-    if config_entry_id:
-        # Check if it's a config entry ID
-        entry = hass.config_entries.async_get_entry(config_entry_id)
-        
-        # If not found, check if it's an entity ID and extract config entry from it
-        if not entry and config_entry_id.startswith("todo."):
-            entity_registry = hass.helpers.entity_registry.async_get()
-            entity_entry = entity_registry.async_get(config_entry_id)
-            if entity_entry:
-                entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
-        
-        if not entry:
-            _LOGGER.error("Config entry not found for: %s", config_entry_id)
-            return
-    else:
-        # Use the first Donetick integration if no specific entry provided
-        entries = [entry for entry in hass.config_entries.async_entries(DOMAIN)]
-        if not entries:
-            _LOGGER.error("No Donetick integration found")
-            return
-        entry = entries[0]
-    
+    entry = await _get_config_entry(hass, config_entry_id)
+    if not entry:
+        return
+
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
     client = config["client"]
@@ -326,6 +306,13 @@ async def _get_config_entry(hass: HomeAssistant, config_entry_id: str = None) ->
             return None
         entry = entries[0]
     
+    if entry.domain != DOMAIN:
+        _LOGGER.error("Config entry %s belongs to %s, expected %s", entry.entry_id, entry.domain, DOMAIN)
+        return None
+    if entry.entry_id not in hass.data.get(DOMAIN, {}):
+        _LOGGER.error("Config entry %s is not loaded", entry.entry_id)
+        return None
+
     return entry
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
