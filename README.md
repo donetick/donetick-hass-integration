@@ -85,12 +85,15 @@ to the next occurrence. Donetick records a skipped occurrence, keeps the assigne
 calculates the next date from the task's schedule. Tasks without a recurring schedule
 have Postpone hidden. Actions refresh the list and show errors in the card.
 
-Each row shows **Change due date** beneath its date, including for one-off tasks. Choose a date
+Each row shows a **Change due date** calendar-edit icon beside the other actions, including for one-off tasks. Choose a date
 and time, then Save. This uses the existing `donetick.update_task` action; it does not skip
 an occurrence or change the task's recurrence pattern. The picker shows your browser's
 time zone and sends an explicit UTC timestamp. Cancel leaves the task unchanged.
 
-By default each row resembles HA todo items: a completion checkbox and a small reschedule icon.
+By default each compact row shows the task and date beside a horizontal group of action icons:
+check to complete, calendar-arrow-right to skip to the next occurrence, and calendar-edit to
+choose a date. Buttons have at least 44 × 44 pixel tap targets with spacing between them,
+accessible action names and hover tooltips. A date picker expands only when requested.
 The card editor supports a completion checkbox or button; outlined, text or filled buttons; compact, normal or large sizes;
 rounded, pill or square shapes; labels, icons or both; and separate labels, MDI icons and
 colors for each action. Defaults follow the HA theme. Colors accept CSS colors or HA

@@ -22,7 +22,7 @@ class DonetickUserTodoCard extends HTMLElement {
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
     if (!Number.isInteger(Number(config.user_id)) || Number(config.user_id) < 1) throw new Error('Choose a Donetick user');
     this._config = {button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', ...config, user_id: Number(config.user_id)};
+      button_content: 'icon', complete_control: 'button', ...config, user_id: Number(config.user_id)};
     this.render();
   }
   set hass(hass) { this._hass = hass; this.render(); }
@@ -49,22 +49,22 @@ class DonetickUserTodoCard extends HTMLElement {
     const state = this._hass.states[this._config.entity];
     const member = state?.attributes.circle_members?.find(m => m.user_id === this._config.user_id);
     this.shadowRoot.innerHTML = `<style>
-      ha-card { padding: 16px; } h2 { margin: 0 0 12px; font-size: 20px; font-weight: 500; }
-      .row { display: flex; align-items: center; gap: 16px; padding: 10px 0; }
-      .task { flex: 1; min-width: 0; } .name { overflow-wrap: anywhere; } .due { color: var(--secondary-text-color); font-size: 12px; margin-top: 4px; }
+      ha-card { padding: 12px; } h2 { margin: 0 0 8px; font-size: 20px; font-weight: 500; }
+      .row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+      .actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+      .task { flex: 1; min-width: 0; } .name { overflow-wrap: anywhere; } .due { color: var(--secondary-text-color); font-size: 12px; margin-top: 2px; }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
       button:disabled, input:disabled { opacity: .5; cursor: default; }
-      input[type="checkbox"] { flex-shrink:0; width:18px; height:18px; margin:0 4px 0 0; accent-color:var(--primary-color); cursor:pointer; } button:focus-visible { outline: 2px solid var(--primary-color); }
-      button { display:inline-flex; align-items:center; gap:6px; } ha-icon { --mdc-icon-size:20px; }
+      .complete-checkbox { width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
+      input[type="checkbox"] { width:18px; height:18px; margin:0; accent-color:var(--primary-color); cursor:pointer; } button:focus-visible { outline: 2px solid var(--primary-color); }
+      button { display:inline-flex; justify-content:center; align-items:center; gap:6px; box-sizing:border-box; min-width:44px; min-height:44px; } ha-icon { --mdc-icon-size:20px; }
       [data-style="text"] button { border-color:transparent; background:transparent; }
       [data-style="filled"] button { color:var(--text-primary-color); background:var(--primary-color); border-color:transparent; }
-      [data-size="compact"] button { padding:5px 8px; font-size:12px; } [data-size="large"] button { padding:12px 16px; font-size:15px; }
+      [data-size="compact"] button { padding:5px 8px; font-size:12px; } [data-size="normal"] button { min-width:48px; min-height:48px; } [data-size="large"] button { min-width:52px; min-height:52px; padding:12px 16px; font-size:15px; }
       [data-shape="pill"] button { border-radius:24px; } [data-shape="square"] button { border-radius:0; }
       .error { color: var(--error-color); } .empty { color: var(--secondary-text-color); }
-      .date-action { margin-top:4px; } [data-style="text"] button.date-action { padding:2px 0; }
       .date-form { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 0 12px; } .date-form label { flex:1; min-width:180px; font-size:12px; color:var(--secondary-text-color); }
       .date-form input { display:block; box-sizing:border-box; width:100%; margin-top:6px; padding:8px; background:var(--card-background-color); color:var(--primary-text-color); border:1px solid var(--divider-color); border-radius:6px; font:inherit; }
-      @media(max-width: 420px) { ha-card { padding: 12px; } .row { gap: 12px; } }
     </style><ha-card></ha-card>`;
     const card = this.shadowRoot.querySelector('ha-card');
     card.dataset.style = this._config.button_style;
@@ -79,19 +79,22 @@ class DonetickUserTodoCard extends HTMLElement {
     for (const task of tasks) {
       const row = document.createElement('div'); row.className = 'row'; card.append(row);
       if (this._config.complete_control === 'checkbox') {
+        const target = document.createElement('label'); target.className = 'complete-checkbox'; row.append(target);
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
         checkbox.disabled = this._pending.has(task.task_id); checkbox.checked = this._pending.get(task.task_id) === true;
         checkbox.setAttribute('aria-label', `Complete: ${task.name}`);
-        checkbox.addEventListener('change', () => this.act(task, true)); row.append(checkbox);
+        checkbox.title = `Complete: ${task.name}`;
+        checkbox.addEventListener('change', () => this.act(task, true)); target.append(checkbox);
       }
       const text = document.createElement('div'); text.className = 'task'; row.append(text);
       addText(text, 'div', task.name, 'name');
       const due = task.next_due_date ? new Date(task.next_due_date) : null;
       addText(text, 'div', due && !isNaN(due) ? due.toLocaleString(this._hass.locale?.language || undefined, {dateStyle: 'medium', timeStyle: 'short'}) : 'No due date', 'due');
+      const actions = document.createElement('div'); actions.className = 'actions'; row.append(actions);
       for (const [label, complete] of [[this._config.complete_label || 'Complete', true], [this._config.postpone_label || 'Postpone', false]]) {
         if (complete && this._config.complete_control === 'checkbox') continue;
         if (!complete && !task.can_postpone) continue;
-        const button = document.createElement('button'); row.append(button); button.type = 'button';
+        const button = document.createElement('button'); actions.append(button); button.type = 'button';
         button.disabled = this._pending.has(task.task_id);
         if (this._config.button_content !== 'label') {
           const icon = document.createElement('ha-icon'); icon.setAttribute('icon', this._config[complete ? 'complete_icon' : 'postpone_icon'] || (complete ? 'mdi:check' : 'mdi:calendar-arrow-right'));
@@ -100,13 +103,20 @@ class DonetickUserTodoCard extends HTMLElement {
         if (this._config.button_content !== 'icon') button.append(document.createTextNode(label));
         const color = this._config[complete ? 'complete_color' : 'postpone_color'];
         if (color) button.style.setProperty(this._config.button_style === 'filled' ? 'background-color' : 'color', color);
-        button.setAttribute('aria-label', `${label}: ${task.name}`); button.addEventListener('click', () => this.act(task, complete));
+        button.title = `${label}: ${task.name}`;
+        button.setAttribute('aria-label', button.title); button.addEventListener('click', () => this.act(task, complete));
       }
       const changeDate = document.createElement('button'); changeDate.type = 'button';
       changeDate.className = 'date-action';
-      changeDate.textContent = 'Change due date'; changeDate.disabled = this._pending.has(task.task_id);
-      changeDate.setAttribute('aria-label', `Change due date: ${task.name}`);
-      changeDate.addEventListener('click', () => this.editDate(task)); text.append(changeDate);
+      const dateLabel = this._config.due_date_label || 'Change due date';
+      if (this._config.button_content !== 'label') {
+        const icon = document.createElement('ha-icon'); icon.setAttribute('icon', this._config.due_date_icon || 'mdi:calendar-edit'); changeDate.append(icon);
+      }
+      if (this._config.button_content !== 'icon') changeDate.append(document.createTextNode(dateLabel));
+      if (this._config.due_date_color) changeDate.style.setProperty(this._config.button_style === 'filled' ? 'background-color' : 'color', this._config.due_date_color);
+      changeDate.disabled = this._pending.has(task.task_id);
+      changeDate.title = `${dateLabel}: ${task.name}`; changeDate.setAttribute('aria-label', changeDate.title);
+      changeDate.addEventListener('click', () => this.editDate(task)); actions.append(changeDate);
       if (this._dateEdit?.taskId === task.task_id) {
         const form = document.createElement('form'); form.className = 'date-form'; card.append(form);
         const label = addText(form, 'label', `New due date (${Intl.DateTimeFormat().resolvedOptions().timeZone})`);
@@ -147,7 +157,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       if (options) { for (const [value, text] of options) { const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option); } }
       else input.type = numeric ? 'number' : 'text';
       if (numeric) { input.min = '1'; input.max = '365'; }
-      input.value = this._config[key] ?? ({complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
+      input.value = this._config[key] ?? ({complete_control:'button',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
       input.addEventListener('change', () => this.change(key, numeric ? Number(input.value) : input.value));
       wrapper.append(input); this.shadowRoot.append(wrapper);
     };
@@ -160,7 +170,7 @@ class DonetickUserTodoEditor extends HTMLElement {
     field('Button size', 'button_size', [['normal','Normal'],['compact','Compact'],['large','Large']]);
     field('Button shape', 'button_shape', [['rounded','Rounded'],['pill','Pill'],['square','Square']]);
     field('Button content', 'button_content', [['icon_and_label','Icon and label'],['label','Label only'],['icon','Icon only']]);
-    for (const [label,key] of [['Complete label','complete_label'],['Postpone label','postpone_label'],['Complete icon (mdi:...)','complete_icon'],['Postpone icon (mdi:...)','postpone_icon'],['Complete color (optional)','complete_color'],['Postpone color (optional)','postpone_color']]) field(label,key);
+    for (const [label,key] of [['Complete label','complete_label'],['Postpone label','postpone_label'],['Due date label','due_date_label'],['Complete icon (mdi:...)','complete_icon'],['Postpone icon (mdi:...)','postpone_icon'],['Due date icon (mdi:...)','due_date_icon'],['Complete color (optional)','complete_color'],['Postpone color (optional)','postpone_color'],['Due date color (optional)','due_date_color']]) field(label,key);
   }
 }
 customElements.define('donetick-user-todo-card', DonetickUserTodoCard);
