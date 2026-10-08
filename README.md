@@ -120,7 +120,12 @@ and show errors in the card.
 Each row shows a **Change due date** calendar-edit icon beside the other actions, including
 for one-off tasks. Tap to open a slim inline editor below that row, or tap again to close.
 Choose a date, then tap the check icon to save. The clock icon toggles the optional time
-field; the close icon cancels. There is no floating popup or extra task heading.
+field; the close icon cancels. The editor stays inline without an extra task heading.
+The inline editor uses HA's native date and time selectors, including its standard
+calendar dialog and locale-aware time fields. Browser inputs provide a fallback if
+HA's controls cannot be loaded. Tap the task name or due text to expand its description
+below the row; tap again to collapse it. Descriptions preserve line breaks and display
+as plain text. Tasks without a description show “No description”.
 The current time is preserved unless edited with Set time; undated tasks default to 09:00.
 Only Save changes the task. Cancel, Escape or tapping outside dismisses the editor.
 This uses `donetick.update_task` without skipping an occurrence or changing recurrence.

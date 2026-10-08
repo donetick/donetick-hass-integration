@@ -67,9 +67,23 @@ class DonetickUserTodoCard extends HTMLElement {
   }
   constructor() {
     super(); this.attachShadow({mode: 'open'}); this._pending = new Map(); this._completed = new Map();
-    this._outside = event => { if (this._panel && !event.composedPath().includes(this) && !this._pending.has(this._panel.taskId)) this.closePanel(); };
+    this._outside = event => {
+      const path = event.composedPath();
+      if (this._panel && !path.includes(this) && !path.some(node => node.localName === 'ha-dialog-date-picker') && !this._pending.has(this._panel.taskId)) this.closePanel();
+    };
   }
-  connectedCallback() { document.addEventListener('pointerdown', this._outside); }
+  connectedCallback() { document.addEventListener('pointerdown', this._outside); this.ensureForm(); }
+  async ensureForm() {
+    if (customElements.get('ha-form') || this._loadingForm) return;
+    this._loadingForm = true;
+    try {
+      const helpers = await window.loadCardHelpers();
+      const card = await helpers.createCardElement({type:'entities',entities:[]});
+      await card.constructor.getConfigElement();
+      this.render();
+    } catch { /* Native inputs remain available if HA controls cannot be loaded. */ }
+    finally { this._loadingForm = false; }
+  }
   disconnectedCallback() { document.removeEventListener('pointerdown', this._outside); }
   setConfig(config) {
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
@@ -78,7 +92,7 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
     this._config = {display_filter:'all', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
       button_content: 'icon', complete_control: 'checkbox', show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, user_id: config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:Number(config.upcoming_days ?? 7)};
-    if (this._panel && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
+    if (this._panel && this._panel.kind !== 'details' && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
     this.render();
   }
   set hass(hass) { this._hass = hass; this.render(); }
@@ -112,7 +126,7 @@ class DonetickUserTodoCard extends HTMLElement {
     this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showTime:false, assignedTo:task.assigned_to};
     this._error = '';
     this.render();
-    this.shadowRoot.querySelector('.action-panel input, .action-panel select, .action-panel button')?.focus();
+    this.shadowRoot.querySelector('.action-panel input, .action-panel select, .action-panel ha-form, .action-panel button')?.focus();
   }
   render() {
     if (!this._config || !this._hass) return;
@@ -130,6 +144,9 @@ class DonetickUserTodoCard extends HTMLElement {
       .due { display:flex; align-items:center; gap:4px; }
       .due .recurring { --mdc-icon-size:14px; flex-shrink:0; }
       .due .assignee { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      ha-card button.task { display:block; border:0; border-radius:0; padding:0; min-width:0; min-height:44px; text-align:left; background:transparent; color:var(--primary-text-color); font:inherit; }
+      .task .name { display:block; }
+      .description { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; color:var(--secondary-text-color); margin:2px 0 8px; }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
       button:disabled, input:disabled { opacity: .5; cursor: default; }
       .complete-checkbox { width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
@@ -141,6 +158,7 @@ class DonetickUserTodoCard extends HTMLElement {
       [data-shape="pill"] button { border-radius:24px; } [data-shape="square"] button { border-radius:0; }
       .error { color: var(--error-color); } .empty { color: var(--secondary-text-color); }
       .action-panel { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:2px 0 6px; }
+      .action-panel ha-form { flex:1; min-width:180px; --ha-space-6:8px; }
       .action-panel input, .action-panel select { flex:1; min-width:125px; width:0; box-sizing:border-box; height:44px; padding:8px; color-scheme:var(--ha-color-scheme,light); background:var(--secondary-background-color); color:var(--primary-text-color); border:0; border-bottom:1px solid var(--secondary-text-color); border-radius:4px 4px 0 0; font:inherit; font-size:14px; }
       .action-panel button { flex-shrink:0; border-color:transparent; background:transparent; color:var(--primary-color); }
       .action-panel .error { flex-basis:100%; margin:0; font-size:12px; } .skip-prompt { flex:1; font-size:13px; color:var(--secondary-text-color); }
@@ -169,10 +187,17 @@ class DonetickUserTodoCard extends HTMLElement {
         checkbox.title = `Complete: ${task.name}`;
         checkbox.addEventListener('change', () => this.act(task, true)); target.append(checkbox);
       }
-      const text = document.createElement('div'); text.className = 'task'; row.append(text);
-      addText(text, 'div', task.name, 'name');
+      const text = document.createElement('button'); text.type = 'button'; text.className = 'task'; row.append(text);
+      text.dataset.action = 'details'; text.dataset.taskId = task.task_id;
+      text.title = `Show description: ${task.name}`;
+      text.setAttribute('aria-label', text.title);
+      text.setAttribute('aria-expanded', String(this._panel?.taskId === task.task_id && this._panel.kind === 'details'));
+      text.setAttribute('aria-controls', `description-${task.task_id}`);
+      text.addEventListener('click', () => this.togglePanel(task, 'details'));
+      text.addEventListener('keydown', event => { if (event.key === 'Escape' && this._panel?.kind === 'details') { event.stopPropagation(); this.closePanel(); } });
+      addText(text, 'span', task.name, 'name');
       const due = task.next_due_date ? new Date(task.next_due_date) : null;
-      const dueLabel = addText(text, 'div', dueText(task.next_due_date, this._hass.locale?.language, new Date(), this._hass.locale?.time_format), 'due');
+      const dueLabel = addText(text, 'span', dueText(task.next_due_date, this._hass.locale?.language, new Date(), this._hass.locale?.time_format), 'due');
       if (!completed && isOverdue(task.next_due_date)) dueLabel.classList.add('overdue');
       if (due && !isNaN(due)) dueLabel.title = due.toLocaleString(this._hass.locale?.language, {dateStyle:'full',timeStyle:hasDueTime(task.next_due_date) ? 'short' : undefined});
       if (task.is_recurring ?? task.can_postpone) {
@@ -242,6 +267,12 @@ class DonetickUserTodoCard extends HTMLElement {
   }
   renderPanel(row, task, addText) {
     const panel = this._panel;
+    if (panel.kind === 'details') {
+      const description = document.createElement('div'); description.className = 'description';
+      description.id = `description-${task.task_id}`;
+      description.textContent = task.description?.trim() || 'No description';
+      row.after(description); return;
+    }
     const busy = this._pending.has(task.task_id);
     const form = document.createElement('form'); form.className = 'action-panel'; row.after(form);
     form.setAttribute('aria-label', `${panel.kind === 'date' ? 'Change due date' : panel.kind === 'assign' ? 'Reassign' : 'Skip occurrence'}: ${task.name}`);
@@ -259,9 +290,28 @@ class DonetickUserTodoCard extends HTMLElement {
       input.addEventListener('input',handler); form.append(input); return input;
     };
     if (panel.kind === 'date') {
+      if (customElements.get('ha-form')) {
+        const fields = document.createElement('ha-form'); fields.dataset.field = 'date-fields';
+        fields.hass = this._hass; fields.disabled = busy;
+        fields.computeLabel = schema => schema.name === 'date' ? 'Due date' : 'Time';
+        fields.schema = [{name:'',type:'grid',column_min_width:'140px',schema:[
+          {name:'date',required:true,selector:{date:{}}},
+          ...(panel.showTime ? [{name:'time',required:true,selector:{time:{no_second:true}}}] : [])
+        ]}];
+        fields.data = {date:panel.date,time:panel.time};
+        fields.addEventListener('value-changed', event => {
+          event.stopPropagation();
+          const values = event.detail.value;
+          if ('date' in values) panel.date = values.date || '';
+          if ('time' in values) panel.time = values.time || '';
+          if (!fields.isConnected) this.render();
+        });
+        form.append(fields);
+      } else {
       field('date','Due date',panel.date,event => { panel.date=event.target.value; });
       if (panel.showTime) {
         const input=field('time',`Time (${Intl.DateTimeFormat().resolvedOptions().timeZone})`,panel.time,event => { panel.time=event.target.value; }); input.step='1';
+      }
       }
       const time=iconButton(panel.showTime ? 'Hide time' : 'Set time','mdi:clock-outline', () => { panel.showTime=!panel.showTime; this.render(); });
       time.setAttribute('aria-expanded',String(panel.showTime));
@@ -290,7 +340,7 @@ class DonetickUserTodoCard extends HTMLElement {
     if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
     form.addEventListener('submit',event => {
-      event.preventDefault(); if (busy || !form.reportValidity()) return;
+      event.preventDefault(); if (busy || !form.reportValidity() || form.querySelector('ha-form')?.reportValidity?.() === false) return;
       if (panel.kind === 'skip') { this.act(task,false); return; }
       if (panel.kind === 'assign') {
         if (!assignableMembers(this._hass.states[this._config.entity], task).some(member => member.user_id === panel.assignedTo)) { this._error = 'Choose an eligible assignee'; this.render(); return; }

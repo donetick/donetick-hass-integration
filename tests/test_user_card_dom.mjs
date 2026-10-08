@@ -7,7 +7,7 @@ customElements.define('ha-form',class extends HTMLElement {});
 const {localDateTime, dueText, userTasks, isOverdue} = await import('../www/donetick-user-todo-card.js');
 const calls=[]; let fail=false;
 const hass={locale:{language:'en'},states:{'todo.all':{state:'2',attributes:{config_entry_id:'entry',circle_members:[{user_id:1,display_name:'Torben'}],tasks:[
-  {task_id:1,assigned_to:1,name:'Weekly',can_postpone:true,next_due_date:'2026-10-20T16:00:00Z'},
+  {task_id:1,assigned_to:1,name:'Weekly',description:'First line\n<script>plain text</script>',can_postpone:true,next_due_date:'2026-10-20T16:00:00Z'},
   {task_id:2,assigned_to:1,name:'One-off',can_postpone:false},
   {task_id:3,assigned_to:2,name:'Other user',can_postpone:true}
 ]}}},callService:async(...args)=>{calls.push(args);if(fail)throw new Error('Permission denied');}};
@@ -76,14 +76,16 @@ click('Change due date: Weekly');
 assert.equal(root.querySelectorAll('[role=dialog], [popover]').length,0);
 assert.equal(root.querySelectorAll('.action-panel button').length,3);
 assert.equal(root.querySelector('.action-panel').previousElementSibling.className,'row');
-assert.equal(root.querySelector('input[type=date]').value,'2026-10-20');
-assert.equal(root.querySelector('input[type=time]'),null);
+assert.equal(root.querySelector('.action-panel ha-form').data.date,'2026-10-20');
+assert.equal(root.querySelector('.action-panel ha-form').schema[0].schema.length,1);
 click('Change due date: Weekly');assert.equal(root.querySelector('form'),null);
 click('Change due date: Weekly');
-let input=root.querySelector('input[type=date]');input.value='2026-10-24';input.dispatchEvent(new window.Event('input'));
-card.hass=hass;assert.equal(root.querySelector('input[type=date]').value,'2026-10-24');
-click('Set time');assert.equal(root.querySelector('input[type=time]').value,'18:00');
-click('Hide time');assert.equal(root.querySelector('input[type=time]'),null);
+const dateFields=()=>root.querySelector('.action-panel ha-form');
+dateFields().dispatchEvent(new CustomEvent('value-changed',{detail:{value:{date:'2026-10-24',time:dateFields().data.time}}}));
+card.hass=hass;assert.equal(dateFields().data.date,'2026-10-24');
+click('Set time');assert.equal(dateFields().data.time,'18:00:00');
+assert.ok(dateFields().schema[0].schema[1].selector.time);
+click('Hide time');assert.equal(dateFields().schema[0].schema.length,1);
 submit();await tick();
 assert.deepEqual(calls.pop(),['donetick','update_task',{task_id:1,config_entry_id:'entry',due_date:'2026-10-24T16:00:00.000Z'}]);
 assert.equal(root.querySelector('[role=status]'),null);
@@ -159,4 +161,18 @@ for (const complete_control of ['checkbox','button']) {
 card.setConfig({entity:'todo.all',user_id:'all'});click('Change due date: Weekly');
 assert.ok(root.querySelector('form'));
 card.setConfig({entity:'todo.all',user_id:'all',show_due_date:false});assert.equal(root.querySelector('form'),null);
+click('Show description: Weekly');
+assert.equal(root.querySelector('.description').textContent,'First line\n<script>plain text</script>');
+assert.equal(root.querySelector('.description script'),null);
+assert.equal(root.querySelector('[aria-label="Show description: Weekly"]').getAttribute('aria-expanded'),'true');
+click('Show description: Weekly');assert.equal(root.querySelector('.description'),null);
+click('Show description: One-off');assert.equal(root.querySelector('.description').textContent,'No description');
+click('Reassign: Weekly');assert.equal(root.querySelector('.description'),null);
+click('Show description: Weekly');assert.equal(root.querySelector('form'),null);
+root.querySelector('[aria-label="Show description: Weekly"]').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+assert.equal(root.querySelector('.description'),null);
+card.setConfig({entity:'todo.all',user_id:'all'});click('Change due date: Weekly');
+const picker=document.createElement('ha-dialog-date-picker');document.body.append(picker);
+picker.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true}));assert.ok(root.querySelector('form'));
+picker.remove();document.body.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true}));assert.equal(root.querySelector('form'),null);
 console.log('Compact inline editing, repeated-tap toggles, preserved time, confirmed actions and feedback passed');
