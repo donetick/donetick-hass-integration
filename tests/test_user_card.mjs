@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 globalThis.HTMLElement = class {};
 globalThis.customElements = {define() {}};
 globalThis.window = {};
-const {userTasks, actionData} = await import('../www/donetick-user-todo-card.js');
+const {userTasks, actionData, emptyMessage} = await import('../www/donetick-user-todo-card.js');
 const state = {attributes: {config_entry_id: 'entry', tasks: [
   {task_id: 1, assigned_to: 2}, {task_id: 2, assigned_to: 1}, {task_id: 3, assigned_to: null}
 ]}};
@@ -38,3 +38,8 @@ assert.deepEqual(userTasks(windowState,1,'upcoming',now,7).map(task=>task.task_i
 assert.deepEqual(userTasks(windowState,1,'upcoming',now,0).map(task=>task.task_id),[2,3,4]);
 assert.deepEqual(userTasks(windowState,1,'all',now,1).map(task=>task.task_id),[1,2,3,4,5]);
 console.log('Card user filtering and entry routing passed');
+assert.equal(emptyMessage({display_filter:'all'},'Torben'),'No tasks for Torben · Filter: All tasks');
+assert.equal(emptyMessage({display_filter:'today'},'Torben'),'No tasks for Torben · Filter: Today');
+assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:1},'Torben'),/tomorrow only/);
+assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:0},'Torben'),/no day limit/);
+assert.match(emptyMessage({display_filter:'upcoming'},'Torben'),/next 7 days/);

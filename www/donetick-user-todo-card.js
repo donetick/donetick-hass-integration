@@ -38,6 +38,14 @@ export function isOverdue(value, now = new Date()) {
   const cutoff = dateOnly ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : now;
   return !isNaN(due) && due < cutoff;
 }
+export function emptyMessage(config, userName) {
+  let filter = {all:'All tasks',overdue:'Overdue',today:'Today',upcoming:'Upcoming'}[config.display_filter || 'all'];
+  if (config.display_filter === 'upcoming') {
+    const days = Number(config.upcoming_days ?? 7);
+    filter += days === 0 ? ' (from tomorrow, no day limit)' : days === 1 ? ' (tomorrow only)' : ` (next ${days} days, starting tomorrow)`;
+  }
+  return `No tasks for ${userName} · Filter: ${filter}`;
+}
 export function actionData(state, task) {
   const data = {task_id: task.task_id, config_entry_id: state.attributes.config_entry_id};
   return data;
@@ -139,7 +147,7 @@ class DonetickUserTodoCard extends HTMLElement {
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
     const tasks = userTasks(state, this._config.user_id, this._config.display_filter, new Date(), this._config.upcoming_days);
     for (const task of this._completed.values()) if (!tasks.some(item => item.task_id === task.task_id) && userTasks({attributes:{tasks:[task]}}, this._config.user_id, this._config.display_filter, new Date(), this._config.upcoming_days).length) tasks.push(task);
-    if (!tasks.length) addText(card, 'p', this._config.display_filter === 'all' ? 'No tasks for this user' : 'No tasks match this filter', 'empty');
+    if (!tasks.length) addText(card, 'p', emptyMessage(this._config, member?.display_name || member?.username || `User ${this._config.user_id}`), 'empty');
     for (const task of tasks) {
       const row = document.createElement('div'); row.className = 'row'; card.append(row);
       const completed = this._completed.has(task.task_id);
