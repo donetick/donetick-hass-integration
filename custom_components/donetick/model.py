@@ -117,6 +117,7 @@ class DonetickTask:
     duration: Optional[int] = None
     start_time: Optional[datetime] = None
     timer_updated_at: Optional[datetime] = None
+    assignee_ids: Optional[List[int]] = None
     
     @classmethod
     def from_json(cls, data: dict) -> "DonetickTask":
@@ -141,6 +142,8 @@ class DonetickTask:
             frequency_metadata=data.get("frequencyMetadata"),
             project_id=data.get("projectId"),
             assigned_to=assigned_to,
+            assignee_ids=[assignee["userId"] for assignee in (data.get("assignees") or [])
+                          if isinstance(assignee, dict) and isinstance(assignee.get("userId"), int)],
             description=data.get("description"),
             created_at=_parse_datetime(data.get("createdAt")),
             updated_at=_parse_datetime(data.get("updatedAt")),

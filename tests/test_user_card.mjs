@@ -7,6 +7,8 @@ const state = {attributes: {config_entry_id: 'entry', tasks: [
   {task_id: 1, assigned_to: 2}, {task_id: 2, assigned_to: 1}, {task_id: 3, assigned_to: null}
 ]}};
 assert.deepEqual(userTasks(state, '2').map(t => t.task_id), [1]);
+assert.deepEqual(userTasks(state, 'all').map(t => t.task_id), [1,2,3]);
+assert.equal(emptyMessage({user_id:'all',display_filter:'today'}),'No tasks for all users · Filter: Today');
 assert.deepEqual(userTasks(undefined, 2), []);
 assert.deepEqual(actionData(state, state.attributes.tasks[0]), {task_id: 1, config_entry_id: 'entry'});
 assert.equal('days' in actionData(state, state.attributes.tasks[0]), false);

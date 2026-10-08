@@ -30,6 +30,13 @@ update({upcoming_days:3});assert.equal(latest.upcoming_days,3);
 update({display_filter:'today'});assert.equal(form.schema.some(field=>field.name==='upcoming_days'),false);
 assert.equal(latest.upcoming_days,3);
 update({user_id:'2'});assert.equal(latest.user_id,2);assert.equal(latest.unrelated_option,'preserved');
+assert.equal(form.schema.some(field=>field.name==='show_assignee'),false);
+update({user_id:'all'});assert.equal(latest.user_id,'all');
+assert.ok(form.schema.find(field=>field.name==='show_assignee').selector.boolean);
+update({show_assignee:false,show_reassign:false});assert.equal(latest.show_assignee,false);
+assert.equal(actions().some(group=>group.name==='reassign'),false);
+update({user_id:'2',show_reassign:true});assert.equal(form.schema.some(field=>field.name==='show_assignee'),false);
+assert.ok(actions().find(group=>group.name==='reassign'));
 assert.equal(latest.button_style,undefined); // Editing a user must not persist every displayed default.
 update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');
 update({complete_control:'button'});assert.equal(form.data.appearance_preset,'custom');assert.ok(actions().find(group=>group.name==='complete'));

@@ -1,14 +1,28 @@
 """Verify row actions use current assignment and preserve task schedules."""
 import ast
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+from typing import Any, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1] / 'custom_components/donetick'
 
 class RowActionTests(unittest.IsolatedAsyncioTestCase):
+    def test_task_assignee_candidates_are_preserved(self):
+        tree = ast.parse((ROOT / 'model.py').read_text(encoding='utf-8'))
+        model = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'DonetickTask')
+        namespace = dict(__name__=__name__, dataclass=dataclass, datetime=datetime,
+                         Any=Any, Optional=Optional, List=List, _parse_datetime=lambda value: None)
+        exec(compile(ast.Module(body=[model], type_ignores=[]), 'task_model', 'exec'), namespace)
+        task = namespace['DonetickTask'].from_json({'id':1, 'name':'Shared', 'assignedTo':1,
+                                                  'assignees':[{'userId':1},{'userId':2},{'userId':None},None]})
+        self.assertEqual(task.assigned_to, 1)
+        self.assertEqual(task.assignee_ids, [1, 2])
+        self.assertEqual(namespace['DonetickTask'].from_json({'id':2,'name':'Unassigned'}).assignee_ids, [])
+
     def setUp(self):
         source = ROOT / '__init__.py'
         tree = ast.parse(source.read_text(encoding='utf-8'))
