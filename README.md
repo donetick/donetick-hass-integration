@@ -83,6 +83,9 @@ Choose **Display filter** in the card editor: **All tasks** (including undated),
 (due date/time has passed), **Today** (due on the current local date), or **Upcoming**
 (from tomorrow onward). Today can include tasks already overdue earlier today.
 Each card stores its own filter. These filters use the tasks supplied by the integration;
+when Upcoming is selected, **Days ahead** limits the window (default 7; 0 means unlimited).
+For example, 3 includes tomorrow through the third day from today, including the whole
+last day. Set `upcoming_days: 3` in YAML or use the card editor's number field.
 set its upcoming-task window to 0 if you want every future task available to the card.
 
 Complete fetches the current task from Donetick and attributes completion to its actual

@@ -20,6 +20,8 @@ jobs:
         with:
           node-version: '22'
       - run: node --experimental-default-type=module tests/test_user_card.mjs
+        env:
+          TZ: Europe/Brussels
       - run: npm install --prefix "$RUNNER_TEMP/donetick-card-tests" --no-package-lock happy-dom@20.14.5
       - run: node --experimental-default-type=module tests/test_user_card_dom.mjs
         env:

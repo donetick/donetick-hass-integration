@@ -22,6 +22,13 @@ assert.ok(actions()[0].schema[0].selector.icon);
 assert.ok(actions()[0].schema[2].selector.ui_color);
 let latest;editor.addEventListener('config-changed',event=>{latest=event.detail.config;});
 const update=values=>form.dispatchEvent(new CustomEvent('value-changed',{detail:{value:{...form.data,...values}}}));
+assert.equal(form.schema.some(field=>field.name==='upcoming_days'),false);
+update({display_filter:'upcoming'});
+assert.equal(form.data.upcoming_days,7);
+assert.equal(form.schema.find(field=>field.name==='upcoming_days').selector.number.mode,'box');
+update({upcoming_days:3});assert.equal(latest.upcoming_days,3);
+update({display_filter:'today'});assert.equal(form.schema.some(field=>field.name==='upcoming_days'),false);
+assert.equal(latest.upcoming_days,3);
 update({user_id:'2'});assert.equal(latest.user_id,2);assert.equal(latest.unrelated_option,'preserved');
 assert.equal(latest.button_style,undefined); // Editing a user must not persist every displayed default.
 update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');

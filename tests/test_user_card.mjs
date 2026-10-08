@@ -26,4 +26,15 @@ assert.deepEqual(ids('overdue'),[1,2]);
 assert.deepEqual(ids('today'),[2,3]);
 assert.deepEqual(ids('upcoming'),[4]);
 assert.deepEqual(userTasks(filterState,1,'today',new Date('2026-10-25T12:00:00+01:00')).map(task=>task.task_id),[4]);
+const windowState={attributes:{tasks:[
+  {task_id:1,assigned_to:1,next_due_date:'2026-10-24'},
+  {task_id:2,assigned_to:1,next_due_date:'2026-10-25'},
+  {task_id:3,assigned_to:1,next_due_date:'2026-10-31T23:59:00+01:00'},
+  {task_id:4,assigned_to:1,next_due_date:'2026-11-01T00:00:00+01:00'},
+  {task_id:5,assigned_to:1}
+]}};
+assert.deepEqual(userTasks(windowState,1,'upcoming',now,1).map(task=>task.task_id),[2]);
+assert.deepEqual(userTasks(windowState,1,'upcoming',now,7).map(task=>task.task_id),[2,3]);
+assert.deepEqual(userTasks(windowState,1,'upcoming',now,0).map(task=>task.task_id),[2,3,4]);
+assert.deepEqual(userTasks(windowState,1,'all',now,1).map(task=>task.task_id),[1,2,3,4,5]);
 console.log('Card user filtering and entry routing passed');
