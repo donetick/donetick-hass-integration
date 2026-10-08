@@ -9,7 +9,7 @@ export function userTasks(state, userId, displayFilter = 'all', now = new Date()
       if (!task.next_due_date) return false;
       const value = task.next_due_date;
       const due = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-      return displayFilter === 'today' ? due >= today && due < tomorrow : displayFilter === 'upcoming' && due >= tomorrow && (Number(upcomingDays) === 0 || due < upcomingEnd);
+      return displayFilter === 'today' ? due >= today && due < tomorrow : displayFilter === 'upcoming' && due >= today && (Number(upcomingDays) === 0 || due < upcomingEnd);
     })
     .sort((a, b) => (Date.parse(a.next_due_date) || Infinity) - (Date.parse(b.next_due_date) || Infinity) || a.task_id - b.task_id);
 }
@@ -42,7 +42,7 @@ export function emptyMessage(config, userName) {
   let filter = {all:'All tasks',overdue:'Overdue',today:'Today',upcoming:'Upcoming'}[config.display_filter || 'all'];
   if (config.display_filter === 'upcoming') {
     const days = Number(config.upcoming_days ?? 7);
-    filter += days === 0 ? ' (from tomorrow, no day limit)' : days === 1 ? ' (tomorrow only)' : ` (next ${days} days, starting tomorrow)`;
+    filter += days === 0 ? ' (from today, no day limit)' : days === 1 ? ' (today and tomorrow)' : ` (today through ${days} days ahead)`;
   }
   return `No tasks for ${userName} · Filter: ${filter}`;
 }
@@ -258,8 +258,8 @@ const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',displ
 const EDITOR_HELP = {
   entity:'Choose All Tasks to make every circle user available. The card still shows only the selected user.',
   user_id:'Donetick user whose assigned tasks appear here. Completion is credited to the task’s current assignee.',
-  display_filter:'Today includes tasks due earlier today. Upcoming starts tomorrow. Undated tasks appear only in All tasks.',
-  upcoming_days:'7 shows tomorrow through day 7; 0 removes the limit. The integration’s task window must also include those days.',
+  display_filter:'Today and Upcoming include tasks due earlier today. Upcoming starts today. Undated tasks appear only in All tasks.',
+  upcoming_days:'7 shows today through 7 days ahead; 0 removes the limit. The integration’s task window must also include those days.',
   title:'Leave empty to use the selected user’s name.',
   appearance_preset:'Choose a ready-made style. Applying a preset resets custom action icons, labels and colors.',
   complete_control:'Checkbox stays on the left; Button places completion beside the other actions on the right.',
@@ -348,7 +348,7 @@ class DonetickUserTodoEditor extends HTMLElement {
     const schema=[
       {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
       {...select('user_id',members.map(member=>[String(member.user_id),member.display_name || member.username || `User ${member.user_id}`])),required:true,disabled:!members.length},
-      select('display_filter',[['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming — from tomorrow']]),
+      select('display_filter',[['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming — from today']]),
       ...(this._config.display_filter==='upcoming' ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : []),
       {name:'title',selector:{text:{}}},
       select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),

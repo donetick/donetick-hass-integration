@@ -81,11 +81,11 @@ button_content: icon
 
 Choose **Display filter** in the card editor: **All tasks** (including undated), **Overdue**
 (due date/time has passed), **Today** (due on the current local date), or **Upcoming**
-(from tomorrow onward). Today can include tasks already overdue earlier today.
+(from today onward). Today and Upcoming can include tasks already overdue earlier today.
 Each card stores its own filter. Empty cards show the selected user, active filter and
 Upcoming day limit so you can see which settings to adjust.
 When Upcoming is selected, **Days ahead** limits the window (default 7; 0 means unlimited).
-For example, 3 includes tomorrow through the third day from today, including the whole
+For example, 3 includes today through the third day from today, including the whole
 last day. Set `upcoming_days: 3` in YAML or use the card editor's number field.
 Filters use the tasks supplied by the integration. Set its upcoming-task window to 0
 if you want every future task available to the card.

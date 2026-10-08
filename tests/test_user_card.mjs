@@ -24,7 +24,7 @@ const ids = filter => userTasks(filterState,1,filter,now).map(task=>task.task_id
 assert.deepEqual(ids('all'),[1,2,3,4,5,7]);
 assert.deepEqual(ids('overdue'),[1,2]);
 assert.deepEqual(ids('today'),[2,3]);
-assert.deepEqual(ids('upcoming'),[4]);
+assert.deepEqual(ids('upcoming'),[2,3,4]);
 assert.deepEqual(userTasks(filterState,1,'today',new Date('2026-10-25T12:00:00+01:00')).map(task=>task.task_id),[4]);
 const windowState={attributes:{tasks:[
   {task_id:1,assigned_to:1,next_due_date:'2026-10-24'},
@@ -33,13 +33,13 @@ const windowState={attributes:{tasks:[
   {task_id:4,assigned_to:1,next_due_date:'2026-11-01T00:00:00+01:00'},
   {task_id:5,assigned_to:1}
 ]}};
-assert.deepEqual(userTasks(windowState,1,'upcoming',now,1).map(task=>task.task_id),[2]);
-assert.deepEqual(userTasks(windowState,1,'upcoming',now,7).map(task=>task.task_id),[2,3]);
-assert.deepEqual(userTasks(windowState,1,'upcoming',now,0).map(task=>task.task_id),[2,3,4]);
+assert.deepEqual(userTasks(windowState,1,'upcoming',now,1).map(task=>task.task_id),[1,2]);
+assert.deepEqual(userTasks(windowState,1,'upcoming',now,7).map(task=>task.task_id),[1,2,3]);
+assert.deepEqual(userTasks(windowState,1,'upcoming',now,0).map(task=>task.task_id),[1,2,3,4]);
 assert.deepEqual(userTasks(windowState,1,'all',now,1).map(task=>task.task_id),[1,2,3,4,5]);
 console.log('Card user filtering and entry routing passed');
 assert.equal(emptyMessage({display_filter:'all'},'Torben'),'No tasks for Torben · Filter: All tasks');
 assert.equal(emptyMessage({display_filter:'today'},'Torben'),'No tasks for Torben · Filter: Today');
-assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:1},'Torben'),/tomorrow only/);
+assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:1},'Torben'),/today and tomorrow/);
 assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:0},'Torben'),/no day limit/);
-assert.match(emptyMessage({display_filter:'upcoming'},'Torben'),/next 7 days/);
+assert.match(emptyMessage({display_filter:'upcoming'},'Torben'),/today through 7 days ahead/);

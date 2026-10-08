@@ -13,7 +13,7 @@ assert.equal(loaded,1);
 const form=editor.shadowRoot.querySelector('ha-form');assert.ok(form);
 assert.equal(editor.shadowRoot.querySelectorAll('input,select').length,0);
 assert.equal(form.data.appearance_preset,'todo');
-assert.match(form.computeHelper({name:'display_filter'}),/Tomorrow|tomorrow/);
+assert.match(form.computeHelper({name:'display_filter'}),/Upcoming starts today/);
 assert.deepEqual(form.schema.find(field=>field.name==='entity').selector.entity.include_entities,['todo.all','todo.other']);
 const appearance=form.schema.find(field=>field.name==='appearance');assert.equal(appearance.type,'expandable');assert.equal(appearance.expanded,false);
 const actions=()=>form.schema.find(field=>field.name==='actions').schema;
