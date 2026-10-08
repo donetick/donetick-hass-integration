@@ -80,21 +80,30 @@ button_content: icon
 
 Complete fetches the current task from Donetick and attributes completion to its actual
 assigned user, even if someone else clicks the button. Unassigned tasks cannot be completed
-with this action. Postpone uses Donetick's internal skip/rescheduling endpoint to advance
+with this action. **Skip occurrence** (the `donetick.postpone_task` action) uses Donetick's internal skip/rescheduling endpoint to advance
 to the next occurrence. Donetick records a skipped occurrence, keeps the assignee and
 calculates the next date from the task's schedule. Tasks without a recurring schedule
-have Postpone hidden. Actions refresh the list and show errors in the card.
+have Skip occurrence hidden. Tap the icon to open a confirmation; tap it again to close
+without changing the task. Confirming Skip advances the schedule. Actions refresh the list
+and show errors in the card.
 
-Each row shows a **Change due date** calendar-edit icon beside the other actions, including for one-off tasks. Choose a date
-and time, then Save. This uses the existing `donetick.update_task` action; it does not skip
-an occurrence or change the task's recurrence pattern. The picker shows your browser's
-time zone and sends an explicit UTC timestamp. Cancel leaves the task unchanged.
+Each row shows a **Change due date** calendar-edit icon beside the other actions, including
+for one-off tasks. Tap to open a compact dialog, or tap again to close. Choose Tomorrow,
+This weekend (the next Saturday), Next week (the next Monday), or Choose a date, then Save.
+Date and time fields expand only when requested; their buttons toggle them closed again.
+The current time is preserved unless edited with Set time; undated tasks default to 09:00.
+Only Save changes the task. Cancel, Escape or tapping outside dismisses the dialog.
+This uses `donetick.update_task` without skipping an occurrence or changing recurrence.
+Dates use your browser's time zone; its name appears only when editing the time. Requests
+send explicit UTC timestamps. The dialog stays open after a service failure for retry.
 
 By default each compact row has a completion checkbox on the left, the task and date in
 the middle, and horizontal action icons on the right: calendar-arrow-right to skip to
 the next occurrence, and calendar-edit to choose a date. The checkbox and buttons have
 at least 44 × 44 pixel tap targets, with spacing between buttons,
-accessible action names and hover tooltips. A date picker expands only when requested.
+accessible action names and hover tooltips. Due text shows Today, Tomorrow or Overdue with
+the full date in a tooltip. Tasks sort by due date, with undated tasks last. Completion
+briefly shows a checked, struck-through row; action feedback clears automatically.
 The card editor supports a completion checkbox or button; outlined, text or filled buttons; compact, normal or large sizes;
 rounded, pill or square shapes; labels, icons or both; and separate labels, MDI icons and
 colors for each action. Defaults follow the HA theme. Colors accept CSS colors or HA
