@@ -9,7 +9,7 @@ import unittest
 
 class TaskFilteringTests(unittest.TestCase):
     def setUp(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/todo.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         base = next(node for node in tree.body if isinstance(node, ast.ClassDef)
                     and node.name == "DonetickTodoListBase")

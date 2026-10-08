@@ -36,7 +36,7 @@ class Response:
 
 class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/api.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/api.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         client = next(node for node in tree.body if isinstance(node, ast.ClassDef))
         client.body = [node for node in client.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -112,7 +112,7 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(arguments["headers"]["secretkey"], "test-token")
 
     async def test_assignment_and_unarchive_can_be_used_together(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/__init__.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/__init__.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         handler = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                        and node.name == "async_update_task_service")
@@ -131,11 +131,11 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         async def refresh():
             calls.append(("refresh", ()))
 
-        namespace = {"HomeAssistant": object, "ServiceCall": object, "DOMAIN": "donetick_dev",
+        namespace = {"HomeAssistant": object, "ServiceCall": object, "DOMAIN": "donetick",
                      "_get_config_entry": resolve, "HomeAssistantError": ValueError,
                      "_LOGGER": logging.getLogger(__name__)}
         exec(compile(ast.Module(body=[handler], type_ignores=[]), str(source), "exec"), namespace)
-        hass = SimpleNamespace(data={"donetick_dev": {"dev": {
+        hass = SimpleNamespace(data={"donetick": {"dev": {
             "client": SimpleNamespace(async_update_task=update, async_assign_task=assign),
             "coordinator": SimpleNamespace(async_request_refresh=refresh),
         }}})
@@ -151,7 +151,7 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(calls[0][1][-1])
 
     async def test_delete_service_reports_failures_to_ha(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/__init__.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/__init__.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         handler = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                        and node.name == "async_delete_task_service")
@@ -165,11 +165,11 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         async def delete(task_id):
             raise ValueError("Permission denied")
 
-        namespace = {"HomeAssistant": object, "ServiceCall": object, "DOMAIN": "donetick_dev",
+        namespace = {"HomeAssistant": object, "ServiceCall": object, "DOMAIN": "donetick",
                      "_get_config_entry": resolve, "HomeAssistantError": HomeAssistantError,
                      "_LOGGER": logging.getLogger(__name__)}
         exec(compile(ast.Module(body=[handler], type_ignores=[]), str(source), "exec"), namespace)
-        hass = SimpleNamespace(data={"donetick_dev": {"dev": {
+        hass = SimpleNamespace(data={"donetick": {"dev": {
             "client": SimpleNamespace(async_delete_task=delete), "coordinator": object(),
         }}})
         with self.assertRaisesRegex(HomeAssistantError, "Permission denied"):

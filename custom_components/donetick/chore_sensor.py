@@ -162,7 +162,7 @@ class DonetickChoreSensor(CoordinatorEntity, SensorEntity):
         """Return device information."""
         return {
             "identifiers": {(DOMAIN, f"chores_{self._config_entry.entry_id}")},
-            "name": "Donetick Dev Chores",
+            "name": "Donetick Chores",
             "manufacturer": "Donetick",
             "model": "Chores",
         }

@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Donetick Dev",
-        "description": "Set up your Donetick Dev integration",
+        "title": "Connect to Donetick",
+        "description": "Set up your Donetick integration",
         "data": {
           "url": "Donetick URL",
           "token": "API Token"
@@ -31,8 +31,8 @@
   "options": {
     "step": {
       "init": {
-        "title": "Configure Donetick Dev Options",
-        "description": "Adjust your Donetick Dev integration settings",
+        "title": "Configure Donetick Options",
+        "description": "Adjust your Donetick integration settings",
         "data": {
           "show_due_in": "Days ahead to show upcoming tasks",
           "show_no_due_date": "Show tasks with no due date",

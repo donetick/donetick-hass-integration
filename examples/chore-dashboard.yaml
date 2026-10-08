@@ -9,7 +9,7 @@
 ## ─── scripts.yaml ───────────────────────────────────────────────────────────────
 ## Add these to your scripts.yaml file:
 
-# donetick_dev_complete_chore:
+# donetick_complete_chore:
 #   alias: "Complete Chore"
 #   description: "Mark a Donetick chore as done"
 #   fields:
@@ -19,7 +19,7 @@
 #       selector:
 #         entity:
 #           filter:
-#             - integration: donetick_dev
+#             - integration: donetick
 #               domain: sensor
 #     completed_by:
 #       description: "User ID of who completed it (optional)"
@@ -29,12 +29,12 @@
 #           min: 1
 #           mode: box
 #   sequence:
-#     - action: donetick_dev.complete_task
+#     - action: donetick.complete_task
 #       data:
 #         task_id: "{{ state_attr(entity_id, 'task_id') }}"
 #         completed_by: "{{ completed_by | default(state_attr(entity_id, 'assigned_to_user_id'), omit) }}"
 #
-# donetick_dev_postpone_chore:
+# donetick_postpone_chore:
 #   alias: "Postpone Chore"
 #   description: "Push a chore's due date forward by N days"
 #   fields:
@@ -44,7 +44,7 @@
 #       selector:
 #         entity:
 #           filter:
-#             - integration: donetick_dev
+#             - integration: donetick
 #               domain: sensor
 #     days:
 #       description: "Number of days to postpone"
@@ -56,7 +56,7 @@
 #           max: 30
 #           mode: box
 #   sequence:
-#     - action: donetick_dev.update_task
+#     - action: donetick.update_task
 #       data:
 #         task_id: "{{ state_attr(entity_id, 'task_id') }}"
 #         due_date: >-
@@ -111,12 +111,12 @@
 ##           {% endif %}
 ##         tap_action:
 ##           action: perform-action
-##           perform_action: script.donetick_dev_complete_chore
+##           perform_action: script.donetick_complete_chore
 ##           data:
 ##             entity_id: "{{ entity }}"
 ##         hold_action:
 ##           action: perform-action
-##           perform_action: script.donetick_dev_postpone_chore
+##           perform_action: script.donetick_postpone_chore
 ##           data:
 ##             entity_id: "{{ entity }}"
 ##             days: 1
@@ -138,6 +138,6 @@
 ##       {% if due %}Due: {{ as_datetime(due).strftime('%b %d') }}{% endif %}
 ##     tap_action:
 ##       action: call-service
-##       service: donetick_dev.complete_task
+##       service: donetick.complete_task
 ##       service_data:
 ##         task_id: "{{ state_attr('sensor.dt_chore_ENTRY_ID_1', 'task_id') }}"
