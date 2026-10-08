@@ -144,7 +144,7 @@ class DonetickUserTodoCard extends HTMLElement {
       .due { display:flex; align-items:center; gap:4px; }
       .due .recurring { --mdc-icon-size:14px; flex-shrink:0; }
       .due .assignee { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      ha-card button.task { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; border:0; border-radius:0; padding:0; min-width:0; min-height:44px; text-align:left; background:transparent; color:var(--primary-text-color); font:inherit; }
+      ha-card button.task, ha-card div.task { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; border:0; border-radius:0; padding:0; min-width:0; min-height:44px; text-align:left; background:transparent; color:var(--primary-text-color); font:inherit; }
       .task .name { display:block; line-height:20px; } .task .due { margin-top:0; line-height:16px; }
       .description { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; color:var(--secondary-text-color); margin:2px 0 8px; }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
@@ -189,7 +189,10 @@ class DonetickUserTodoCard extends HTMLElement {
         checkbox.title = `Complete: ${task.name}`;
         checkbox.addEventListener('change', () => this.act(task, true)); target.append(checkbox);
       }
-      const text = document.createElement('button'); text.type = 'button'; text.className = 'task'; row.append(text);
+      const hasDescription = !!task.description?.trim();
+      const text = document.createElement(hasDescription ? 'button' : 'div'); text.className = 'task'; row.append(text);
+      if (hasDescription) {
+      text.type = 'button';
       text.dataset.action = 'details'; text.dataset.taskId = task.task_id;
       text.title = `Show description: ${task.name}`;
       text.setAttribute('aria-label', text.title);
@@ -197,6 +200,7 @@ class DonetickUserTodoCard extends HTMLElement {
       text.setAttribute('aria-controls', `description-${task.task_id}`);
       text.addEventListener('click', () => this.togglePanel(task, 'details'));
       text.addEventListener('keydown', event => { if (event.key === 'Escape' && this._panel?.kind === 'details') { event.stopPropagation(); this.closePanel(); } });
+      }
       addText(text, 'span', task.name, 'name');
       const due = task.next_due_date ? new Date(task.next_due_date) : null;
       const dueLabel = addText(text, 'span', dueText(task.next_due_date, this._hass.locale?.language, new Date(), this._hass.locale?.time_format), 'due');
@@ -270,9 +274,10 @@ class DonetickUserTodoCard extends HTMLElement {
   renderPanel(row, task, addText) {
     const panel = this._panel;
     if (panel.kind === 'details') {
+      if (!task.description?.trim()) { this._panel = null; return; }
       const description = document.createElement('div'); description.className = 'description';
       description.id = `description-${task.task_id}`;
-      description.textContent = task.description?.trim() || 'No description';
+      description.textContent = task.description.trim();
       row.after(description); return;
     }
     const busy = this._pending.has(task.task_id);

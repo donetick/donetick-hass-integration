@@ -179,7 +179,11 @@ assert.equal(root.querySelector('.description').textContent,'First line\n<script
 assert.equal(root.querySelector('.description script'),null);
 assert.equal(root.querySelector('[aria-label="Show description: Weekly"]').getAttribute('aria-expanded'),'true');
 click('Show description: Weekly');assert.equal(root.querySelector('.description'),null);
-click('Show description: One-off');assert.equal(root.querySelector('.description').textContent,'No description');
+assert.equal(root.querySelector('[aria-label="Show description: One-off"]'),null);
+const oneOffText=[...root.querySelectorAll('.task')].find(node=>node.querySelector('.name').textContent==='One-off');
+assert.equal(oneOffText.tagName,'DIV');oneOffText.click();assert.equal(root.querySelector('.description'),null);
+hass.states['todo.all'].attributes.tasks[1].description='  \n  ';card.hass=hass;
+assert.equal(root.querySelector('[aria-label="Show description: One-off"]'),null);
 click('Reassign: Weekly');assert.equal(root.querySelector('.description'),null);
 click('Show description: Weekly');assert.equal(root.querySelector('form'),null);
 root.querySelector('[aria-label="Show description: Weekly"]').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
