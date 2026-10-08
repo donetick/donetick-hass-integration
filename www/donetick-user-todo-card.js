@@ -22,7 +22,7 @@ class DonetickUserTodoCard extends HTMLElement {
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
     if (!Number.isInteger(Number(config.user_id)) || Number(config.user_id) < 1) throw new Error('Choose a Donetick user');
     this._config = {button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'button', ...config, user_id: Number(config.user_id)};
+      button_content: 'icon', complete_control: 'checkbox', ...config, user_id: Number(config.user_id)};
     this.render();
   }
   set hass(hass) { this._hass = hass; this.render(); }
@@ -157,7 +157,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       if (options) { for (const [value, text] of options) { const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option); } }
       else input.type = numeric ? 'number' : 'text';
       if (numeric) { input.min = '1'; input.max = '365'; }
-      input.value = this._config[key] ?? ({complete_control:'button',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
+      input.value = this._config[key] ?? ({complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
       input.addEventListener('change', () => this.change(key, numeric ? Number(input.value) : input.value));
       wrapper.append(input); this.shadowRoot.append(wrapper);
     };

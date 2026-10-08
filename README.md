@@ -90,9 +90,10 @@ and time, then Save. This uses the existing `donetick.update_task` action; it do
 an occurrence or change the task's recurrence pattern. The picker shows your browser's
 time zone and sends an explicit UTC timestamp. Cancel leaves the task unchanged.
 
-By default each compact row shows the task and date beside a horizontal group of action icons:
-check to complete, calendar-arrow-right to skip to the next occurrence, and calendar-edit to
-choose a date. Buttons have at least 44 × 44 pixel tap targets with spacing between them,
+By default each compact row has a completion checkbox on the left, the task and date in
+the middle, and horizontal action icons on the right: calendar-arrow-right to skip to
+the next occurrence, and calendar-edit to choose a date. The checkbox and buttons have
+at least 44 × 44 pixel tap targets, with spacing between buttons,
 accessible action names and hover tooltips. A date picker expands only when requested.
 The card editor supports a completion checkbox or button; outlined, text or filled buttons; compact, normal or large sizes;
 rounded, pill or square shapes; labels, icons or both; and separate labels, MDI icons and
