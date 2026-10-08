@@ -29,6 +29,27 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
         return None
 
 @dataclass
+class DonetickProject:
+    """Donetick project model."""
+    id: int
+    name: str
+    description: Optional[str] = None
+
+    @classmethod
+    def from_json(cls, data: dict) -> "DonetickProject":
+        """Create a DonetickProject from JSON data."""
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            description=data.get("description"),
+        )
+
+    @classmethod
+    def from_json_list(cls, data: List[dict]) -> List["DonetickProject"]:
+        """Create a list of DonetickProjects from JSON data."""
+        return [cls.from_json(project) for project in data]
+
+@dataclass
 class DonetickMember:
     """Donetick circle member model."""
     id: int
@@ -43,7 +64,7 @@ class DonetickMember:
     points_redeemed: int = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-    
+
     @classmethod
     def from_json(cls, data: dict) -> "DonetickMember":
         """Create a DonetickMember from JSON data."""
@@ -86,6 +107,7 @@ class DonetickTask:
     frequency_type: str
     frequency: int
     frequency_metadata: Optional[Any]
+    project_id: Optional[int] = None
     assigned_to: Optional[int] = None
     description: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -117,6 +139,7 @@ class DonetickTask:
             frequency_type=data.get("frequencyType", "once"),
             frequency=data.get("frequency") or 1,
             frequency_metadata=data.get("frequencyMetadata"),
+            project_id=data.get("projectId"),
             assigned_to=assigned_to,
             description=data.get("description"),
             created_at=_parse_datetime(data.get("createdAt")),
