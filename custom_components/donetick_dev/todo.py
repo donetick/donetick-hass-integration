@@ -80,8 +80,6 @@ async def async_setup_entry(
             _LOGGER.debug("Found %d projects", len(projects))
             for project in projects:
                 entity = DonetickProjectTasksList(coordinator, config_entry, project)
-                entity._project_id = project.id
-                entity._project_name = project.name
                 entity._circle_members = circle_members
                 entities.append(entity)
         except Exception as e:
@@ -117,7 +115,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         """Apply the configured upcoming task window to filtered tasks."""
         show_no_due_date = self._config_entry.data.get(CONF_SHOW_NO_DUE_DATE, True)
         show_due_in = self._config_entry.data.get(CONF_SHOW_DUE_IN, 7)
-        if show_due_in is None:
+        if show_due_in in (None, 0):
             if show_no_due_date:
                 return tasks
             else:
@@ -354,6 +352,8 @@ class DonetickProjectTasksList(DonetickTodoListBase):
         """Initialize the Project Tasks List."""
         super().__init__(coordinator, config_entry)
         self._project = project
+        self._project_id = project.id
+        self._project_name = project.name
         self._attr_unique_id = f"dt_{config_entry.entry_id}_project_{project.id}_tasks"
         self._attr_name = f"{project.name} Tasks"
 
