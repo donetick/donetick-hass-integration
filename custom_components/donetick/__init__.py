@@ -261,7 +261,7 @@ async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     # Find the config entry to use
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
-        return
+        raise HomeAssistantError("No matching Donetick integration found for delete_task")
     
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
@@ -274,10 +274,11 @@ async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> N
             _LOGGER.info("Task %d deleted successfully", task_id)
             await coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to delete task %d", task_id)
+            raise HomeAssistantError(f"Donetick did not delete task {task_id}")
 
     except Exception as e:
         _LOGGER.error("Failed to delete task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to delete Donetick task {task_id}: {e}") from e
 
 async def async_skip_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the skip_task service call."""
