@@ -10,9 +10,15 @@ export function dueText(value, language, now = new Date(), timeFormat) {
   const days = Math.round((day(date) - day(now)) / 86400000);
   const label = days < 0 ? `Overdue · ${-days} day${days === -1 ? '' : 's'}` : days === 0 ? 'Today' : days === 1 ? 'Tomorrow'
     : date.toLocaleDateString(language, {weekday: 'short', month: 'short', day: 'numeric'});
-  if (dateOnly) return label;
+  if (!hasDueTime(value)) return label;
   const time = date.toLocaleTimeString(language, {hour:'2-digit', minute:'2-digit', hour12:timeFormat === '12' ? true : timeFormat === '24' ? false : undefined});
   return `${label} · ${time}`;
+}
+export function hasDueTime(value) {
+  if (!value || /^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value);
+  // Donetick date-only deadlines can arrive as a local end-of-day timestamp.
+  return !isNaN(date) && !(date.getHours() === 23 && date.getMinutes() === 59);
 }
 export function isOverdue(value, now = new Date()) {
   if (!value) return false;
@@ -138,7 +144,7 @@ class DonetickUserTodoCard extends HTMLElement {
       const due = task.next_due_date ? new Date(task.next_due_date) : null;
       const dueLabel = addText(text, 'div', dueText(task.next_due_date, this._hass.locale?.language, new Date(), this._hass.locale?.time_format), 'due');
       if (!completed && isOverdue(task.next_due_date)) dueLabel.classList.add('overdue');
-      if (due && !isNaN(due)) dueLabel.title = due.toLocaleString(this._hass.locale?.language, {dateStyle:'full',timeStyle:'short'});
+      if (due && !isNaN(due)) dueLabel.title = due.toLocaleString(this._hass.locale?.language, {dateStyle:'full',timeStyle:hasDueTime(task.next_due_date) ? 'short' : undefined});
       const actions = document.createElement('div'); actions.className = 'actions'; row.append(actions);
       for (const [label, complete] of [[this._config.complete_label || 'Complete', true], [this._config.postpone_label || 'Skip occurrence', false]]) {
         if (complete && this._config.complete_control === 'checkbox') continue;

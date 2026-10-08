@@ -104,6 +104,7 @@ at least 44 × 44 pixel tap targets, with spacing between buttons,
 accessible action names and hover tooltips. Due text shows Today, Tomorrow or Overdue,
 including the local due time when available (following HA's 12/24-hour preference), with
 overdue due labels using the theme's warning color and
+local 23:59 end-of-day placeholders hidden from the label and tooltip, with
 the full date in a tooltip. Tasks sort by due date, with undated tasks last. Completion
 briefly shows a checked, struck-through row. Successful actions update the list without
 extra confirmation text; failures remain visible.

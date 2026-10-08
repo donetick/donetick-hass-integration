@@ -60,6 +60,9 @@ assert.equal(dueText('2026-10-24T16:00:00Z','en',new Date('2026-10-26T12:00:00+0
 assert.equal(dueText('2026-10-24T16:00:00Z','en',new Date('2026-10-24T12:00:00+02:00'),'24'),'Today · 18:00');
 assert.equal(dueText('2026-10-25T16:00:00Z','en',new Date('2026-10-24T12:00:00+02:00'),'24'),'Tomorrow · 17:00');
 assert.equal(dueText('2026-10-24','en',new Date('2026-10-24T12:00:00+02:00'),'24'),'Today');
+assert.equal(dueText('2026-10-24T21:59:00Z','en',new Date('2026-10-24T12:00:00+02:00'),'24'),'Today');
+assert.equal(dueText('2026-10-27T22:59:59Z','en',new Date('2026-10-26T12:00:00+01:00'),'24'),'Tomorrow');
+assert.equal(dueText('2026-10-24T21:58:00Z','en',new Date('2026-10-24T12:00:00+02:00'),'24'),'Today · 23:58');
 assert.equal(dueText(null,'en'),'No due date');
 assert.equal(dueText('invalid','en'),'No due date');
 assert.match(dueText('2026-10-24T16:00:00Z','en',new Date('2026-10-24T12:00:00+02:00'),'12'),/06:00 PM$/);
