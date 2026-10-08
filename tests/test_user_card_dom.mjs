@@ -24,6 +24,7 @@ click('Skip occurrence: Weekly');assert.ok(root.querySelector('form'));assert.eq
 click('Skip occurrence: Weekly');assert.equal(root.querySelector('form'),null);
 click('Skip occurrence: Weekly');submit();await tick();
 assert.deepEqual(calls.pop(),['donetick','postpone_task',{task_id:1,config_entry_id:'entry'}]);
+assert.equal(root.querySelector('[role=status]'),null);
 click('Change due date: Weekly');
 assert.equal(root.querySelectorAll('[role=dialog], [popover]').length,0);
 assert.equal(root.querySelectorAll('.action-panel button').length,3);
@@ -38,6 +39,7 @@ click('Set time');assert.equal(root.querySelector('input[type=time]').value,'18:
 click('Hide time');assert.equal(root.querySelector('input[type=time]'),null);
 submit();await tick();
 assert.deepEqual(calls.pop(),['donetick','update_task',{task_id:1,config_entry_id:'entry',due_date:'2026-10-24T16:00:00.000Z'}]);
+assert.equal(root.querySelector('[role=status]'),null);
 assert.equal(root.querySelector('form'),null);
 assert.equal(localDateTime('2026-10-24T16:00:00Z'),'2026-10-24T18:00:00');
 assert.equal(localDateTime('2026-10-27T16:00:00Z'),'2026-10-27T17:00:00');

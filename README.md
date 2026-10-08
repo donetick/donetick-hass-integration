@@ -103,7 +103,8 @@ the next occurrence, and calendar-edit to choose a date. The checkbox and button
 at least 44 × 44 pixel tap targets, with spacing between buttons,
 accessible action names and hover tooltips. Due text shows Today, Tomorrow or Overdue with
 the full date in a tooltip. Tasks sort by due date, with undated tasks last. Completion
-briefly shows a checked, struck-through row; action feedback clears automatically.
+briefly shows a checked, struck-through row. Successful actions update the list without
+extra confirmation text; failures remain visible.
 The card editor supports a completion checkbox or button; outlined, text or filled buttons; compact, normal or large sizes;
 rounded, pill or square shapes; labels, icons or both; and separate labels, MDI icons and
 colors for each action. Defaults follow the HA theme. Colors accept CSS colors or HA

@@ -46,7 +46,7 @@ class DonetickUserTodoCard extends HTMLElement {
   async act(task, complete, dueDate) {
     if (this._pending.has(task.task_id)) return;
     const state = this._hass.states[this._config.entity];
-    this._pending.set(task.task_id, complete); this._error = ''; this._message = ''; this.render();
+    this._pending.set(task.task_id, complete); this._error = ''; this.render();
     try {
       const data = actionData(state, task);
       if (dueDate) data.due_date = dueDate;
@@ -56,9 +56,6 @@ class DonetickUserTodoCard extends HTMLElement {
         this._completed.set(task.task_id, task);
         setTimeout(() => { this._completed.delete(task.task_id); this.render(); }, 1000);
       }
-      this._message = complete ? `${task.name} completed` : dueDate ? `Moved to ${new Date(dueDate).toLocaleDateString(this._hass.locale?.language, {weekday:'short', month:'short', day:'numeric'})}` : 'Occurrence skipped; schedule refreshed';
-      clearTimeout(this._messageTimer);
-      this._messageTimer = setTimeout(() => { this._message = ''; this.render(); }, 4000);
     } catch (err) { this._error = err.message || String(err); }
     finally { this._pending.delete(task.task_id); this.render(); }
   }
@@ -110,7 +107,6 @@ class DonetickUserTodoCard extends HTMLElement {
     const addText = (parent, tag, text, cls) => { const el = document.createElement(tag); el.textContent = text; if(cls) el.className = cls; parent.append(el); return el; };
     addText(card, 'h2', this._config.title || `${member?.display_name || 'User ' + this._config.user_id} — Tasks`);
     if (this._error && !this._panel) addText(card, 'p', this._error, 'error');
-    if (this._message) { const status = addText(card, 'div', this._message, 'due'); status.setAttribute('role','status'); }
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
     const tasks = userTasks(state, this._config.user_id);
     for (const task of this._completed.values()) if (!tasks.some(item => item.task_id === task.task_id)) tasks.push(task);
