@@ -101,7 +101,8 @@ By default each compact row has a completion checkbox on the left, the task and 
 the middle, and horizontal action icons on the right: calendar-arrow-right to skip to
 the next occurrence, and calendar-edit to choose a date. The checkbox and buttons have
 at least 44 × 44 pixel tap targets, with spacing between buttons,
-accessible action names and hover tooltips. Due text shows Today, Tomorrow or Overdue with
+accessible action names and hover tooltips. Due text shows Today, Tomorrow or Overdue,
+including the local due time when available (following HA's 12/24-hour preference), with
 the full date in a tooltip. Tasks sort by due date, with undated tasks last. Completion
 briefly shows a checked, struck-through row. Successful actions update the list without
 extra confirmation text; failures remain visible.

@@ -2,15 +2,17 @@ export function userTasks(state, userId) {
   return (state?.attributes?.tasks || []).filter(task => task.assigned_to === Number(userId))
     .sort((a, b) => (Date.parse(a.next_due_date) || Infinity) - (Date.parse(b.next_due_date) || Infinity) || a.task_id - b.task_id);
 }
-export function dueText(value, language, now = new Date()) {
-  const date = value ? new Date(value) : null;
+export function dueText(value, language, now = new Date(), timeFormat) {
+  const dateOnly = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const date = value ? new Date(dateOnly ? `${value}T12:00:00` : value) : null;
   if (!date || isNaN(date)) return 'No due date';
   const day = value => Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
   const days = Math.round((day(date) - day(now)) / 86400000);
-  if (days < 0) return `Overdue · ${-days} day${days === -1 ? '' : 's'}`;
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Tomorrow';
-  return date.toLocaleDateString(language, {weekday: 'short', month: 'short', day: 'numeric'});
+  const label = days < 0 ? `Overdue · ${-days} day${days === -1 ? '' : 's'}` : days === 0 ? 'Today' : days === 1 ? 'Tomorrow'
+    : date.toLocaleDateString(language, {weekday: 'short', month: 'short', day: 'numeric'});
+  if (dateOnly) return label;
+  const time = date.toLocaleTimeString(language, {hour:'2-digit', minute:'2-digit', hour12:timeFormat === '12' ? true : timeFormat === '24' ? false : undefined});
+  return `${label} · ${time}`;
 }
 export function actionData(state, task) {
   const data = {task_id: task.task_id, config_entry_id: state.attributes.config_entry_id};
@@ -126,7 +128,7 @@ class DonetickUserTodoCard extends HTMLElement {
       const text = document.createElement('div'); text.className = 'task'; row.append(text);
       addText(text, 'div', task.name, 'name');
       const due = task.next_due_date ? new Date(task.next_due_date) : null;
-      const dueLabel = addText(text, 'div', dueText(task.next_due_date, this._hass.locale?.language), 'due');
+      const dueLabel = addText(text, 'div', dueText(task.next_due_date, this._hass.locale?.language, new Date(), this._hass.locale?.time_format), 'due');
       if (due && !isNaN(due)) dueLabel.title = due.toLocaleString(this._hass.locale?.language, {dateStyle:'full',timeStyle:'short'});
       const actions = document.createElement('div'); actions.className = 'actions'; row.append(actions);
       for (const [label, complete] of [[this._config.complete_label || 'Complete', true], [this._config.postpone_label || 'Skip occurrence', false]]) {
