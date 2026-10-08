@@ -2,12 +2,6 @@ export function userTasks(state, userId) {
   return (state?.attributes?.tasks || []).filter(task => task.assigned_to === Number(userId))
     .sort((a, b) => (Date.parse(a.next_due_date) || Infinity) - (Date.parse(b.next_due_date) || Infinity) || a.task_id - b.task_id);
 }
-export function quickDate(choice, now = new Date()) {
-  const date = new Date(now);
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() + (choice === 'tomorrow' ? 1 : choice === 'weekend' ? (6 - date.getDay() + 7) % 7 || 7 : (8 - date.getDay()) % 7 || 7));
-  return localDateTime(date).slice(0, 10);
-}
 export function dueText(value, language, now = new Date()) {
   const date = value ? new Date(value) : null;
   if (!date || isNaN(date)) return 'No due date';
@@ -77,10 +71,10 @@ class DonetickUserTodoCard extends HTMLElement {
   togglePanel(task, kind) {
     if (this._panel?.taskId === task.task_id && this._panel.kind === kind) { this.closePanel(); return; }
     const value = localDateTime(task.next_due_date);
-    this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showDate:false, showTime:false};
+    this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showTime:false};
     this._error = '';
     this.render();
-    this.shadowRoot.querySelector('.action-panel button')?.focus();
+    this.shadowRoot.querySelector('.action-panel input, .action-panel button')?.focus();
   }
   render() {
     if (!this._config || !this._hass) return;
@@ -103,10 +97,10 @@ class DonetickUserTodoCard extends HTMLElement {
       [data-size="compact"] button { padding:5px 8px; font-size:12px; } [data-size="normal"] button { min-width:48px; min-height:48px; } [data-size="large"] button { min-width:52px; min-height:52px; padding:12px 16px; font-size:15px; }
       [data-shape="pill"] button { border-radius:24px; } [data-shape="square"] button { border-radius:0; }
       .error { color: var(--error-color); } .empty { color: var(--secondary-text-color); }
-      .action-panel { position:absolute; right:0; top:100%; width:min(320px,calc(100vw - 48px)); max-height:calc(100dvh - 24px); overflow:auto; box-sizing:border-box; z-index:10; padding:16px; background:var(--card-background-color); color:var(--primary-text-color); border:1px solid var(--divider-color); border-radius:12px; box-shadow:0 4px 16px #0004; }
-      .action-panel h3 { margin:0 0 4px; font-size:16px; } .action-panel p { margin:4px 0 12px; font-size:13px; }
-      .quick-dates, .dialog-footer { display:flex; flex-wrap:wrap; gap:4px; } .dialog-footer { justify-content:flex-end; margin-top:12px; }
-      .action-panel label { display:block; font-size:13px; margin-top:8px; } .action-panel input { box-sizing:border-box; width:100%; min-height:44px; margin-top:4px; padding:8px; background:var(--card-background-color); color:var(--primary-text-color); border:1px solid var(--divider-color); border-radius:6px; font:inherit; }
+      .action-panel { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:2px 0 6px; }
+      .action-panel input { flex:1; min-width:125px; width:0; box-sizing:border-box; height:44px; padding:8px; color-scheme:var(--ha-color-scheme,light); background:var(--secondary-background-color); color:var(--primary-text-color); border:0; border-bottom:1px solid var(--secondary-text-color); border-radius:4px 4px 0 0; font:inherit; font-size:14px; }
+      .action-panel button { flex-shrink:0; border-color:transparent; background:transparent; color:var(--primary-color); }
+      .action-panel .error { flex-basis:100%; margin:0; font-size:12px; } .skip-prompt { flex:1; font-size:13px; color:var(--secondary-text-color); }
       button[aria-pressed="true"], button[aria-expanded="true"] { background:var(--secondary-background-color); }
     </style><ha-card></ha-card>`;
     const card = this.shadowRoot.querySelector('ha-card');
@@ -171,52 +165,37 @@ class DonetickUserTodoCard extends HTMLElement {
       changeDate.addEventListener('click', () => this.togglePanel(task, 'date')); actions.append(changeDate);
       if (this._panel?.taskId === task.task_id) this.renderPanel(row, task, addText);
     }
-    const dialog = this.shadowRoot.querySelector('.action-panel');
-    if (dialog && this.isConnected && typeof dialog.showPopover === 'function') {
-      // The browser's top layer prevents cards and dashboard containers from clipping the panel.
-      dialog.setAttribute('popover','manual'); dialog.style.position='fixed'; dialog.style.margin='0';
-      dialog.style.right='auto'; dialog.style.bottom='auto'; dialog.showPopover();
-      const row = dialog.parentElement.getBoundingClientRect();
-      const bounds = dialog.getBoundingClientRect();
-      dialog.style.left = `${Math.max(12, Math.min(row.right - bounds.width, window.innerWidth - bounds.width - 12))}px`;
-      dialog.style.top = `${Math.max(12, row.bottom + bounds.height <= window.innerHeight - 12 ? row.bottom : Math.min(row.top - bounds.height, window.innerHeight - bounds.height - 12))}px`;
-    }
     if (focusedField) this.shadowRoot.querySelector(`[data-field="${focusedField}"]`)?.focus();
   }
   renderPanel(row, task, addText) {
     const panel = this._panel;
     const busy = this._pending.has(task.task_id);
-    const form = document.createElement('form'); form.className = 'action-panel'; row.append(form);
-    form.setAttribute('role','dialog'); form.setAttribute('aria-label', `${panel.kind === 'date' ? 'Change due date' : 'Skip occurrence'}: ${task.name}`);
-    addText(form, 'h3', panel.kind === 'date' ? 'Change due date' : 'Skip occurrence');
-    addText(form, 'p', task.name);
-    if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
-    const button = (parent, label, handler) => { const node = addText(parent,'button',label); node.type='button'; node.dataset.field=`control-${label}`; node.disabled=busy; node.addEventListener('click',handler); return node; };
+    const form = document.createElement('form'); form.className = 'action-panel'; row.after(form);
+    form.setAttribute('aria-label', `${panel.kind === 'date' ? 'Change due date' : 'Skip occurrence'}: ${task.name}`);
+    const iconButton = (label, icon, handler) => {
+      const node=document.createElement('button'); node.type='button'; node.disabled=busy;
+      node.title=label; node.setAttribute('aria-label',label); node.dataset.field=`control-${label}`;
+      const glyph=document.createElement('ha-icon'); glyph.setAttribute('icon',icon); node.append(glyph);
+      if (handler) node.addEventListener('click',handler); form.append(node); return node;
+    };
+    const field = (type, label, value, handler) => {
+      const input=document.createElement('input'); input.type=type; input.required=true;
+      input.value=value; input.disabled=busy; input.dataset.field=type;
+      input.style.colorScheme=this._hass.themes?.darkMode ? 'dark' : 'light';
+      input.setAttribute('aria-label',label); input.title=label;
+      input.addEventListener('input',handler); form.append(input); return input;
+    };
     if (panel.kind === 'date') {
-      addText(form,'p', `Current: ${task.next_due_date ? new Date(task.next_due_date).toLocaleDateString(this._hass.locale?.language,{dateStyle:'medium'}) : 'No due date'}`, 'due');
-      const quick = document.createElement('div'); quick.className='quick-dates'; form.append(quick);
-      for (const [label, choice] of [['Tomorrow','tomorrow'],['This weekend','weekend'],['Next week','week']]) {
-        const node = button(quick,label, () => { panel.date=quickDate(choice); panel.choice=choice; this.render(); });
-        node.setAttribute('aria-pressed',String(panel.choice === choice));
-      }
-      const choose = button(form,'Choose a date…', () => { panel.showDate=!panel.showDate; this.render(); this.shadowRoot.querySelector('input[type=date]')?.focus(); });
-      choose.setAttribute('aria-expanded',String(panel.showDate));
-      if (panel.showDate) {
-        const label=addText(form,'label','Date'); const input=document.createElement('input'); input.type='date'; input.required=true; input.value=panel.date; input.disabled=busy; input.dataset.field='date'; label.append(input);
-        input.addEventListener('input', () => { panel.date=input.value; panel.choice=null; });
-      }
-      const selected = panel.date ? new Date(`${panel.date}T12:00:00`) : null;
-      addText(form,'p', selected && !isNaN(selected) ? `Selected: ${selected.toLocaleDateString(this._hass.locale?.language,{weekday:'short',month:'short',day:'numeric'})}` : 'Choose a date', 'due');
-      const time = button(form,panel.showTime ? 'Hide time' : 'Set time', () => { panel.showTime=!panel.showTime; this.render(); });
-      time.setAttribute('aria-expanded',String(panel.showTime));
+      field('date','Due date',panel.date,event => { panel.date=event.target.value; });
       if (panel.showTime) {
-        const label=addText(form,'label',`Time (${Intl.DateTimeFormat().resolvedOptions().timeZone})`); const input=document.createElement('input'); input.type='time'; input.required=true; input.step='1'; input.value=panel.time; input.disabled=busy; input.dataset.field='time'; label.append(input);
-        input.addEventListener('input', () => { panel.time=input.value; });
+        const input=field('time',`Time (${Intl.DateTimeFormat().resolvedOptions().timeZone})`,panel.time,event => { panel.time=event.target.value; }); input.step='1';
       }
-    } else addText(form,'p','Skip this occurrence and let Donetick calculate the next date.');
-    const footer=document.createElement('div'); footer.className='dialog-footer'; form.append(footer);
-    button(footer,'Cancel', () => this.closePanel());
-    const save=addText(footer,'button',panel.kind === 'date' ? 'Save' : 'Skip'); save.type='submit'; save.disabled=busy;
+      const time=iconButton(panel.showTime ? 'Hide time' : 'Set time','mdi:clock-outline', () => { panel.showTime=!panel.showTime; this.render(); });
+      time.setAttribute('aria-expanded',String(panel.showTime));
+    } else addText(form,'span','Skip to the next occurrence?', 'skip-prompt');
+    const save=iconButton(panel.kind === 'date' ? 'Save due date' : 'Confirm skip','mdi:check'); save.type='submit';
+    iconButton('Cancel','mdi:close', () => this.closePanel());
+    if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
     form.addEventListener('submit',event => {
       event.preventDefault(); if (busy || !form.reportValidity()) return;

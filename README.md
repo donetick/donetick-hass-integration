@@ -88,14 +88,14 @@ without changing the task. Confirming Skip advances the schedule. Actions refres
 and show errors in the card.
 
 Each row shows a **Change due date** calendar-edit icon beside the other actions, including
-for one-off tasks. Tap to open a compact dialog, or tap again to close. Choose Tomorrow,
-This weekend (the next Saturday), Next week (the next Monday), or Choose a date, then Save.
-Date and time fields expand only when requested; their buttons toggle them closed again.
+for one-off tasks. Tap to open a slim inline editor below that row, or tap again to close.
+Choose a date, then tap the check icon to save. The clock icon toggles the optional time
+field; the close icon cancels. There is no floating popup or extra task heading.
 The current time is preserved unless edited with Set time; undated tasks default to 09:00.
-Only Save changes the task. Cancel, Escape or tapping outside dismisses the dialog.
+Only Save changes the task. Cancel, Escape or tapping outside dismisses the editor.
 This uses `donetick.update_task` without skipping an occurrence or changing recurrence.
 Dates use your browser's time zone; its name appears only when editing the time. Requests
-send explicit UTC timestamps. The dialog stays open after a service failure for retry.
+send explicit UTC timestamps. The editor stays open after a service failure for retry.
 
 By default each compact row has a completion checkbox on the left, the task and date in
 the middle, and horizontal action icons on the right: calendar-arrow-right to skip to
