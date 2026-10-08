@@ -167,7 +167,7 @@ class DonetickUserTodoCard extends HTMLElement {
           button.append(icon);
         }
         if (this._config.button_content !== 'icon') button.append(document.createTextNode(label));
-        const color = this._config[complete ? 'complete_color' : 'postpone_color'];
+        const color = actionColor(this._config[complete ? 'complete_color' : 'postpone_color']);
         if (color) button.style.setProperty(this._config.button_style === 'filled' ? 'background-color' : 'color', color);
         button.title = `${label}: ${task.name}`;
         button.setAttribute('aria-label', button.title);
@@ -181,7 +181,8 @@ class DonetickUserTodoCard extends HTMLElement {
         const icon = document.createElement('ha-icon'); icon.setAttribute('icon', this._config.due_date_icon || 'mdi:calendar-edit'); changeDate.append(icon);
       }
       if (this._config.button_content !== 'icon') changeDate.append(document.createTextNode(dateLabel));
-      if (this._config.due_date_color) changeDate.style.setProperty(this._config.button_style === 'filled' ? 'background-color' : 'color', this._config.due_date_color);
+      const dueColor = actionColor(this._config.due_date_color);
+      if (dueColor) changeDate.style.setProperty(this._config.button_style === 'filled' ? 'background-color' : 'color', dueColor);
       changeDate.disabled = this._pending.has(task.task_id) || completed;
       changeDate.title = `${dateLabel}: ${task.name}`; changeDate.setAttribute('aria-label', changeDate.title);
       changeDate.dataset.action = 'date'; changeDate.dataset.taskId = task.task_id;
@@ -230,40 +231,132 @@ class DonetickUserTodoCard extends HTMLElement {
     });
   }
 }
+const EDITOR_DEFAULTS = {
+  display_filter:'all', complete_control:'checkbox', button_style:'text', button_size:'compact',
+  button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
+  due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
+  due_date_icon:'mdi:calendar-edit', complete_color:'primary', postpone_color:'primary', due_date_color:'primary'
+};
+const STYLE_PRESETS = {
+  todo:{complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'},
+  labeled:{complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon_and_label'},
+  outlined:{complete_control:'checkbox',button_style:'outlined',button_size:'normal',button_shape:'rounded',button_content:'icon'},
+  filled:{complete_control:'checkbox',button_style:'filled',button_size:'normal',button_shape:'rounded',button_content:'icon'}
+};
+const ACTION_OVERRIDES = ['complete','postpone','due_date'].flatMap(action=>['label','icon','color'].map(part=>`${action}_${part}`));
+const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',display_filter:'Tasks to show',title:'Card title (optional)',appearance_preset:'Starting style',appearance:'Appearance',actions:'Action icons and colors',complete_control:'Complete tasks with',button_style:'Action button style',button_size:'Tap target size',button_shape:'Button corners',button_content:'Show on action buttons'};
+const EDITOR_HELP = {
+  entity:'Choose All Tasks to make every circle user available. The card still shows only the selected user.',
+  user_id:'Donetick user whose assigned tasks appear here. Completion is credited to the task’s current assignee.',
+  display_filter:'Today includes tasks due earlier today. Upcoming starts tomorrow. Undated tasks appear only in All tasks.',
+  title:'Leave empty to use the selected user’s name.',
+  appearance_preset:'Choose a ready-made style. Applying a preset resets custom action icons, labels and colors.',
+  complete_control:'Checkbox stays on the left; Button places completion beside the other actions on the right.',
+  button_style:'Flat follows HA todo styling. Filled uses the action color as its background.',
+  button_size:'Compact: 44 px. Standard: 48 px. Large: 52 px. All remain easy to tap.',
+  button_content:'Icons save space. Labels explain actions, but may make narrow cards wider.',
+  button_shape:'Changes action buttons; the completion checkbox stays the same.'
+};
+export function actionColor(value) {
+  if (!value || value === 'none') return null;
+  if (value === 'primary' || value === 'accent') return `var(--${value}-color)`;
+  if (/^[a-z]+(?:-[a-z]+)?$/.test(value)) return `var(--${value}-color, ${value})`;
+  return value;
+}
 class DonetickUserTodoEditor extends HTMLElement {
-  constructor() { super(); this.attachShadow({mode: 'open'}); }
-  setConfig(config) { this._config = {...config}; this.render(); }
-  set hass(hass) { this._hass = hass; this.render(); }
-  change(key, value) {
-    this._config = {...this._config, [key]: value};
-    if (key === 'entity') this._config.user_id = this._hass.states[value]?.attributes.circle_members?.[0]?.user_id;
-    this.dispatchEvent(new CustomEvent('config-changed', {detail: {config: this._config}, bubbles: true, composed: true})); this.render();
+  constructor() { super(); this.attachShadow({mode:'open'}); }
+  connectedCallback() { this.ensureForm(); }
+  async ensureForm() {
+    if (customElements.get('ha-form') || this._loading) return;
+    this._loading=true;
+    try {
+      const helpers=await window.loadCardHelpers();
+      const card=await helpers.createCardElement({type:'entities',entities:[]});
+      await card.constructor.getConfigElement();
+      if (!customElements.get('ha-form')) throw new Error('HA form controls are unavailable');
+      this._loadError='';
+    } catch { this._loadError='Could not load Home Assistant editor controls. Reload the dashboard and reopen this editor.'; }
+    finally { this._loading=false; this.render(); }
+  }
+  setConfig(config) { this._config={...config}; this.render(); }
+  set hass(hass) { this._hass=hass; this.render(); }
+  preset() {
+    if (ACTION_OVERRIDES.some(key=>this._config[key] && this._config[key] !== EDITOR_DEFAULTS[key])) return 'custom';
+    return Object.keys(STYLE_PRESETS).find(name=>Object.entries(STYLE_PRESETS[name]).every(([key,value])=>(this._config[key] ?? EDITOR_DEFAULTS[key])===value)) || 'custom';
+  }
+  formChanged(event) {
+    event.stopPropagation();
+    const values=event.detail.value;
+    const config={...this._config};
+    for (const [key,value] of Object.entries(values)) {
+      if (key==='appearance_preset' || JSON.stringify(value)===JSON.stringify(this._formData[key])) continue;
+      if (value==='' || value===undefined || value===null) delete config[key];
+      else config[key]=key==='user_id' ? Number(value) : value;
+    }
+    if (values.appearance_preset !== this._formData.appearance_preset && STYLE_PRESETS[values.appearance_preset]) {
+      Object.assign(config,STYLE_PRESETS[values.appearance_preset]);
+      for (const key of ACTION_OVERRIDES) delete config[key];
+    }
+    if (config.entity !== this._config.entity) {
+      const members=this._hass.states[config.entity]?.attributes.circle_members || [];
+      if (!members.some(member=>member.user_id===config.user_id)) {
+        if (members.length) config.user_id=members[0].user_id;
+        else delete config.user_id;
+      }
+    }
+    this._config=config;
+    this.dispatchEvent(new CustomEvent('config-changed',{detail:{config},bubbles:true,composed:true}));
+    this.render();
   }
   render() {
     if (!this._hass || !this._config) return;
-    this.shadowRoot.innerHTML = '<style>label{display:block;margin:14px 0;color:var(--primary-text-color)}select,input{display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:6px;font:inherit}</style>';
-    const field = (label, key, options, numeric=false) => {
-      const wrapper = document.createElement('label'); wrapper.append(document.createTextNode(label));
-      const input = document.createElement(options ? 'select' : 'input');
-      input.dataset.configKey = key;
-      if (options) { for (const [value, text] of options) { const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option); } }
-      else input.type = numeric ? 'number' : 'text';
-      if (numeric) { input.min = '1'; input.max = '365'; }
-      input.value = this._config[key] ?? ({display_filter:'all',complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
-      input.addEventListener('change', () => this.change(key, numeric ? Number(input.value) : input.value));
-      wrapper.append(input); this.shadowRoot.append(wrapper);
+    if (!customElements.get('ha-form')) {
+      this.shadowRoot.textContent=this._loadError || 'Loading Home Assistant editor controls…';
+      if (!this._loadError) this.ensureForm();
+      return;
+    }
+    if (!this._form) {
+      this.shadowRoot.innerHTML='<style>:host{display:block}ha-form{display:block}ha-alert{display:block;margin-bottom:16px}ha-alert[hidden]{display:none}</style>';
+      this._warning=document.createElement('ha-alert');this._warning.setAttribute('alert-type','info');this.shadowRoot.append(this._warning);
+      this._form=document.createElement('ha-form');this.shadowRoot.append(this._form);
+      this._form.computeLabel=schema=>schema.title || EDITOR_LABELS[schema.name] || schema.name;
+      this._form.computeHelper=schema=>EDITOR_HELP[schema.name] || (schema.name.endsWith('_color') ? 'Theme color. Used for the icon/text, or the background of filled buttons.' : schema.name.endsWith('_icon') ? 'Choose an icon using HA’s searchable icon picker.' : schema.name.endsWith('_label') ? 'Also used in tooltips and accessibility labels, even with icons only.' : undefined);
+      this._form.addEventListener('value-changed',event=>this.formChanged(event));
+    }
+    const entities=Object.keys(this._hass.states).filter(id=>id.startsWith('todo.') && this._hass.states[id].attributes.circle_members);
+    const members=this._hass.states[this._config.entity]?.attributes.circle_members || [];
+    this._warning.hidden=!!members.length;
+    this._warning.textContent='Select a Donetick list with circle members to choose its users. The integration must be loaded.';
+    const select=(name,options)=>({name,selector:{select:{mode:'dropdown',options:options.map(([value,label])=>({value,label}))}}});
+    const group=(name,title,schema)=>({name,title,type:'expandable',flatten:true,expanded:false,schema});
+    const actionGroup=(action,title)=>{
+      const fields=[{name:`${action}_icon`,selector:{icon:{}}},{name:`${action}_label`,selector:{text:{}}},{name:`${action}_color`,selector:{ui_color:{default_color:'primary'}}}];
+      fields.forEach((field,index)=>{EDITOR_LABELS[field.name]=['Icon','Label','Color'][index];});
+      return group(action,title,fields);
     };
-    field('Donetick list', 'entity', [['', 'Select a list'], ...Object.entries(this._hass.states).filter(([id,s]) => id.startsWith('todo.') && s.attributes.circle_members).map(([id,s]) => [id,s.attributes.friendly_name || id])]);
-    const members = this._hass.states[this._config.entity]?.attributes.circle_members || [];
-    field('Assigned user', 'user_id', [['', 'Select a user'], ...members.map(m => [m.user_id, m.display_name || m.username])], true);
-    field('Display filter', 'display_filter', [['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming (from tomorrow)']]);
-    field('Title (optional)', 'title');
-    field('Complete control', 'complete_control', [['checkbox','Checkbox (todo style)'],['button','Button']]);
-    field('Button style', 'button_style', [['outlined','Outlined'],['text','Text'],['filled','Filled']]);
-    field('Button size', 'button_size', [['normal','Normal'],['compact','Compact'],['large','Large']]);
-    field('Button shape', 'button_shape', [['rounded','Rounded'],['pill','Pill'],['square','Square']]);
-    field('Button content', 'button_content', [['icon_and_label','Icon and label'],['label','Label only'],['icon','Icon only']]);
-    for (const [label,key] of [['Complete label','complete_label'],['Postpone label','postpone_label'],['Due date label','due_date_label'],['Complete icon (mdi:...)','complete_icon'],['Postpone icon (mdi:...)','postpone_icon'],['Due date icon (mdi:...)','due_date_icon'],['Complete color (optional)','complete_color'],['Postpone color (optional)','postpone_color'],['Due date color (optional)','due_date_color']]) field(label,key);
+    const schema=[
+      {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
+      {...select('user_id',members.map(member=>[String(member.user_id),member.display_name || member.username || `User ${member.user_id}`])),required:true,disabled:!members.length},
+      select('display_filter',[['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming — from tomorrow']]),
+      {name:'title',selector:{text:{}}},
+      select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),
+      group('appearance','Fine-tune appearance',[
+        select('complete_control',[['checkbox','Checkbox on the left'],['button','Button on the right']]),
+        select('button_content',[['icon','Icons only'],['icon_and_label','Icons and labels'],['label','Labels only']]),
+        select('button_style',[['text','Flat — HA style'],['outlined','Outlined'],['filled','Filled']]),
+        select('button_size',[['compact','Compact — 44 px'],['normal','Standard — 48 px'],['large','Large — 52 px']]),
+        select('button_shape',[['rounded','Rounded'],['pill','Pill'],['square','Square']])
+      ]),
+      group('actions','Customize individual actions',[
+        ...(this._config.complete_control==='button' ? [actionGroup('complete','Complete task')] : []),
+        actionGroup('postpone','Skip occurrence — Donetick’s next scheduled date'),
+        actionGroup('due_date','Change due date — choose a date manually')
+      ])
+    ];
+    const signature=JSON.stringify(schema);
+    if (signature!==this._schemaSignature) {this._schemaSignature=signature;this._form.schema=schema;}
+    this._formData={...EDITOR_DEFAULTS,...this._config,user_id:this._config.user_id ? String(this._config.user_id) : undefined,appearance_preset:this.preset()};
+    this._form.hass=this._hass;this._form.data=this._formData;
   }
 }
 customElements.define('donetick-user-todo-card', DonetickUserTodoCard);

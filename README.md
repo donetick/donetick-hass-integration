@@ -109,13 +109,17 @@ the middle, and horizontal action icons on the right: calendar-arrow-right to sk
 the next occurrence, and calendar-edit to choose a date. The checkbox and buttons have
 at least 44 × 44 pixel tap targets, with spacing between buttons,
 accessible action names and hover tooltips. Due text shows Today, Tomorrow or Overdue,
-including the local due time when available (following HA's 12/24-hour preference), with
-overdue due labels using the theme's warning color and
-local 23:59 end-of-day placeholders hidden from the label and tooltip, with
-the full date in a tooltip. Tasks sort by due date, with undated tasks last. Completion
+including the local due time when available (following HA's 12/24-hour preference).
+Overdue labels use the theme's warning color. Local 23:59 end-of-day placeholders are
+hidden from the label and tooltip. The full date is available in a tooltip.
+Tasks sort by due date, with undated tasks last. Completion
 briefly shows a checked, struck-through row. Successful actions update the list without
 extra confirmation text; failures remain visible.
-The card editor supports a completion checkbox or button; outlined, text or filled buttons; compact, normal or large sizes;
-rounded, pill or square shapes; labels, icons or both; and separate labels, MDI icons and
-colors for each action. Defaults follow the HA theme. Colors accept CSS colors or HA
-variables, for example `var(--success-color)`.
+The card editor uses native Home Assistant form controls: entity and user selectors,
+searchable icon pickers, theme color choices, and helper text explaining each setting.
+Choose a **Starting style** (HA todo, icons with labels, outlined or filled buttons), then
+expand **Fine-tune appearance** or **Customize individual actions** when needed. Presets
+reset action icon, label and color overrides while preserving the list, user, filter and
+title. Completion-specific action customization appears when completion uses a button.
+The HA dashboard editor's live preview reflects each change. Existing YAML options remain
+supported, including custom CSS colors and variables such as `var(--success-color)`.

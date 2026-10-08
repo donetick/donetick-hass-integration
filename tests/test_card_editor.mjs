@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+const {Window}=await import(process.env.DOM_TEST_MODULE || 'happy-dom');
+const window=new Window();
+Object.assign(globalThis,{window,document:window.document,HTMLElement:window.HTMLElement,customElements:window.customElements,CustomEvent:window.CustomEvent});
+let loaded=0;
+window.loadCardHelpers=async()=>({createCardElement:()=>({constructor:{getConfigElement:async()=>{loaded++;customElements.define('ha-form',class extends HTMLElement {});}}})});
+const {actionColor}=await import('../www/donetick-user-todo-card.js');
+const hass={states:{'todo.all':{attributes:{circle_members:[{user_id:1,display_name:'Torben'},{user_id:2,display_name:'Melissa'}]}},'todo.other':{attributes:{circle_members:[{user_id:3,display_name:'Third user'}]}}}};
+const editor=document.createElement('donetick-user-todo-editor');
+editor.setConfig({type:'custom:donetick-user-todo-card',entity:'todo.all',user_id:1,title:'My tasks',unrelated_option:'preserved'});
+editor.hass=hass;document.body.append(editor);await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(loaded,1);
+const form=editor.shadowRoot.querySelector('ha-form');assert.ok(form);
+assert.equal(editor.shadowRoot.querySelectorAll('input,select').length,0);
+assert.equal(form.data.appearance_preset,'todo');
+assert.match(form.computeHelper({name:'display_filter'}),/Tomorrow|tomorrow/);
+assert.deepEqual(form.schema.find(field=>field.name==='entity').selector.entity.include_entities,['todo.all','todo.other']);
+const appearance=form.schema.find(field=>field.name==='appearance');assert.equal(appearance.type,'expandable');assert.equal(appearance.expanded,false);
+const actions=()=>form.schema.find(field=>field.name==='actions').schema;
+assert.equal(actions().some(group=>group.name==='complete'),false);
+assert.ok(actions()[0].schema[0].selector.icon);
+assert.ok(actions()[0].schema[2].selector.ui_color);
+let latest;editor.addEventListener('config-changed',event=>{latest=event.detail.config;});
+const update=values=>form.dispatchEvent(new CustomEvent('value-changed',{detail:{value:{...form.data,...values}}}));
+update({user_id:'2'});assert.equal(latest.user_id,2);assert.equal(latest.unrelated_option,'preserved');
+assert.equal(latest.button_style,undefined); // Editing a user must not persist every displayed default.
+update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');
+update({complete_control:'button'});assert.equal(form.data.appearance_preset,'custom');assert.ok(actions().find(group=>group.name==='complete'));
+update({postpone_color:'red',postpone_icon:'mdi:skip-next'});assert.equal(latest.postpone_color,'red');
+update({appearance_preset:'todo'});assert.equal(latest.complete_control,'checkbox');assert.equal(latest.postpone_color,undefined);assert.equal(latest.postpone_icon,undefined);assert.equal(latest.title,'My tasks');
+update({entity:'todo.other'});assert.equal(latest.user_id,3);assert.equal(form.data.user_id,'3');
+assert.equal(editor.shadowRoot.querySelector('ha-form'),form); // Keep the native form mounted across changes.
+assert.equal(actionColor('primary'),'var(--primary-color)');assert.equal(actionColor('red'),'var(--red-color, red)');
+assert.equal(actionColor('#abc'),'#abc');assert.equal(actionColor('var(--success-color)'),'var(--success-color)');
+console.log('Native editor loading, grouped selectors, presets, config preservation and theme colors passed');

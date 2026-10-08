@@ -25,6 +25,9 @@ jobs:
         env:
           TZ: Europe/Brussels
           DOM_TEST_MODULE: ${{ runner.temp }}/donetick-card-tests/node_modules/happy-dom/lib/index.js
+      - run: node --experimental-default-type=module tests/test_card_editor.mjs
+        env:
+          DOM_TEST_MODULE: ${{ runner.temp }}/donetick-card-tests/node_modules/happy-dom/lib/index.js
 
   validate-hacs:
     runs-on: "ubuntu-latest"

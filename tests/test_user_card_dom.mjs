@@ -3,6 +3,7 @@ const {Window} = await import(process.env.DOM_TEST_MODULE || 'happy-dom');
 const window = new Window();
 Object.assign(globalThis, {window, document: window.document, HTMLElement: window.HTMLElement,
   customElements: window.customElements, CustomEvent: window.CustomEvent});
+customElements.define('ha-form',class extends HTMLElement {});
 const {localDateTime, dueText, userTasks, isOverdue} = await import('../www/donetick-user-todo-card.js');
 const calls=[]; let fail=false;
 const hass={locale:{language:'en'},states:{'todo.all':{state:'2',attributes:{config_entry_id:'entry',circle_members:[{user_id:1,display_name:'Torben'}],tasks:[
@@ -35,10 +36,11 @@ assert.equal(card.getCardSize(),3);
 card.setConfig({entity:'todo.all',user_id:1,display_filter:'overdue'});
 assert.match(root.querySelector('.empty').textContent,/No tasks match/);
 const editor=document.createElement('donetick-user-todo-editor');editor.setConfig({entity:'todo.all',user_id:1});editor.hass=hass;
-const filterSelect=editor.shadowRoot.querySelector('[data-config-key="display_filter"]');
-assert.equal(filterSelect.value,'all');assert.equal(filterSelect.options.length,4);
+const nativeForm=editor.shadowRoot.querySelector('ha-form');
+assert.equal(nativeForm.data.display_filter,'all');
+assert.equal(nativeForm.schema.find(field=>field.name==='display_filter').selector.select.options.length,4);
 let changed;editor.addEventListener('config-changed',event=>{changed=event.detail.config;});
-filterSelect.value='upcoming';filterSelect.dispatchEvent(new window.Event('change'));
+nativeForm.dispatchEvent(new CustomEvent('value-changed',{detail:{value:{...nativeForm.data,display_filter:'upcoming'}}}));
 assert.equal(changed.display_filter,'upcoming');assert.equal(changed.user_id,1);
 hass.states['todo.all'].attributes.tasks=savedTasks;card.setConfig({entity:'todo.all',user_id:1});card.hass=hass;
 const noon=new Date('2026-10-24T12:00:00+02:00');
