@@ -66,6 +66,8 @@ to use its new actions and entities.
 
 Both integrations affect the same tasks when connected to the same server.
 
+To assign a task, call `donetick_dev.update_task` with `task_id` and `assigned_to` set to a Donetick user ID. The user must already be in that task's assignee list, and the API token must have permission to edit the task.
+
 ## Installation
 
 ### Via HACS

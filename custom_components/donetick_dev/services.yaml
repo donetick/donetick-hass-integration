@@ -101,6 +101,14 @@ update_task:
       default: false
       selector:
         boolean:
+    assigned_to:
+      name: Assignee User ID
+      description: Assign the task to a Donetick user already in its assignee list (optional)
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
     config_entry_id:
       name: Config Entry ID
       description: The specific Donetick integration to use (optional, uses first if not specified)

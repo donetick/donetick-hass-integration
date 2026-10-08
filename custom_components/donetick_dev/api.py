@@ -1,6 +1,6 @@
 """API client for Donetick."""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import List, Optional
 import aiohttp
@@ -265,6 +265,28 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick create task response: %s", err)
             raise
 
+    async def _raise_for_status(self, response, operation: str) -> None:
+        """Expose known server permission errors without echoing proxy responses."""
+        if response.status == 403:
+            try:
+                error_data = await response.json()
+            except (aiohttp.ClientError, ValueError):
+                error_data = None
+            if isinstance(error_data, dict):
+                reason = error_data.get("error")
+                if reason in (
+                    "Only plus members can access this endpoint",
+                    "You can only update your own chores",
+                    "You can only delete your own chores",
+                    "user does not have permission to edit this chore",
+                    "chore has been modified by another user, please refresh and try again",
+                    "updatedAt is in the future and cannot be used to edit the chore",
+                    "Only the chore creator or a circle admin/manager can update this chore",
+                    "Only the chore creator or a circle admin/manager can delete this chore",
+                ):
+                    raise ValueError(f"Donetick denied the {operation} (403): {reason}")
+        response.raise_for_status()
+
     async def async_update_task(self, task_id: int, name: str = None, description: str = None, due_date: str = None, force_unarchive: bool = False) -> DonetickTask:
         """Update an existing task"""
         headers = self._headers()
@@ -289,7 +311,7 @@ class DonetickApiClient:
                 json=payload,
                 timeout=API_TIMEOUT
             ) as response:
-                response.raise_for_status()
+                await self._raise_for_status(response, "update")
                 data = await response.json()
                 task = DonetickTask.from_json(data)
                 if due_date:
@@ -309,6 +331,25 @@ class DonetickApiClient:
             raise
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick update task response: %s", err)
+            raise
+
+    async def async_assign_task(self, task_id: int, assigned_to: int) -> None:
+        """Assign a task to one of its existing assignees."""
+        payload = {
+            "assignee": assigned_to,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            async with self._session.put(
+                f"{self._base_url}/api/v1/chores/{task_id}/assignee",
+                headers=self._headers(),
+                json=payload,
+                timeout=API_TIMEOUT,
+            ) as response:
+                response.raise_for_status()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error assigning Donetick task %d: %s", task_id, err)
             raise
 
     async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
@@ -347,7 +388,7 @@ class DonetickApiClient:
                 headers=headers,
                 timeout=API_TIMEOUT
             ) as response:
-                response.raise_for_status()
+                await self._raise_for_status(response, "delete")
                 return True
 
         except aiohttp.ClientError as err:
@@ -355,7 +396,7 @@ class DonetickApiClient:
             raise
         except Exception as err:
             _LOGGER.error("Error deleting task: %s", err)
-            return False
+            raise
 
     async def async_get_task_detail(self, task_id: int) -> Optional[DonetickTask]:
         """Get detailed task timing data when the full API endpoint is available."""
