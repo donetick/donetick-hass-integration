@@ -7,7 +7,7 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import API_TIMEOUT
-from .model import DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
+from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
 _LOGGER = logging.getLogger(__name__)
 
 class DonetickApiClient:
@@ -25,6 +25,32 @@ class DonetickApiClient:
             "secretkey": f"{self._token}",
             "Content-Type": "application/json",
         }
+
+    async def async_get_projects(self) -> List[DonetickProject]:
+        """Get projects from Donetick."""
+        headers = self._headers()
+
+        try:
+            async with self._session.get(
+                f"{self._base_url}/api/v1/projects",
+                headers=headers,
+                timeout=API_TIMEOUT
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                if not isinstance(data, list):
+                    _LOGGER.error("Unexpected response format from Donetick API")
+                    return []
+
+                return [DonetickProject.from_json(project) for project in data]
+
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error fetching projects from Donetick: %s", err)
+            raise
+        except (KeyError, ValueError, json.JSONDecodeError) as err:
+            _LOGGER.error("Error parsing Donetick response: %s", err)
+            return []
 
     async def async_get_tasks(self) -> List[DonetickTask]:
         """Get tasks from Donetick."""
@@ -206,28 +232,31 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick complete task response: %s", err)
             raise
 
-    async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None) -> DonetickTask:
+    async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None, project_id: int = None) -> DonetickTask:
         """Create a new task"""
         headers = self._headers()
 
-        payload = {"name": name}
+        payload = {"name": name, "frequencyType": "once", "assignStrategy": "no_assignee"}
         if description:
             payload["description"] = description
         if due_date:
             payload["dueDate"] = due_date
         if created_by:
             payload["createdBy"] = created_by
-
+        if project_id:
+            payload["projectId"] = project_id
+        _LOGGER.debug("Creating task with payload: %s", json.dumps(payload))
         try:
             async with self._session.post(
-                f"{self._base_url}/eapi/v1/chore",
+                f"{self._base_url}/api/v1/chores/",
                 headers=headers,
                 json=payload,
                 timeout=API_TIMEOUT
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
-                return DonetickTask.from_json(data)
+                _LOGGER.debug("New task: %s", data)
+                return await self.async_get_task_detail(data["res"])  # Fetch full task details after creation
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error creating task in Donetick: %s", err)
@@ -260,6 +289,7 @@ class DonetickApiClient:
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
+                _LOGGER.debug("New task: %s", data)
                 return DonetickTask.from_json(data)
 
         except aiohttp.ClientError as err:
