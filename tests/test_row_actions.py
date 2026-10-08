@@ -1,11 +1,10 @@
 """Verify row actions use current assignment and preserve task schedules."""
 import ast
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1] / 'custom_components/donetick'
 
@@ -14,9 +13,9 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         source = ROOT / '__init__.py'
         tree = ast.parse(source.read_text(encoding='utf-8'))
         action = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'async_task_row_action')
-        self.now = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+
         self.task = SimpleNamespace(id=1, is_active=True, assigned_to=2,
-                                    next_due_date=datetime(2026, 10, 24, 16, tzinfo=timezone.utc))
+                                    frequency_type="weekly", next_due_date=datetime(2026, 10, 24, 16, tzinfo=timezone.utc))
         self.calls = []
         async def resolve(hass, entry_id):
             return SimpleNamespace(entry_id='entry')
@@ -26,20 +25,20 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
             self.calls.append(('complete', task_id, completed_by))
         async def update(task_id, **kwargs):
             self.calls.append(('update', task_id, kwargs))
+        async def reschedule(task_id):
+            self.calls.append(('reschedule', task_id))
         async def refresh():
             self.calls.append(('refresh',))
         namespace = dict(HomeAssistant=object, ServiceCall=object, HomeAssistantError=ValueError,
-                         DOMAIN='donetick', _get_config_entry=resolve, timedelta=timedelta,
-                         dt_util=SimpleNamespace(utcnow=lambda: self.now,
-                             as_local=lambda value: value.astimezone(ZoneInfo('Europe/Brussels'))))
+                         DOMAIN='donetick', _get_config_entry=resolve)
         exec(compile(ast.Module(body=[action], type_ignores=[]), str(source), 'exec'), namespace)
         self.action = namespace['async_task_row_action']
         self.hass = SimpleNamespace(data={'donetick': {'entry': {
-            'client': SimpleNamespace(async_get_tasks=tasks, async_complete_task=complete, async_update_task=update),
+            'client': SimpleNamespace(async_get_tasks=tasks, async_complete_task=complete, async_update_task=update, async_reschedule_task=reschedule),
             'coordinator': SimpleNamespace(async_request_refresh=refresh)}}})
 
     async def run_action(self, complete):
-        await self.action(self.hass, SimpleNamespace(data={'task_id': 1, 'days': 1}), complete=complete)
+        await self.action(self.hass, SimpleNamespace(data={'task_id': 1}), complete=complete)
 
     async def test_completion_uses_current_server_assignee(self):
         await self.run_action(True)
@@ -54,17 +53,16 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
                 setattr(self.task, attribute, 2 if attribute == 'assigned_to' else True)
         self.assertTrue(all(call[0] == 'refresh' for call in self.calls))
 
-    async def test_postpone_retains_local_time_across_dst(self):
+    async def test_postpone_uses_server_scheduler(self):
         await self.run_action(False)
-        self.assertEqual(self.calls[0], ('update', 1, {'due_date': '2026-10-25T18:00:00+01:00'}))
+        self.assertEqual(self.calls, [('reschedule', 1), ('refresh',)])
         self.assertEqual(self.task.assigned_to, 2)
 
-    async def test_overdue_and_undated_tasks_postpone_from_now(self):
-        for due in (None, self.now - timedelta(days=10)):
-            self.task.next_due_date = due
-            self.calls.clear()
+    async def test_nonrecurring_task_cannot_be_postponed(self):
+        self.task.frequency_type = "once"
+        with self.assertRaisesRegex(ValueError, "no next scheduled"):
             await self.run_action(False)
-            self.assertEqual(self.calls[0][2], {'due_date': '2026-10-25T14:00:00+01:00'})
+        self.assertEqual(self.calls, [('refresh',)])
 
     async def test_regular_todo_completion_uses_task_assignee(self):
         tree = ast.parse((ROOT / 'todo.py').read_text(encoding='utf-8'))

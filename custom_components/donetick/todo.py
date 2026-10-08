@@ -177,7 +177,8 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         tasks = self._apply_due_window(self._filter_tasks(self.coordinator.data or []))
         attributes["tasks"] = [
             {"task_id": task.id, "name": task.name, "assigned_to": task.assigned_to,
-             "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None}
+             "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
+             "can_postpone": task.frequency_type not in ("once", "no_repeat", "trigger", "always")}
             for task in tasks if task.is_active
         ]
         if hasattr(self, "_member"):

@@ -1,7 +1,6 @@
 """The Donetick integration."""
 import logging
 from datetime import timedelta
-from homeassistant.util import dt as dt_util
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
@@ -64,9 +63,7 @@ ASSIGNED_TASK_SCHEMA = vol.Schema({
     vol.Required("task_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("config_entry_id"): cv.string,
 })
-POSTPONE_TASK_SCHEMA = ASSIGNED_TASK_SCHEMA.extend({
-    vol.Optional("days", default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=365)),
-})
+POSTPONE_TASK_SCHEMA = ASSIGNED_TASK_SCHEMA
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Donetick from a config entry."""
@@ -363,11 +360,10 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
                 raise HomeAssistantError("Assign this task to a user before completing it")
             await client.async_complete_task(task.id, completed_by=task.assigned_to)
         else:
-            # For overdue/undated tasks, postpone from now rather than leaving them overdue.
-            now = dt_util.utcnow()
-            base = max(task.next_due_date, now) if task.next_due_date else now
-            due = dt_util.as_local(base) + timedelta(days=call.data.get("days", 1))
-            await client.async_update_task(task.id, due_date=due.isoformat())
+            if task.frequency_type in ("once", "no_repeat", "trigger", "always"):
+                raise HomeAssistantError("This task has no next scheduled occurrence")
+            await client.async_reschedule_task(task.id)
+
     except HomeAssistantError:
         raise
     except Exception as err:

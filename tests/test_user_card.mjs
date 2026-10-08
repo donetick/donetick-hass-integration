@@ -9,5 +9,5 @@ const state = {attributes: {config_entry_id: 'entry', tasks: [
 assert.deepEqual(userTasks(state, '2').map(t => t.task_id), [1]);
 assert.deepEqual(userTasks(undefined, 2), []);
 assert.deepEqual(actionData(state, state.attributes.tasks[0]), {task_id: 1, config_entry_id: 'entry'});
-assert.deepEqual(actionData(state, state.attributes.tasks[0], 3), {task_id: 1, config_entry_id: 'entry', days: 3});
+assert.equal('days' in actionData(state, state.attributes.tasks[0]), false);
 console.log('Card user filtering and entry routing passed');

@@ -176,21 +176,14 @@ complete_assigned_task:
       selector:
         text:
 postpone_task:
-  name: Postpone task
-  description: Move the due date forward; overdue and undated tasks start from now.
+  name: Reschedule task
+  description: Use Donetick's scheduler to skip to the next occurrence without completing the task.
   fields:
     task_id:
       required: true
       selector:
         number:
           min: 1
-          mode: box
-    days:
-      default: 1
-      selector:
-        number:
-          min: 1
-          max: 365
           mode: box
     config_entry_id:
       selector:

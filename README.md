@@ -64,7 +64,7 @@ Configure via **Settings** → **Devices & Services** → **Add Integration** �
 Copy `www/donetick-user-todo-card.js` to `/config/www/donetick/` and register
 `/local/donetick/donetick-user-todo-card.js` as a JavaScript module in dashboard resources.
 Then add **Donetick User Tasks** to any dashboard. Its visual editor lets you choose
-a Donetick todo entity, the assigned user, a title and the days to postpone.
+a Donetick todo entity, the assigned user, a title and button appearance.
 Use the All Tasks entity to display any user's tasks; individual assignee entities also work.
 The card respects the integration's upcoming-task window. Set it to 0 to show all tasks.
 
@@ -72,12 +72,21 @@ The card respects the integration's upcoming-task window. Set it to 0 to show al
 type: custom:donetick-user-todo-card
 entity: todo.all_tasks
 user_id: 1
-postpone_days: 1
+button_style: text
+button_size: compact
+button_shape: pill
+button_content: icon
 ```
 
 Complete fetches the current task from Donetick and attributes completion to its actual
 assigned user, even if someone else clicks the button. Unassigned tasks cannot be completed
-with this action. Postpone keeps the assignment and moves the due date forward by the
-configured number of days, using Home Assistant's local timezone. For overdue or undated
-tasks it starts from now. Recurring task schedules are preserved; postponing does not
-complete or skip the task. Actions refresh the list and show errors in the card.
+with this action. Postpone uses Donetick's internal skip/rescheduling endpoint to advance
+to the next occurrence. Donetick records a skipped occurrence, keeps the assignee and
+calculates the next date from the task's schedule. Tasks without a recurring schedule
+have Postpone disabled. Actions refresh the list and show errors in the card.
+
+By default each row resembles HA todo items: a completion checkbox and a small reschedule icon.
+The card editor supports a completion checkbox or button; outlined, text or filled buttons; compact, normal or large sizes;
+rounded, pill or square shapes; labels, icons or both; and separate labels, MDI icons and
+colors for each action. Defaults follow the HA theme. Colors accept CSS colors or HA
+variables, for example `var(--success-color)`.
