@@ -58,3 +58,26 @@ Configure via **Settings** → **Devices & Services** → **Add Integration** �
 - **Show Due In**: Days ahead to display upcoming tasks (default: 7)
 - **Create Unified List**: Enable "All Tasks" todo list (default: true)  
 - **Create Assignee Lists**: Individual todo lists per user (default: false) 
+
+## Per-user task card (feature branch)
+
+Copy `www/donetick-user-todo-card.js` to `/config/www/donetick/` and register
+`/local/donetick/donetick-user-todo-card.js` as a JavaScript module in dashboard resources.
+Then add **Donetick User Tasks** to any dashboard. Its visual editor lets you choose
+a Donetick todo entity, the assigned user, a title and the days to postpone.
+Use the All Tasks entity to display any user's tasks; individual assignee entities also work.
+The card respects the integration's upcoming-task window. Set it to 0 to show all tasks.
+
+```yaml
+type: custom:donetick-user-todo-card
+entity: todo.all_tasks
+user_id: 1
+postpone_days: 1
+```
+
+Complete fetches the current task from Donetick and attributes completion to its actual
+assigned user, even if someone else clicks the button. Unassigned tasks cannot be completed
+with this action. Postpone keeps the assignment and moves the due date forward by the
+configured number of days, using Home Assistant's local timezone. For overdue or undated
+tasks it starts from now. Recurring task schedules are preserved; postponing does not
+complete or skip the task. Actions refresh the list and show errors in the card.

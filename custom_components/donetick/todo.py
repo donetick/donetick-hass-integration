@@ -174,6 +174,14 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                 for member in self._circle_members
             ]
         
+        tasks = self._apply_due_window(self._filter_tasks(self.coordinator.data or []))
+        attributes["tasks"] = [
+            {"task_id": task.id, "name": task.name, "assigned_to": task.assigned_to,
+             "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None}
+            for task in tasks if task.is_active
+        ]
+        if hasattr(self, "_member"):
+            attributes["donetick_user_id"] = self._member.user_id
         return attributes
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
@@ -244,7 +252,6 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                     _LOGGER.debug("Task %s is recurring, updating next due date", res.name)
                     item.status = TodoItemStatus.NEEDS_ACTION
                     item.due = res.next_due_date
-                    self.async_update_todo_item(item, context)
             else:
                 # Update task properties (summary, description, due date)
                 _LOGGER.debug("Updating task %d properties", task_id)
@@ -259,7 +266,6 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                     name=item.summary,
                     description=item.description,
                     due_date=due_date,
-                    project_id=getattr(self, '_project_id', None)
                 )
                 _LOGGER.info("Updated task %d", task_id)
                 
@@ -296,41 +302,13 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
     async def _get_completion_user_id(self, client, item, context=None) -> int | None:
         """Determine who should complete this task using smart logic."""
         
-        # Option 1: Context-based completion
-        # If this is an assignee-specific list, use that assignee
-        if hasattr(self, '_member'):
-            _LOGGER.debug("Using assignee from specific list: %s (ID: %d)", self._member.display_name, self._member.user_id)
-            return self._member.user_id
-        
-        # Attempt to map the current calling user to a circle member by username
-        circle_members = getattr(self, '_circle_members', [])
-        _LOGGER.debug("Attempting to map calling user to circle member, %d members available (Context: %s)", len(circle_members), context)
-        if len(circle_members) > 0:
-            _LOGGER.debug("Context: %s", context)
-            if context and context.user_id:
-                user_id = context.user_id
-                # Fetch the user object if you need the actual text username
-                user = await self.hass.auth.async_get_user(user_id)
-                _LOGGER.debug("Current context user: %s (ID: %s)", user.name if user else "Unknown", user_id)
-                if user:
-                    caller_username = user.name
-                    for member in circle_members:
-                        if member.username == caller_username:
-                            _LOGGER.debug("Mapped calling user '%s' to circle member '%s' (ID: %d)", caller_username, member.display_name, member.user_id)
-                            return member.user_id
-
-        # If completing from "All Tasks", find the task's original assignee
         task_id = int(item.uid.split("--")[0])
-        if self.coordinator.data:
-            for task in self.coordinator.data:
-                if task.id == task_id and task.assigned_to:
-                    _LOGGER.debug("Using task's original assignee: %d", task.assigned_to)
-                    return task.assigned_to
-        
-        # No default user - rely on context-based or task assignee
-        
-        _LOGGER.debug("No completion user determined, using default")
-        return None
+        tasks = await client.async_get_tasks()
+        task = next((task for task in tasks if task.id == task_id and task.is_active), None)
+        if task is None or task.assigned_to is None:
+            raise ValueError("Task must be active and assigned to a user before completion")
+        return task.assigned_to
+
 
 class DonetickAllTasksList(DonetickTodoListBase):
     """Donetick All Tasks List entity."""
