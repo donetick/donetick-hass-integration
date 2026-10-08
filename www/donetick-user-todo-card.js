@@ -77,7 +77,8 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.display_filter && !['all','overdue','today','upcoming'].includes(config.display_filter)) throw new Error('Choose a valid display filter');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
     this._config = {display_filter:'all', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', show_assignee:true, show_reassign:true, ...config, user_id: config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:Number(config.upcoming_days ?? 7)};
+      button_content: 'icon', complete_control: 'checkbox', show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, user_id: config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:Number(config.upcoming_days ?? 7)};
+    if (this._panel && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
     this.render();
   }
   set hass(hass) { this._hass = hass; this.render(); }
@@ -160,7 +161,7 @@ class DonetickUserTodoCard extends HTMLElement {
       const row = document.createElement('div'); row.className = 'row'; card.append(row);
       const completed = this._completed.has(task.task_id);
       if (completed) row.classList.add('completed');
-      if (this._config.complete_control === 'checkbox') {
+      if (this._config.show_complete && this._config.complete_control === 'checkbox') {
         const target = document.createElement('label'); target.className = 'complete-checkbox'; row.append(target);
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
         checkbox.disabled = this._pending.has(task.task_id) || completed; checkbox.checked = this._pending.get(task.task_id) === true || completed;
@@ -187,8 +188,8 @@ class DonetickUserTodoCard extends HTMLElement {
       }
       const actions = document.createElement('div'); actions.className = 'actions'; row.append(actions);
       for (const [label, complete] of [[this._config.complete_label || 'Complete', true], [this._config.postpone_label || 'Skip occurrence', false]]) {
-        if (complete && this._config.complete_control === 'checkbox') continue;
-        if (!complete && !task.can_postpone) continue;
+        if (complete && (!this._config.show_complete || this._config.complete_control === 'checkbox')) continue;
+        if (!complete && (!this._config.show_postpone || !task.can_postpone)) continue;
         const button = document.createElement('button'); actions.append(button); button.type = 'button';
         button.disabled = this._pending.has(task.task_id) || completed;
         if (this._config.button_content !== 'label') {
@@ -203,6 +204,7 @@ class DonetickUserTodoCard extends HTMLElement {
         if (!complete) { button.dataset.action = 'skip'; button.dataset.taskId = task.task_id; button.setAttribute('aria-expanded', String(this._panel?.taskId === task.task_id && this._panel.kind === 'skip')); }
         button.addEventListener('click', () => complete ? this.act(task, true) : this.togglePanel(task, 'skip'));
       }
+      if (this._config.show_due_date) {
       const changeDate = document.createElement('button'); changeDate.type = 'button';
       changeDate.className = 'date-action';
       const dateLabel = this._config.due_date_label || 'Change due date';
@@ -217,6 +219,7 @@ class DonetickUserTodoCard extends HTMLElement {
       changeDate.dataset.action = 'date'; changeDate.dataset.taskId = task.task_id;
       changeDate.setAttribute('aria-expanded', String(this._panel?.taskId === task.task_id && this._panel.kind === 'date'));
       changeDate.addEventListener('click', () => this.togglePanel(task, 'date')); actions.append(changeDate);
+      }
       if (this._config.show_reassign) {
         const reassign = document.createElement('button'); reassign.type = 'button';
         const label = this._config.reassign_label || 'Reassign';
@@ -232,6 +235,7 @@ class DonetickUserTodoCard extends HTMLElement {
         reassign.setAttribute('aria-expanded', String(this._panel?.taskId === task.task_id && this._panel.kind === 'assign'));
         reassign.addEventListener('click', () => this.togglePanel(task, 'assign')); actions.append(reassign);
       }
+      if (!actions.childElementCount) actions.remove();
       if (this._panel?.taskId === task.task_id) this.renderPanel(row, task, addText);
     }
     if (focusedField) this.shadowRoot.querySelector(`[data-field="${focusedField}"]`)?.focus();
@@ -300,7 +304,7 @@ class DonetickUserTodoCard extends HTMLElement {
   }
 }
 const EDITOR_DEFAULTS = {
-  display_filter:'all', upcoming_days:7, show_assignee:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
+  display_filter:'all', upcoming_days:7, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
   due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
   due_date_icon:'mdi:calendar-edit', reassign_label:'Reassign', reassign_icon:'mdi:account-switch-outline', complete_color:'primary', postpone_color:'primary', due_date_color:'primary', reassign_color:'primary'
@@ -318,6 +322,9 @@ const EDITOR_HELP = {
   user_id:'Show one user’s tasks or all users. Completion is credited to each task’s current assignee.',
   show_assignee:'Show the assigned name beside the due date. Available when the list can contain multiple users.',
   show_reassign:'Show a user-switch action on each row. Changes are saved only after confirmation.',
+  show_complete:'Show the completion checkbox or button. Turn off for a display-only task list.',
+  show_postpone:'Show Skip occurrence for tasks with a recurring schedule.',
+  show_due_date:'Show the action to choose a due date manually, including for one-off tasks.',
   display_filter:'Today and Upcoming include tasks due earlier today. Undated tasks appear only in All tasks.',
   upcoming_days:'Maximum days ahead; 0 removes the limit. The integration’s task window must also include those days.',
   title:'Leave empty to use the selected user’s name.',
@@ -390,7 +397,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       this.shadowRoot.innerHTML='<style>:host{display:block}ha-form{display:block}ha-alert{display:block;margin-bottom:16px}ha-alert[hidden]{display:none}</style>';
       this._warning=document.createElement('ha-alert');this._warning.setAttribute('alert-type','info');this.shadowRoot.append(this._warning);
       this._form=document.createElement('ha-form');this.shadowRoot.append(this._form);
-      this._form.computeLabel=schema=>schema.title || {show_assignee:'Show assigned user',show_reassign:'Allow reassignment'}[schema.name] || EDITOR_LABELS[schema.name] || schema.name;
+      this._form.computeLabel=schema=>schema.title || {show_assignee:'Show assigned user',show_complete:'Complete task',show_postpone:'Skip occurrence',show_due_date:'Change due date',show_reassign:'Reassign task'}[schema.name] || EDITOR_LABELS[schema.name] || schema.name;
       this._form.computeHelper=schema=>EDITOR_HELP[schema.name] || (schema.name.endsWith('_color') ? 'Theme color. Used for the icon/text, or the background of filled buttons.' : schema.name.endsWith('_icon') ? 'Choose an icon using HA’s searchable icon picker.' : schema.name.endsWith('_label') ? 'Also used in tooltips and accessibility labels, even with icons only.' : undefined);
       this._form.addEventListener('value-changed',event=>this.formChanged(event));
     }
@@ -409,22 +416,22 @@ class DonetickUserTodoEditor extends HTMLElement {
       {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
       {...select('user_id',[...(!this._hass.states[this._config.entity]?.attributes.donetick_user_id && members.length > 1 ? [['all','All users']] : []), ...members.map(member=>[String(member.user_id),member.display_name || member.username || `User ${member.user_id}`])]),required:true,disabled:!members.length},
       ...(this._config.user_id === 'all' && !this._hass.states[this._config.entity]?.attributes.donetick_user_id && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
-      {name:'show_reassign',selector:{boolean:{}}},
+      {...group('visible_actions','Actions to show',['show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))),expanded:true},
       select('display_filter',[['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming']]),
       ...(this._config.display_filter==='upcoming' ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : []),
       {name:'title',selector:{text:{}}},
       select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),
       group('appearance','Fine-tune appearance',[
-        select('complete_control',[['checkbox','Checkbox on the left'],['button','Button on the right']]),
+        ...(this._config.show_complete !== false ? [select('complete_control',[['checkbox','Checkbox on the left'],['button','Button on the right']])] : []),
         select('button_content',[['icon','Icons only'],['icon_and_label','Icons and labels'],['label','Labels only']]),
         select('button_style',[['text','Flat — HA style'],['outlined','Outlined'],['filled','Filled']]),
         select('button_size',[['compact','Compact — 44 px'],['normal','Standard — 48 px'],['large','Large — 52 px']]),
         select('button_shape',[['rounded','Rounded'],['pill','Pill'],['square','Square']])
       ]),
       group('actions','Customize individual actions',[
-        ...(this._config.complete_control==='button' ? [actionGroup('complete','Complete task')] : []),
-        actionGroup('postpone','Skip occurrence — Donetick’s next scheduled date'),
-        actionGroup('due_date','Change due date — choose a date manually'),
+        ...(this._config.show_complete !== false && this._config.complete_control==='button' ? [actionGroup('complete','Complete task')] : []),
+        ...(this._config.show_postpone !== false ? [actionGroup('postpone','Skip occurrence — Donetick’s next scheduled date')] : []),
+        ...(this._config.show_due_date !== false ? [actionGroup('due_date','Change due date — choose a date manually')] : []),
         ...(this._config.show_reassign !== false ? [actionGroup('reassign','Reassign task')] : [])
       ])
     ];

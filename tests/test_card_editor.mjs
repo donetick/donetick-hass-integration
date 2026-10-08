@@ -44,6 +44,16 @@ update({postpone_color:'red',postpone_icon:'mdi:skip-next'});assert.equal(latest
 update({appearance_preset:'todo'});assert.equal(latest.complete_control,'checkbox');assert.equal(latest.postpone_color,undefined);assert.equal(latest.postpone_icon,undefined);assert.equal(latest.title,'My tasks');
 update({entity:'todo.other'});assert.equal(latest.user_id,3);assert.equal(form.data.user_id,'3');
 assert.equal(editor.shadowRoot.querySelector('ha-form'),form); // Keep the native form mounted across changes.
+const visibleActions=form.schema.find(field=>field.name==='visible_actions');
+assert.equal(visibleActions.expanded,true);
+assert.deepEqual(visibleActions.schema.map(field=>field.name),['show_complete','show_postpone','show_due_date','show_reassign']);
+update({show_complete:false,show_postpone:false,show_due_date:false,show_reassign:false});
+assert.equal(actions().length,0);
+assert.equal(form.schema.find(field=>field.name==='appearance').schema.some(field=>field.name==='complete_control'),false);
+update({appearance_preset:'filled'});
+assert.equal(latest.show_complete,false);assert.equal(latest.show_postpone,false);assert.equal(latest.show_due_date,false);assert.equal(latest.show_reassign,false);
+update({show_complete:true,complete_control:'button',show_due_date:true});
+assert.deepEqual(actions().map(group=>group.name),['complete','due_date']);
 assert.equal(actionColor('primary'),'var(--primary-color)');assert.equal(actionColor('red'),'var(--red-color, red)');
 assert.equal(actionColor('#abc'),'#abc');assert.equal(actionColor('var(--success-color)'),'var(--success-color)');
 console.log('Native editor loading, grouped selectors, presets, config preservation and theme colors passed');

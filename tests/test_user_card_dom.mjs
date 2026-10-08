@@ -145,4 +145,18 @@ assert.equal(root.querySelectorAll('.assignee').length,0);
 assert.equal(root.querySelector('[aria-label="Reassign: Weekly"]'),null);
 hass.states['todo.all'].attributes.donetick_user_id=1;
 card.setConfig({entity:'todo.all',user_id:'all'});assert.equal(root.querySelectorAll('.assignee').length,0);
+// Every action can be hidden independently, for either completion style.
+for (const complete_control of ['checkbox','button']) {
+  for (let mask=0;mask<16;mask++) {
+    const visibility = Object.fromEntries(['show_complete','show_postpone','show_due_date','show_reassign'].map((key,index)=>[key,!!(mask & (1<<index))]));
+    card.setConfig({entity:'todo.all',user_id:'all',complete_control,...visibility});
+    for (const [key,label] of [['show_complete','Complete'],['show_postpone','Skip occurrence'],['show_due_date','Change due date'],['show_reassign','Reassign']]) {
+      assert.equal(!!root.querySelector(`[aria-label="${label}: Weekly"]`),visibility[key],`${key} in ${complete_control} mode`);
+    }
+    if (!mask) { assert.equal(root.querySelectorAll('.actions,.complete-checkbox').length,0); }
+  }
+}
+card.setConfig({entity:'todo.all',user_id:'all'});click('Change due date: Weekly');
+assert.ok(root.querySelector('form'));
+card.setConfig({entity:'todo.all',user_id:'all',show_due_date:false});assert.equal(root.querySelector('form'),null);
 console.log('Compact inline editing, repeated-tap toggles, preserved time, confirmed actions and feedback passed');

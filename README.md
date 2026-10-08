@@ -78,6 +78,12 @@ Add eligible assignees in Donetick first if needed. This uses `donetick.update_t
 with `assigned_to`, preserves recurrence, and refreshes all lists. A reassigned task
 leaves its previous user's card. Future completion uses the new current assignee.
 YAML supports `user_id: all`, `show_assignee: false`, and `show_reassign: false`.
+The editor's **Actions to show** switches independently control completion, Skip
+occurrence, Change due date, and reassignment. Completion visibility applies to both
+the checkbox and button styles. Turn all four off for a display-only card with no
+unused action space. Appearance presets preserve these visibility choices.
+YAML also supports `show_complete: false`, `show_postpone: false`, and
+`show_due_date: false`. All actions remain enabled by default.
 The card respects the integration's upcoming-task window. Set it to 0 to show all tasks.
 
 ```yaml
