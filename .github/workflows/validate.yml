@@ -20,6 +20,11 @@ jobs:
         with:
           node-version: '22'
       - run: node --experimental-default-type=module tests/test_user_card.mjs
+      - run: npm install --prefix "$RUNNER_TEMP/donetick-card-tests" --no-package-lock happy-dom@20.14.5
+      - run: node --experimental-default-type=module tests/test_user_card_dom.mjs
+        env:
+          TZ: Europe/Brussels
+          DOM_TEST_MODULE: ${{ runner.temp }}/donetick-card-tests/node_modules/happy-dom/lib/index.js
 
   validate-hacs:
     runs-on: "ubuntu-latest"

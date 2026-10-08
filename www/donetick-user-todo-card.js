@@ -5,6 +5,12 @@ export function actionData(state, task) {
   const data = {task_id: task.task_id, config_entry_id: state.attributes.config_entry_id};
   return data;
 }
+export function localDateTime(value) {
+  const date = value ? new Date(value) : new Date();
+  if (isNaN(date)) return '';
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 class DonetickUserTodoCard extends HTMLElement {
   static getConfigElement() { return document.createElement('donetick-user-todo-editor'); }
   static getStubConfig(hass) {
@@ -16,20 +22,27 @@ class DonetickUserTodoCard extends HTMLElement {
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
     if (!Number.isInteger(Number(config.user_id)) || Number(config.user_id) < 1) throw new Error('Choose a Donetick user');
     this._config = {button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', ...config, user_id: Number(config.user_id)};
+      button_content: 'icon', complete_control: 'checkbox', due_date_control: 'menu', ...config, user_id: Number(config.user_id)};
     this.render();
   }
   set hass(hass) { this._hass = hass; this.render(); }
   getCardSize() { return 2 + userTasks(this._hass?.states[this._config?.entity], this._config?.user_id).length; }
-  async act(task, complete) {
+  async act(task, complete, dueDate) {
     if (this._pending.has(task.task_id)) return;
     const state = this._hass.states[this._config.entity];
     this._pending.set(task.task_id, complete); this._error = ''; this.render();
     try {
-      await this._hass.callService('donetick', complete ? 'complete_assigned_task' : 'postpone_task',
-        actionData(state, task));
+      const data = actionData(state, task);
+      if (dueDate) data.due_date = dueDate;
+      await this._hass.callService('donetick', dueDate ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
+      if (dueDate) this._dateEdit = null;
     } catch (err) { this._error = err.message || String(err); }
     finally { this._pending.delete(task.task_id); this.render(); }
+  }
+  editDate(task) {
+    this._dateEdit = {taskId: task.task_id, value: localDateTime(task.next_due_date)};
+    this.render();
+    this.shadowRoot.querySelector('input[type="datetime-local"]')?.focus();
   }
   render() {
     if (!this._config || !this._hass) return;
@@ -48,6 +61,10 @@ class DonetickUserTodoCard extends HTMLElement {
       [data-size="compact"] button { padding:5px 8px; font-size:12px; } [data-size="large"] button { padding:12px 16px; font-size:15px; }
       [data-shape="pill"] button { border-radius:24px; } [data-shape="square"] button { border-radius:0; }
       .error { color: var(--error-color); } .empty { color: var(--secondary-text-color); }
+      details { position:relative; } summary { cursor:pointer; list-style:none; display:flex; padding:5px; border-radius:8px; color:var(--secondary-text-color); } summary::-webkit-details-marker { display:none; }
+      details[open] > button { position:absolute; right:0; top:100%; z-index:1; white-space:nowrap; background:var(--card-background-color); color:var(--primary-text-color); box-shadow:var(--ha-card-box-shadow,0 2px 8px #0004); }
+      .date-form { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 0 12px; } .date-form label { flex:1; min-width:180px; font-size:12px; color:var(--secondary-text-color); }
+      .date-form input { display:block; box-sizing:border-box; width:100%; margin-top:6px; padding:8px; background:var(--card-background-color); color:var(--primary-text-color); border:1px solid var(--divider-color); border-radius:6px; font:inherit; }
       @media(max-width: 420px) { ha-card { padding: 12px; } .row { gap: 12px; } }
     </style><ha-card></ha-card>`;
     const card = this.shadowRoot.querySelector('ha-card');
@@ -74,9 +91,9 @@ class DonetickUserTodoCard extends HTMLElement {
       addText(text, 'div', due && !isNaN(due) ? due.toLocaleString(this._hass.locale?.language || undefined, {dateStyle: 'medium', timeStyle: 'short'}) : 'No due date', 'due');
       for (const [label, complete] of [[this._config.complete_label || 'Complete', true], [this._config.postpone_label || 'Postpone', false]]) {
         if (complete && this._config.complete_control === 'checkbox') continue;
+        if (!complete && !task.can_postpone) continue;
         const button = document.createElement('button'); row.append(button); button.type = 'button';
-        button.disabled = this._pending.has(task.task_id) || (!complete && !task.can_postpone);
-        if (!complete && !task.can_postpone) button.title = 'This task has no next scheduled occurrence';
+        button.disabled = this._pending.has(task.task_id);
         if (this._config.button_content !== 'label') {
           const icon = document.createElement('ha-icon'); icon.setAttribute('icon', this._config[complete ? 'complete_icon' : 'postpone_icon'] || (complete ? 'mdi:check' : 'mdi:calendar-arrow-right'));
           button.append(icon);
@@ -85,6 +102,37 @@ class DonetickUserTodoCard extends HTMLElement {
         const color = this._config[complete ? 'complete_color' : 'postpone_color'];
         if (color) button.style.setProperty(this._config.button_style === 'filled' ? 'background-color' : 'color', color);
         button.setAttribute('aria-label', `${label}: ${task.name}`); button.addEventListener('click', () => this.act(task, complete));
+      }
+      let dateParent = row;
+      if (this._config.due_date_control === 'menu') {
+        const menu = document.createElement('details'); row.append(menu);
+        const summary = document.createElement('summary'); menu.append(summary);
+        summary.setAttribute('aria-label', `More actions: ${task.name}`);
+        const icon = document.createElement('ha-icon'); icon.setAttribute('icon', 'mdi:dots-vertical'); summary.append(icon);
+        dateParent = menu;
+      }
+      const changeDate = document.createElement('button'); changeDate.type = 'button';
+      changeDate.textContent = 'Change due date'; changeDate.disabled = this._pending.has(task.task_id);
+      changeDate.setAttribute('aria-label', `Change due date: ${task.name}`);
+      changeDate.addEventListener('click', () => this.editDate(task)); dateParent.append(changeDate);
+      if (this._dateEdit?.taskId === task.task_id) {
+        const form = document.createElement('form'); form.className = 'date-form'; card.append(form);
+        const label = addText(form, 'label', `New due date (${Intl.DateTimeFormat().resolvedOptions().timeZone})`);
+        const input = document.createElement('input'); input.type = 'datetime-local'; input.required = true; input.step = '1';
+        input.value = this._dateEdit.value; input.disabled = this._pending.has(task.task_id); label.append(input);
+        input.addEventListener('input', () => { this._dateEdit.value = input.value; });
+        const save = addText(form, 'button', 'Save'); save.type = 'submit'; save.disabled = input.disabled;
+        const cancel = addText(form, 'button', 'Cancel'); cancel.type = 'button'; cancel.disabled = input.disabled;
+        const close = () => { this._dateEdit = null; this.render(); };
+        cancel.addEventListener('click', close);
+        form.addEventListener('keydown', event => { if (event.key === 'Escape' && !input.disabled) close(); });
+        form.addEventListener('submit', event => {
+          event.preventDefault();
+          if (!form.reportValidity()) return;
+          const date = new Date(input.value);
+          if (isNaN(date)) return;
+          this.act(task, false, date.toISOString());
+        });
       }
     }
   }
@@ -107,7 +155,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       if (options) { for (const [value, text] of options) { const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option); } }
       else input.type = numeric ? 'number' : 'text';
       if (numeric) { input.min = '1'; input.max = '365'; }
-      input.value = this._config[key] ?? ({complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
+      input.value = this._config[key] ?? ({complete_control:'checkbox',due_date_control:'menu',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
       input.addEventListener('change', () => this.change(key, numeric ? Number(input.value) : input.value));
       wrapper.append(input); this.shadowRoot.append(wrapper);
     };
@@ -116,6 +164,7 @@ class DonetickUserTodoEditor extends HTMLElement {
     field('Assigned user', 'user_id', [['', 'Select a user'], ...members.map(m => [m.user_id, m.display_name || m.username])], true);
     field('Title (optional)', 'title');
     field('Complete control', 'complete_control', [['checkbox','Checkbox (todo style)'],['button','Button']]);
+    field('Change due date control', 'due_date_control', [['menu','In row menu'],['button','Show button']]);
     field('Button style', 'button_style', [['outlined','Outlined'],['text','Text'],['filled','Filled']]);
     field('Button size', 'button_size', [['normal','Normal'],['compact','Compact'],['large','Large']]);
     field('Button shape', 'button_shape', [['rounded','Rounded'],['pill','Pill'],['square','Square']]);
