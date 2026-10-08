@@ -159,7 +159,9 @@ class DonetickUserTodoCard extends HTMLElement {
       .error { color: var(--error-color); } .empty { color: var(--secondary-text-color); }
       .action-panel { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:2px 0 6px; }
       .action-panel ha-form { flex:1; min-width:180px; --ha-space-6:8px; --time-input-flex:1; --ha-input-padding-bottom:0; --ha-input-required-marker:""; }
-      .action-panel ha-form[data-with-time="true"] { flex-basis:100%; }
+      .action-panel.date-panel { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; }
+      .date-panel ha-form { min-width:0; }
+      .date-panel .error { grid-column:1 / -1; }
       .panel-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; margin-inline-start:auto; }
       .action-panel input, .action-panel select { flex:1; min-width:125px; width:0; box-sizing:border-box; height:44px; padding:8px; color-scheme:var(--ha-color-scheme,light); background:var(--secondary-background-color); color:var(--primary-text-color); border:0; border-bottom:1px solid var(--secondary-text-color); border-radius:4px 4px 0 0; font:inherit; font-size:14px; }
       .action-panel button { flex-shrink:0; border-color:transparent; background:transparent; color:var(--primary-color); }
@@ -312,12 +314,13 @@ class DonetickUserTodoCard extends HTMLElement {
     };
     if (panel.kind === 'date') {
       if (customElements.get('ha-form')) {
+        form.classList.add('date-panel');
         const fields = document.createElement('ha-form'); fields.dataset.field = 'date-fields';
         fields.dataset.withTime = String(panel.showTime);
         fields.setAttribute('aria-label', 'Due date and time');
         fields.hass = this._hass; fields.disabled = busy;
         fields.computeLabel = schema => schema.name === 'date' ? 'Due date' : '';
-        fields.schema = [{name:'',type:'grid',column_min_width:'180px',schema:[
+        fields.schema = [{name:'',type:'grid',column_min_width:'150px',schema:[
           // Save validates the date below; omitting required avoids HA's empty hint row.
           {name:'date',selector:{date:{}}},
           ...(panel.showTime ? [{name:'time',required:true,selector:{time:{no_second:true}}}] : [])
