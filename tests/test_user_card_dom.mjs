@@ -73,7 +73,7 @@ click('Skip occurrence: Weekly');submit();await tick();
 assert.deepEqual(calls.pop(),['donetick','postpone_task',{task_id:1,config_entry_id:'entry'}]);
 assert.equal(root.querySelector('[role=status]'),null);
 click('Change due date: Weekly');
-assert.equal(root.querySelector('.save-action').textContent,'Save');
+assert.equal(root.querySelector('.save-action ha-icon').getAttribute('icon'),'mdi:content-save-outline');
 assert.equal(root.querySelector('.save-action').disabled,true);
 const callsBeforeUnchanged=calls.length;submit();await tick();assert.equal(calls.length,callsBeforeUnchanged);
 assert.equal(root.querySelectorAll('[role=dialog], [popover]').length,0);

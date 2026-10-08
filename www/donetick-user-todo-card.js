@@ -360,8 +360,11 @@ class DonetickUserTodoCard extends HTMLElement {
       }
     } else addText(form,'span','Move to the next scheduled date?', 'skip-prompt');
     save = document.createElement('button'); save.type = 'submit'; save.className = 'save-action';
-    save.textContent = panel.kind === 'skip' ? 'Skip' : 'Save';
+    const saveIcon = document.createElement('ha-icon');
+    saveIcon.setAttribute('icon', panel.kind === 'skip' ? 'mdi:skip-next-outline' : 'mdi:content-save-outline');
+    save.append(saveIcon);
     save.setAttribute('aria-label', panel.kind === 'date' ? 'Save due date' : panel.kind === 'assign' ? 'Save assignee' : 'Confirm skip');
+    save.title = save.getAttribute('aria-label');
     controls.append(save); updateSave();
     iconButton('Cancel','mdi:close', () => this.closePanel());
     form.append(controls);
