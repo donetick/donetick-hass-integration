@@ -178,6 +178,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         attributes["tasks"] = [
             {"task_id": task.id, "name": task.name, "assigned_to": task.assigned_to,
              "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
+             "is_recurring": bool(task.frequency_type) and task.frequency_type not in ("once", "no_repeat"),
              "can_postpone": task.frequency_type not in ("once", "no_repeat", "trigger", "always")}
             for task in tasks if task.is_active
         ]

@@ -21,6 +21,14 @@ assert.equal(root.querySelectorAll('input[type=checkbox]').length,2);
 assert.equal(root.querySelectorAll('.actions > button').length,3);
 assert.equal(root.querySelector('.row').firstElementChild.className,'complete-checkbox');
 assert.equal(root.querySelector('.row').lastElementChild.className,'actions');
+assert.equal(root.querySelectorAll('.due .recurring').length,1);
+assert.equal(root.querySelector('.recurring').getAttribute('icon'),'mdi:autorenew');
+assert.equal(root.querySelector('.recurring').getAttribute('aria-label'),'Recurring task');
+// Triggered recurrence has no skip action, but still needs a recurrence indicator.
+hass.states['todo.all'].attributes.tasks[1].is_recurring=true;card.hass=hass;
+assert.equal(root.querySelectorAll('.due .recurring').length,2);
+hass.states['todo.all'].attributes.tasks[1].is_recurring=false;card.hass=hass;
+assert.equal(root.querySelectorAll('.due .recurring').length,1);
 const savedTasks=hass.states['todo.all'].attributes.tasks;
 hass.states['todo.all'].attributes.tasks=[{task_id:4,assigned_to:1,name:'Past due',next_due_date:'2000-01-01T12:00:00Z'},{task_id:5,assigned_to:1,name:'Upcoming',next_due_date:'2100-01-01T12:00:00Z'},{task_id:6,assigned_to:1,name:'Undated'}];
 card.hass=hass;
