@@ -77,7 +77,7 @@ assert.equal(root.querySelector('.save-action ha-icon').getAttribute('icon'),'md
 assert.equal(root.querySelector('.save-action').disabled,true);
 const callsBeforeUnchanged=calls.length;submit();await tick();assert.equal(calls.length,callsBeforeUnchanged);
 assert.equal(root.querySelectorAll('[role=dialog], [popover]').length,0);
-assert.equal(root.querySelectorAll('.action-panel button').length,3);
+assert.equal(root.querySelectorAll('.action-panel button').length,2);
 assert.equal(root.querySelector('.action-panel').previousElementSibling.className,'row');
 assert.equal(root.querySelector('.action-panel ha-form').data.date,'2026-10-20');
 assert.equal(root.querySelector('.action-panel ha-form').schema[0].schema.length,1);

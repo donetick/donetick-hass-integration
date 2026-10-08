@@ -366,7 +366,6 @@ class DonetickUserTodoCard extends HTMLElement {
     save.setAttribute('aria-label', panel.kind === 'date' ? 'Save due date' : panel.kind === 'assign' ? 'Save assignee' : 'Confirm skip');
     save.title = save.getAttribute('aria-label');
     controls.append(save); updateSave();
-    iconButton('Cancel','mdi:close', () => this.closePanel());
     form.append(controls);
     if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
