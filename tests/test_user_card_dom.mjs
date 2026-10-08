@@ -3,7 +3,7 @@ const {Window} = await import(process.env.DOM_TEST_MODULE || 'happy-dom');
 const window = new Window();
 Object.assign(globalThis, {window, document: window.document, HTMLElement: window.HTMLElement,
   customElements: window.customElements, CustomEvent: window.CustomEvent});
-const {localDateTime, dueText, userTasks} = await import('../www/donetick-user-todo-card.js');
+const {localDateTime, dueText, userTasks, isOverdue} = await import('../www/donetick-user-todo-card.js');
 const calls=[]; let fail=false;
 const hass={locale:{language:'en'},states:{'todo.all':{state:'2',attributes:{config_entry_id:'entry',circle_members:[{user_id:1,display_name:'Torben'}],tasks:[
   {task_id:1,assigned_to:1,name:'Weekly',can_postpone:true,next_due_date:'2026-10-20T16:00:00Z'},
@@ -20,6 +20,19 @@ assert.equal(root.querySelectorAll('input[type=checkbox]').length,2);
 assert.equal(root.querySelectorAll('.actions > button').length,3);
 assert.equal(root.querySelector('.row').firstElementChild.className,'complete-checkbox');
 assert.equal(root.querySelector('.row').lastElementChild.className,'actions');
+const savedTasks=hass.states['todo.all'].attributes.tasks;
+hass.states['todo.all'].attributes.tasks=[{task_id:4,assigned_to:1,name:'Past due',next_due_date:'2000-01-01T12:00:00Z'},{task_id:5,assigned_to:1,name:'Upcoming',next_due_date:'2100-01-01T12:00:00Z'},{task_id:6,assigned_to:1,name:'Undated'}];
+card.hass=hass;
+assert.equal(root.querySelectorAll('.due.overdue').length,1);
+assert.equal(root.querySelector('.due.overdue').parentElement.querySelector('.name').textContent,'Past due');
+hass.states['todo.all'].attributes.tasks=savedTasks;card.hass=hass;
+const noon=new Date('2026-10-24T12:00:00+02:00');
+assert.equal(isOverdue('2026-10-24T09:00:00+02:00',noon),true);
+assert.equal(isOverdue('2026-10-24T18:00:00+02:00',noon),false);
+assert.equal(isOverdue('2026-10-24',noon),false);
+assert.equal(isOverdue('2026-10-23',noon),true);
+assert.equal(isOverdue(null,noon),false);
+assert.equal(isOverdue('invalid',noon),false);
 click('Skip occurrence: Weekly');assert.ok(root.querySelector('form'));assert.equal(calls.length,0);
 click('Skip occurrence: Weekly');assert.equal(root.querySelector('form'),null);
 click('Skip occurrence: Weekly');submit();await tick();

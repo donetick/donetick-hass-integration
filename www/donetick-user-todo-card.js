@@ -14,6 +14,13 @@ export function dueText(value, language, now = new Date(), timeFormat) {
   const time = date.toLocaleTimeString(language, {hour:'2-digit', minute:'2-digit', hour12:timeFormat === '12' ? true : timeFormat === '24' ? false : undefined});
   return `${label} · ${time}`;
 }
+export function isOverdue(value, now = new Date()) {
+  if (!value) return false;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const due = new Date(dateOnly ? `${value}T00:00:00` : value);
+  const cutoff = dateOnly ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : now;
+  return !isNaN(due) && due < cutoff;
+}
 export function actionData(state, task) {
   const data = {task_id: task.task_id, config_entry_id: state.attributes.config_entry_id};
   return data;
@@ -86,6 +93,7 @@ class DonetickUserTodoCard extends HTMLElement {
       .completed .name { text-decoration:line-through; color:var(--secondary-text-color); }
       .actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
       .task { flex: 1; min-width: 0; } .name { overflow-wrap: anywhere; } .due { color: var(--secondary-text-color); font-size: 12px; margin-top: 2px; }
+      .due.overdue { color:var(--warning-color); }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
       button:disabled, input:disabled { opacity: .5; cursor: default; }
       .complete-checkbox { width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
@@ -129,6 +137,7 @@ class DonetickUserTodoCard extends HTMLElement {
       addText(text, 'div', task.name, 'name');
       const due = task.next_due_date ? new Date(task.next_due_date) : null;
       const dueLabel = addText(text, 'div', dueText(task.next_due_date, this._hass.locale?.language, new Date(), this._hass.locale?.time_format), 'due');
+      if (!completed && isOverdue(task.next_due_date)) dueLabel.classList.add('overdue');
       if (due && !isNaN(due)) dueLabel.title = due.toLocaleString(this._hass.locale?.language, {dateStyle:'full',timeStyle:'short'});
       const actions = document.createElement('div'); actions.className = 'actions'; row.append(actions);
       for (const [label, complete] of [[this._config.complete_label || 'Complete', true], [this._config.postpone_label || 'Skip occurrence', false]]) {
