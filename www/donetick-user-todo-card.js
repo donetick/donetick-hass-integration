@@ -42,7 +42,7 @@ export function emptyMessage(config, userName) {
   let filter = {all:'All tasks',overdue:'Overdue',today:'Today',upcoming:'Upcoming'}[config.display_filter || 'all'];
   if (config.display_filter === 'upcoming') {
     const days = Number(config.upcoming_days ?? 7);
-    filter += days === 0 ? ' (from today, no day limit)' : days === 1 ? ' (today and tomorrow)' : ` (today through ${days} days ahead)`;
+    filter += days === 0 ? ' (no day limit)' : ` (${days} day${days === 1 ? '' : 's'} ahead)`;
   }
   return `No tasks for ${userName} · Filter: ${filter}`;
 }
@@ -258,8 +258,8 @@ const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',displ
 const EDITOR_HELP = {
   entity:'Choose All Tasks to make every circle user available. The card still shows only the selected user.',
   user_id:'Donetick user whose assigned tasks appear here. Completion is credited to the task’s current assignee.',
-  display_filter:'Today and Upcoming include tasks due earlier today. Upcoming starts today. Undated tasks appear only in All tasks.',
-  upcoming_days:'7 shows today through 7 days ahead; 0 removes the limit. The integration’s task window must also include those days.',
+  display_filter:'Today and Upcoming include tasks due earlier today. Undated tasks appear only in All tasks.',
+  upcoming_days:'Maximum days ahead; 0 removes the limit. The integration’s task window must also include those days.',
   title:'Leave empty to use the selected user’s name.',
   appearance_preset:'Choose a ready-made style. Applying a preset resets custom action icons, labels and colors.',
   complete_control:'Checkbox stays on the left; Button places completion beside the other actions on the right.',
@@ -348,7 +348,7 @@ class DonetickUserTodoEditor extends HTMLElement {
     const schema=[
       {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
       {...select('user_id',members.map(member=>[String(member.user_id),member.display_name || member.username || `User ${member.user_id}`])),required:true,disabled:!members.length},
-      select('display_filter',[['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming — from today']]),
+      select('display_filter',[['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming']]),
       ...(this._config.display_filter==='upcoming' ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : []),
       {name:'title',selector:{text:{}}},
       select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),

@@ -39,7 +39,7 @@ card.setConfig({entity:'todo.all',user_id:1,display_filter:'upcoming',upcoming_d
 assert.equal(root.querySelectorAll('.row').length,1);
 assert.equal(root.querySelector('.name').textContent,'Today only');
 hass.states['todo.all'].attributes.tasks=hass.states['todo.all'].attributes.tasks.filter(task=>task.task_id===5);card.hass=hass;
-assert.equal(root.querySelector('.empty').textContent,'No tasks for Torben · Filter: Upcoming (today through 3 days ahead)');
+assert.equal(root.querySelector('.empty').textContent,'No tasks for Torben · Filter: Upcoming (3 days ahead)');
 const editor=document.createElement('donetick-user-todo-editor');editor.setConfig({entity:'todo.all',user_id:1});editor.hass=hass;
 const nativeForm=editor.shadowRoot.querySelector('ha-form');
 assert.equal(nativeForm.data.display_filter,'all');

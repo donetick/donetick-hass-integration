@@ -40,6 +40,6 @@ assert.deepEqual(userTasks(windowState,1,'all',now,1).map(task=>task.task_id),[1
 console.log('Card user filtering and entry routing passed');
 assert.equal(emptyMessage({display_filter:'all'},'Torben'),'No tasks for Torben · Filter: All tasks');
 assert.equal(emptyMessage({display_filter:'today'},'Torben'),'No tasks for Torben · Filter: Today');
-assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:1},'Torben'),/today and tomorrow/);
+assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:1},'Torben'),/1 day ahead/);
 assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:0},'Torben'),/no day limit/);
-assert.match(emptyMessage({display_filter:'upcoming'},'Torben'),/today through 7 days ahead/);
+assert.match(emptyMessage({display_filter:'upcoming'},'Torben'),/7 days ahead/);
