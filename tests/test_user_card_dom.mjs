@@ -81,6 +81,11 @@ assert.equal(root.querySelector('.action-panel ha-form').schema[0].schema.length
 click('Change due date: Weekly');assert.equal(root.querySelector('form'),null);
 click('Change due date: Weekly');
 const dateFields=()=>root.querySelector('.action-panel ha-form');
+const callsBeforeInvalidDate=calls.length;
+dateFields().dispatchEvent(new CustomEvent('value-changed',{detail:{value:{date:'',time:dateFields().data.time}}}));
+submit();await tick();
+assert.match(root.querySelector('.action-panel .error').textContent,/valid date and time/);
+assert.equal(calls.length,callsBeforeInvalidDate);
 dateFields().dispatchEvent(new CustomEvent('value-changed',{detail:{value:{date:'2026-10-24',time:dateFields().data.time}}}));
 card.hass=hass;assert.equal(dateFields().data.date,'2026-10-24');
 click('Set time');assert.equal(dateFields().data.time,'18:00:00');

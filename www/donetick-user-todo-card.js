@@ -144,21 +144,23 @@ class DonetickUserTodoCard extends HTMLElement {
       .due { display:flex; align-items:center; gap:4px; }
       .due .recurring { --mdc-icon-size:14px; flex-shrink:0; }
       .due .assignee { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      ha-card button.task { display:block; border:0; border-radius:0; padding:0; min-width:0; min-height:44px; text-align:left; background:transparent; color:var(--primary-text-color); font:inherit; }
-      .task .name { display:block; }
+      ha-card button.task { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; border:0; border-radius:0; padding:0; min-width:0; min-height:44px; text-align:left; background:transparent; color:var(--primary-text-color); font:inherit; }
+      .task .name { display:block; line-height:20px; } .task .due { margin-top:0; line-height:16px; }
       .description { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; color:var(--secondary-text-color); margin:2px 0 8px; }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
       button:disabled, input:disabled { opacity: .5; cursor: default; }
       .complete-checkbox { width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
       input[type="checkbox"] { width:18px; height:18px; margin:0; accent-color:var(--primary-color); cursor:pointer; } button:focus-visible { outline: 2px solid var(--primary-color); }
-      button { display:inline-flex; justify-content:center; align-items:center; gap:6px; box-sizing:border-box; min-width:44px; min-height:44px; } ha-icon { --mdc-icon-size:20px; }
+      button { display:inline-flex; justify-content:center; align-items:center; gap:6px; box-sizing:border-box; min-width:44px; min-height:44px; } ha-icon { --mdc-icon-size:20px; display:inline-flex; align-items:center; justify-content:center; width:var(--mdc-icon-size); height:var(--mdc-icon-size); line-height:0; vertical-align:middle; }
       [data-style="text"] button { border-color:transparent; background:transparent; }
       [data-style="filled"] button { color:var(--text-primary-color); background:var(--primary-color); border-color:transparent; }
       [data-size="compact"] button { padding:5px 8px; font-size:12px; } [data-size="normal"] button { min-width:48px; min-height:48px; } [data-size="large"] button { min-width:52px; min-height:52px; padding:12px 16px; font-size:15px; }
       [data-shape="pill"] button { border-radius:24px; } [data-shape="square"] button { border-radius:0; }
       .error { color: var(--error-color); } .empty { color: var(--secondary-text-color); }
       .action-panel { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:2px 0 6px; }
-      .action-panel ha-form { flex:1; min-width:180px; --ha-space-6:8px; }
+      .action-panel ha-form { flex:1; min-width:180px; --ha-space-6:8px; --time-input-flex:1; --ha-input-padding-bottom:0; --ha-input-required-marker:""; }
+      .action-panel ha-form[data-with-time="true"] { flex-basis:100%; }
+      .panel-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; margin-inline-start:auto; }
       .action-panel input, .action-panel select { flex:1; min-width:125px; width:0; box-sizing:border-box; height:44px; padding:8px; color-scheme:var(--ha-color-scheme,light); background:var(--secondary-background-color); color:var(--primary-text-color); border:0; border-bottom:1px solid var(--secondary-text-color); border-radius:4px 4px 0 0; font:inherit; font-size:14px; }
       .action-panel button { flex-shrink:0; border-color:transparent; background:transparent; color:var(--primary-color); }
       .action-panel .error { flex-basis:100%; margin:0; font-size:12px; } .skip-prompt { flex:1; font-size:13px; color:var(--secondary-text-color); }
@@ -275,12 +277,13 @@ class DonetickUserTodoCard extends HTMLElement {
     }
     const busy = this._pending.has(task.task_id);
     const form = document.createElement('form'); form.className = 'action-panel'; row.after(form);
+    const controls = document.createElement('div'); controls.className = 'panel-actions';
     form.setAttribute('aria-label', `${panel.kind === 'date' ? 'Change due date' : panel.kind === 'assign' ? 'Reassign' : 'Skip occurrence'}: ${task.name}`);
     const iconButton = (label, icon, handler) => {
       const node=document.createElement('button'); node.type='button'; node.disabled=busy;
       node.title=label; node.setAttribute('aria-label',label); node.dataset.field=`control-${label}`;
       const glyph=document.createElement('ha-icon'); glyph.setAttribute('icon',icon); node.append(glyph);
-      if (handler) node.addEventListener('click',handler); form.append(node); return node;
+      if (handler) node.addEventListener('click',handler); controls.append(node); return node;
     };
     const field = (type, label, value, handler) => {
       const input=document.createElement('input'); input.type=type; input.required=true;
@@ -292,10 +295,13 @@ class DonetickUserTodoCard extends HTMLElement {
     if (panel.kind === 'date') {
       if (customElements.get('ha-form')) {
         const fields = document.createElement('ha-form'); fields.dataset.field = 'date-fields';
+        fields.dataset.withTime = String(panel.showTime);
+        fields.setAttribute('aria-label', 'Due date and time');
         fields.hass = this._hass; fields.disabled = busy;
-        fields.computeLabel = schema => schema.name === 'date' ? 'Due date' : 'Time';
-        fields.schema = [{name:'',type:'grid',column_min_width:'140px',schema:[
-          {name:'date',required:true,selector:{date:{}}},
+        fields.computeLabel = schema => schema.name === 'date' ? 'Due date' : '';
+        fields.schema = [{name:'',type:'grid',column_min_width:'180px',schema:[
+          // Save validates the date below; omitting required avoids HA's empty hint row.
+          {name:'date',selector:{date:{}}},
           ...(panel.showTime ? [{name:'time',required:true,selector:{time:{no_second:true}}}] : [])
         ]}];
         fields.data = {date:panel.date,time:panel.time};
@@ -337,6 +343,7 @@ class DonetickUserTodoCard extends HTMLElement {
     const save=iconButton(panel.kind === 'date' ? 'Save due date' : panel.kind === 'assign' ? 'Save assignee' : 'Confirm skip','mdi:check'); save.type='submit';
     if (panel.kind === 'assign' && !assignableMembers(this._hass.states[this._config.entity], task).some(member => member.user_id !== task.assigned_to)) save.disabled = true;
     iconButton('Cancel','mdi:close', () => this.closePanel());
+    form.append(controls);
     if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
     form.addEventListener('submit',event => {
