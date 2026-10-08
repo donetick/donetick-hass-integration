@@ -19,7 +19,8 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(root.querySelectorAll('.row').length, 2);
 assert.equal(root.querySelectorAll('input[type=checkbox]').length, 2);
 assert.equal(root.querySelectorAll('[aria-label^="Postpone:"]').length, 1);
-assert.equal(root.querySelectorAll('details').length, 2);
+assert.equal(root.querySelectorAll('details').length, 0);
+assert.equal(root.querySelectorAll('.task > .date-action').length, 2);
 root.querySelector('[aria-label="Postpone: Weekly"]').click(); await tick();
 assert.deepEqual(calls.pop(), ['donetick', 'postpone_task', {task_id: 1, config_entry_id: 'entry'}]);
 root.querySelector('[aria-label="Complete: Weekly"]').dispatchEvent(new window.Event('change')); await tick();
@@ -41,7 +42,7 @@ assert.match(root.querySelector('.error').textContent, /Permission denied/);
 assert.ok(root.querySelector('form')); // Keep the selected date available for retry.
 root.querySelector('form').dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape'}));
 assert.equal(root.querySelector('form'), null);
-card.setConfig({entity: 'todo.all', user_id: 1, due_date_control: 'button'});
+card.setConfig({entity: 'todo.all', user_id: 1, due_date_control: 'menu'}); // Legacy configs must also show the action.
 assert.equal(root.querySelectorAll('details').length, 0);
 assert.equal(root.querySelectorAll('[aria-label^="Change due date:"]').length, 2);
 console.log('Dynamic rows, next-occurrence action, manual date edits, timezone conversion and failure handling passed');
