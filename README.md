@@ -70,8 +70,9 @@ Select **All users** to combine their tasks. **Show assigned user** adds the ass
 name beside the due date in this view when the entity can contain multiple users.
 Single-user views omit the name. The setting depends on the view's scope, so it stays
 useful even when the current filter happens to match only one user's tasks.
-**Allow reassignment** enables a user-switch icon when a task has another eligible
-assignee. Tap it to choose a user, then confirm with the check icon; tap again to close.
+**Allow reassignment** enables a user-switch icon on each row.
+Tap it to choose a user, then confirm with the check icon; tap again to close.
+When no alternative assignee is available, it explains what to configure in Donetick.
 The picker includes only current circle members in that task's Donetick assignee list.
 Add eligible assignees in Donetick first if needed. This uses `donetick.update_task`
 with `assigned_to`, preserves recurrence, and refreshes all lists. A reassigned task

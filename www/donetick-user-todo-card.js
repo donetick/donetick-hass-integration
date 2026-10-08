@@ -217,7 +217,7 @@ class DonetickUserTodoCard extends HTMLElement {
       changeDate.dataset.action = 'date'; changeDate.dataset.taskId = task.task_id;
       changeDate.setAttribute('aria-expanded', String(this._panel?.taskId === task.task_id && this._panel.kind === 'date'));
       changeDate.addEventListener('click', () => this.togglePanel(task, 'date')); actions.append(changeDate);
-      if (this._config.show_reassign && assignableMembers(state, task).some(member => member.user_id !== task.assigned_to)) {
+      if (this._config.show_reassign) {
         const reassign = document.createElement('button'); reassign.type = 'button';
         const label = this._config.reassign_label || 'Reassign';
         if (this._config.button_content !== 'label') {
@@ -262,16 +262,26 @@ class DonetickUserTodoCard extends HTMLElement {
       const time=iconButton(panel.showTime ? 'Hide time' : 'Set time','mdi:clock-outline', () => { panel.showTime=!panel.showTime; this.render(); });
       time.setAttribute('aria-expanded',String(panel.showTime));
     } else if (panel.kind === 'assign') {
+      const state = this._hass.states[this._config.entity];
+      const members = assignableMembers(state, task);
+      const canReassign = members.some(member => member.user_id !== task.assigned_to);
+      if (!canReassign) {
+        addText(form, 'span', state.attributes.circle_members?.length < 2
+          ? 'Add another user to your Donetick circle to reassign tasks.'
+          : 'No other eligible users. Add assignees to this task in Donetick.', 'skip-prompt');
+      } else {
       const select = document.createElement('select'); select.required = true; select.disabled = busy;
       select.dataset.field = 'assignee'; select.setAttribute('aria-label', 'Assigned user');
       const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Choose a user'; placeholder.disabled = true; select.append(placeholder);
-      for (const member of assignableMembers(this._hass.states[this._config.entity], task)) {
+      for (const member of members) {
         const option = document.createElement('option'); option.value = String(member.user_id); option.textContent = member.display_name || member.username || `User ${member.user_id}`; select.append(option);
       }
       select.value = panel.assignedTo ? String(panel.assignedTo) : '';
       select.addEventListener('change', event => { panel.assignedTo = Number(event.target.value); }); form.append(select);
+      }
     } else addText(form,'span','Skip to the next occurrence?', 'skip-prompt');
     const save=iconButton(panel.kind === 'date' ? 'Save due date' : panel.kind === 'assign' ? 'Save assignee' : 'Confirm skip','mdi:check'); save.type='submit';
+    if (panel.kind === 'assign' && !assignableMembers(this._hass.states[this._config.entity], task).some(member => member.user_id !== task.assigned_to)) save.disabled = true;
     iconButton('Cancel','mdi:close', () => this.closePanel());
     if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
