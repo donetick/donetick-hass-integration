@@ -72,11 +72,18 @@ The card respects the integration's upcoming-task window. Set it to 0 to show al
 type: custom:donetick-user-todo-card
 entity: todo.all_tasks
 user_id: 1
+display_filter: all
 button_style: text
 button_size: compact
 button_shape: pill
 button_content: icon
 ```
+
+Choose **Display filter** in the card editor: **All tasks** (including undated), **Overdue**
+(due date/time has passed), **Today** (due on the current local date), or **Upcoming**
+(from tomorrow onward). Today can include tasks already overdue earlier today.
+Each card stores its own filter. These filters use the tasks supplied by the integration;
+set its upcoming-task window to 0 if you want every future task available to the card.
 
 Complete fetches the current task from Donetick and attributes completion to its actual
 assigned user, even if someone else clicks the button. Unassigned tasks cannot be completed

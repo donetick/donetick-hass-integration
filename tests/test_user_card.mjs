@@ -10,4 +10,20 @@ assert.deepEqual(userTasks(state, '2').map(t => t.task_id), [1]);
 assert.deepEqual(userTasks(undefined, 2), []);
 assert.deepEqual(actionData(state, state.attributes.tasks[0]), {task_id: 1, config_entry_id: 'entry'});
 assert.equal('days' in actionData(state, state.attributes.tasks[0]), false);
+const now = new Date('2026-10-24T12:00:00+02:00');
+const filterState = {attributes:{tasks:[
+  {task_id:1,assigned_to:1,next_due_date:'2026-10-23'},
+  {task_id:2,assigned_to:1,next_due_date:'2026-10-24T09:00:00+02:00'},
+  {task_id:3,assigned_to:1,next_due_date:'2026-10-24T18:00:00+02:00'},
+  {task_id:4,assigned_to:1,next_due_date:'2026-10-25'},
+  {task_id:5,assigned_to:1},
+  {task_id:6,assigned_to:2,next_due_date:'2026-10-23'},
+  {task_id:7,assigned_to:1,next_due_date:'invalid'}
+]}};
+const ids = filter => userTasks(filterState,1,filter,now).map(task=>task.task_id);
+assert.deepEqual(ids('all'),[1,2,3,4,5,7]);
+assert.deepEqual(ids('overdue'),[1,2]);
+assert.deepEqual(ids('today'),[2,3]);
+assert.deepEqual(ids('upcoming'),[4]);
+assert.deepEqual(userTasks(filterState,1,'today',new Date('2026-10-25T12:00:00+01:00')).map(task=>task.task_id),[4]);
 console.log('Card user filtering and entry routing passed');

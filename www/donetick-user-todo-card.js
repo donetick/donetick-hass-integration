@@ -1,5 +1,15 @@
-export function userTasks(state, userId) {
+export function userTasks(state, userId, displayFilter = 'all', now = new Date()) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   return (state?.attributes?.tasks || []).filter(task => task.assigned_to === Number(userId))
+    .filter(task => {
+      if (displayFilter === 'all') return true;
+      if (displayFilter === 'overdue') return isOverdue(task.next_due_date, now);
+      if (!task.next_due_date) return false;
+      const value = task.next_due_date;
+      const due = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+      return displayFilter === 'today' ? due >= today && due < tomorrow : displayFilter === 'upcoming' && due >= tomorrow;
+    })
     .sort((a, b) => (Date.parse(a.next_due_date) || Infinity) - (Date.parse(b.next_due_date) || Infinity) || a.task_id - b.task_id);
 }
 export function dueText(value, language, now = new Date(), timeFormat) {
@@ -52,12 +62,13 @@ class DonetickUserTodoCard extends HTMLElement {
   setConfig(config) {
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
     if (!Number.isInteger(Number(config.user_id)) || Number(config.user_id) < 1) throw new Error('Choose a Donetick user');
-    this._config = {button_style: 'text', button_size: 'compact', button_shape: 'rounded',
+    if (config.display_filter && !['all','overdue','today','upcoming'].includes(config.display_filter)) throw new Error('Choose a valid display filter');
+    this._config = {display_filter:'all', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
       button_content: 'icon', complete_control: 'checkbox', ...config, user_id: Number(config.user_id)};
     this.render();
   }
   set hass(hass) { this._hass = hass; this.render(); }
-  getCardSize() { return 2 + userTasks(this._hass?.states[this._config?.entity], this._config?.user_id).length; }
+  getCardSize() { return 2 + userTasks(this._hass?.states[this._config?.entity], this._config?.user_id, this._config?.display_filter).length; }
   async act(task, complete, dueDate) {
     if (this._pending.has(task.task_id)) return;
     const state = this._hass.states[this._config.entity];
@@ -124,9 +135,9 @@ class DonetickUserTodoCard extends HTMLElement {
     addText(card, 'h2', this._config.title || `${member?.display_name || 'User ' + this._config.user_id} — Tasks`);
     if (this._error && !this._panel) addText(card, 'p', this._error, 'error');
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
-    const tasks = userTasks(state, this._config.user_id);
-    for (const task of this._completed.values()) if (!tasks.some(item => item.task_id === task.task_id)) tasks.push(task);
-    if (!tasks.length) addText(card, 'p', 'No tasks for this user', 'empty');
+    const tasks = userTasks(state, this._config.user_id, this._config.display_filter);
+    for (const task of this._completed.values()) if (!tasks.some(item => item.task_id === task.task_id) && userTasks({attributes:{tasks:[task]}}, this._config.user_id, this._config.display_filter).length) tasks.push(task);
+    if (!tasks.length) addText(card, 'p', this._config.display_filter === 'all' ? 'No tasks for this user' : 'No tasks match this filter', 'empty');
     for (const task of tasks) {
       const row = document.createElement('div'); row.className = 'row'; card.append(row);
       const completed = this._completed.has(task.task_id);
@@ -234,16 +245,18 @@ class DonetickUserTodoEditor extends HTMLElement {
     const field = (label, key, options, numeric=false) => {
       const wrapper = document.createElement('label'); wrapper.append(document.createTextNode(label));
       const input = document.createElement(options ? 'select' : 'input');
+      input.dataset.configKey = key;
       if (options) { for (const [value, text] of options) { const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option); } }
       else input.type = numeric ? 'number' : 'text';
       if (numeric) { input.min = '1'; input.max = '365'; }
-      input.value = this._config[key] ?? ({complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
+      input.value = this._config[key] ?? ({display_filter:'all',complete_control:'checkbox',button_style:'text',button_size:'compact',button_shape:'rounded',button_content:'icon'}[key] || '');
       input.addEventListener('change', () => this.change(key, numeric ? Number(input.value) : input.value));
       wrapper.append(input); this.shadowRoot.append(wrapper);
     };
     field('Donetick list', 'entity', [['', 'Select a list'], ...Object.entries(this._hass.states).filter(([id,s]) => id.startsWith('todo.') && s.attributes.circle_members).map(([id,s]) => [id,s.attributes.friendly_name || id])]);
     const members = this._hass.states[this._config.entity]?.attributes.circle_members || [];
     field('Assigned user', 'user_id', [['', 'Select a user'], ...members.map(m => [m.user_id, m.display_name || m.username])], true);
+    field('Display filter', 'display_filter', [['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming (from tomorrow)']]);
     field('Title (optional)', 'title');
     field('Complete control', 'complete_control', [['checkbox','Checkbox (todo style)'],['button','Button']]);
     field('Button style', 'button_style', [['outlined','Outlined'],['text','Text'],['filled','Filled']]);
