@@ -71,7 +71,7 @@ name beside the due date in this view when the entity can contain multiple users
 Single-user views omit the name. The setting depends on the view's scope, so it stays
 useful even when the current filter happens to match only one user's tasks.
 **Allow reassignment** enables a user-switch icon on each row.
-Tap it to choose a user, then confirm with the check icon; tap again to close.
+Tap it to choose a user, then confirm with **Save**; tap again to close.
 When no alternative assignee is available, it explains what to configure in Donetick.
 The picker includes only current circle members in that task's Donetick assignee list.
 Add eligible assignees in Donetick first if needed. This uses `donetick.update_task`
@@ -119,7 +119,8 @@ and show errors in the card.
 
 Each row shows a **Change due date** calendar-edit icon beside the other actions, including
 for one-off tasks. Tap to open a slim inline editor below that row, or tap again to close.
-Choose a date, then tap the check icon to save. The clock icon toggles the optional time
+Choose a date, then tap **Save**. Save is enabled only for a valid changed date or time.
+The clock icon toggles the optional time
 field; the close icon cancels. The editor stays inline without an extra task heading.
 The inline editor uses HA's native date and time selectors, including its standard
 calendar dialog and locale-aware time fields. Browser inputs provide a fallback if

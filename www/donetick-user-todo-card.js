@@ -278,6 +278,19 @@ class DonetickUserTodoCard extends HTMLElement {
     const busy = this._pending.has(task.task_id);
     const form = document.createElement('form'); form.className = 'action-panel'; row.after(form);
     const controls = document.createElement('div'); controls.className = 'panel-actions';
+    const draftDate = () => {
+      const value = `${panel.date}T${panel.time}`;
+      const date = new Date(value);
+      return !isNaN(date) && localDateTime(date) === (value.length === 16 ? value + ':00' : value) ? date : null;
+    };
+    const changed = () => panel.kind === 'skip' || (panel.kind === 'assign'
+      ? panel.assignedTo !== task.assigned_to
+      : draftDate() && (!task.next_due_date || localDateTime(draftDate()) !== localDateTime(task.next_due_date)));
+    let save;
+    const updateSave = () => {
+      if (!save) return;
+      save.disabled = busy || !changed() || (panel.kind === 'assign' && !assignableMembers(this._hass.states[this._config.entity], task).some(member => member.user_id === panel.assignedTo));
+    };
     form.setAttribute('aria-label', `${panel.kind === 'date' ? 'Change due date' : panel.kind === 'assign' ? 'Reassign' : 'Skip occurrence'}: ${task.name}`);
     const iconButton = (label, icon, handler) => {
       const node=document.createElement('button'); node.type='button'; node.disabled=busy;
@@ -310,13 +323,14 @@ class DonetickUserTodoCard extends HTMLElement {
           const values = event.detail.value;
           if ('date' in values) panel.date = values.date || '';
           if ('time' in values) panel.time = values.time || '';
+          updateSave();
           if (!fields.isConnected) this.render();
         });
         form.append(fields);
       } else {
-      field('date','Due date',panel.date,event => { panel.date=event.target.value; });
+      field('date','Due date',panel.date,event => { panel.date=event.target.value; updateSave(); });
       if (panel.showTime) {
-        const input=field('time',`Time (${Intl.DateTimeFormat().resolvedOptions().timeZone})`,panel.time,event => { panel.time=event.target.value; }); input.step='1';
+        const input=field('time',`Time (${Intl.DateTimeFormat().resolvedOptions().timeZone})`,panel.time,event => { panel.time=event.target.value; updateSave(); }); input.step='1';
       }
       }
       const time=iconButton(panel.showTime ? 'Hide time' : 'Set time','mdi:clock-outline', () => { panel.showTime=!panel.showTime; this.render(); });
@@ -337,11 +351,13 @@ class DonetickUserTodoCard extends HTMLElement {
         const option = document.createElement('option'); option.value = String(member.user_id); option.textContent = member.display_name || member.username || `User ${member.user_id}`; select.append(option);
       }
       select.value = panel.assignedTo ? String(panel.assignedTo) : '';
-      select.addEventListener('change', event => { panel.assignedTo = Number(event.target.value); }); form.append(select);
+      select.addEventListener('change', event => { panel.assignedTo = Number(event.target.value); updateSave(); }); form.append(select);
       }
-    } else addText(form,'span','Skip to the next occurrence?', 'skip-prompt');
-    const save=iconButton(panel.kind === 'date' ? 'Save due date' : panel.kind === 'assign' ? 'Save assignee' : 'Confirm skip','mdi:check'); save.type='submit';
-    if (panel.kind === 'assign' && !assignableMembers(this._hass.states[this._config.entity], task).some(member => member.user_id !== task.assigned_to)) save.disabled = true;
+    } else addText(form,'span','Move to the next scheduled date?', 'skip-prompt');
+    save = document.createElement('button'); save.type = 'submit'; save.className = 'save-action';
+    save.textContent = panel.kind === 'skip' ? 'Skip' : 'Save';
+    save.setAttribute('aria-label', panel.kind === 'date' ? 'Save due date' : panel.kind === 'assign' ? 'Save assignee' : 'Confirm skip');
+    controls.append(save); updateSave();
     iconButton('Cancel','mdi:close', () => this.closePanel());
     form.append(controls);
     if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
@@ -351,11 +367,12 @@ class DonetickUserTodoCard extends HTMLElement {
       if (panel.kind === 'skip') { this.act(task,false); return; }
       if (panel.kind === 'assign') {
         if (!assignableMembers(this._hass.states[this._config.entity], task).some(member => member.user_id === panel.assignedTo)) { this._error = 'Choose an eligible assignee'; this.render(); return; }
-        if (panel.assignedTo === task.assigned_to) { this.closePanel(); return; }
+        if (!changed()) return;
         this.act(task, false, undefined, panel.assignedTo); return;
       }
-      const value=`${panel.date}T${panel.time}`; const date=new Date(value);
-      if (isNaN(date) || localDateTime(date) !== (value.length === 16 ? value+':00' : value)) { this._error='Choose a valid date and time'; this.render(); return; }
+      const date = draftDate();
+      if (!date) { this._error='Choose a valid date and time'; this.render(); return; }
+      if (!changed()) return;
       this.act(task,false,date.toISOString());
     });
   }
