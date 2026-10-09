@@ -22,6 +22,9 @@ assert.ok(actions()[0].schema[0].selector.icon);
 assert.ok(actions()[0].schema[2].selector.ui_color);
 let latest;editor.addEventListener('config-changed',event=>{latest=event.detail.config;});
 const update=values=>form.dispatchEvent(new CustomEvent('value-changed',{detail:{value:{...form.data,...values}}}));
+assert.equal(form.data.sort_by,'due_date');
+assert.deepEqual(form.schema.find(field=>field.name==='sort_by').selector.select.options.map(option=>option.value),['due_date','priority','name']);
+update({sort_by:'priority'});assert.equal(latest.sort_by,'priority');
 assert.equal(form.schema.some(field=>field.name==='upcoming_days'),false);
 update({display_filter:'upcoming'});
 assert.equal(form.data.upcoming_days,7);
@@ -39,6 +42,7 @@ update({user_id:'2',show_reassign:true});assert.equal(form.schema.some(field=>fi
 assert.ok(actions().find(group=>group.name==='reassign'));
 assert.equal(latest.button_style,undefined); // Editing a user must not persist every displayed default.
 update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');
+assert.equal(latest.sort_by,'priority');
 update({complete_control:'button'});assert.equal(form.data.appearance_preset,'custom');assert.ok(actions().find(group=>group.name==='complete'));
 update({postpone_color:'red',postpone_icon:'mdi:skip-next'});assert.equal(latest.postpone_color,'red');
 update({appearance_preset:'todo'});assert.equal(latest.complete_control,'checkbox');assert.equal(latest.postpone_color,undefined);assert.equal(latest.postpone_icon,undefined);assert.equal(latest.title,'My tasks');

@@ -10,6 +10,19 @@ assert.deepEqual(userTasks(state, '2').map(t => t.task_id), [1]);
 assert.deepEqual(userTasks(state, 'all').map(t => t.task_id), [1,2,3]);
 assert.equal(emptyMessage({user_id:'all',display_filter:'today'}),'No tasks for all users · Filter: Today');
 assert.deepEqual(userTasks(undefined, 2), []);
+const sortingState={attributes:{tasks:[
+  {task_id:1,assigned_to:1,name:'Zeta',priority:1,next_due_date:'2026-10-20'},
+  {task_id:2,assigned_to:1,name:'Alpha 10',priority:4,next_due_date:'2026-10-23'},
+  {task_id:3,assigned_to:1,name:'alpha 2',priority:4,next_due_date:'2026-10-22'},
+  {task_id:4,assigned_to:1,name:'Beta'},
+  {task_id:5,assigned_to:1,name:'Éclair',priority:2,next_due_date:'2026-10-21'},
+  {task_id:6,assigned_to:1,name:'Bravo',priority:4}
+]}};
+const sortedIds=sort=>userTasks(sortingState,1,'all',new Date(),7,sort,'en').map(task=>task.task_id);
+assert.deepEqual(sortedIds('due_date'),[1,5,3,2,4,6]);
+assert.deepEqual(sortedIds('priority'),[3,2,6,5,1,4]);
+assert.deepEqual(sortedIds('name'),[3,2,4,6,5,1]);
+assert.deepEqual(sortingState.attributes.tasks.map(task=>task.task_id),[1,2,3,4,5,6]);
 assert.deepEqual(actionData(state, state.attributes.tasks[0]), {task_id: 1, config_entry_id: 'entry'});
 assert.equal('days' in actionData(state, state.attributes.tasks[0]), false);
 const now = new Date('2026-10-24T12:00:00+02:00');

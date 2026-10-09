@@ -1,4 +1,10 @@
-export function userTasks(state, userId, displayFilter = 'all', now = new Date(), upcomingDays = 7) {
+function compareTasks(a, b, sortBy, language) {
+  const timestamp = value => Number.isFinite(Date.parse(value)) ? Date.parse(value) : Infinity;
+  const primary = sortBy === 'priority' ? (Number(b.priority) || 0) - (Number(a.priority) || 0)
+    : sortBy === 'name' ? (a.name || '').localeCompare(b.name || '', language, {sensitivity:'base',numeric:true}) : 0;
+  return primary || timestamp(a.next_due_date) - timestamp(b.next_due_date) || a.task_id - b.task_id;
+}
+export function userTasks(state, userId, displayFilter = 'all', now = new Date(), upcomingDays = 7, sortBy = 'due_date', language) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const upcomingEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(upcomingDays) + 1);
@@ -11,7 +17,7 @@ export function userTasks(state, userId, displayFilter = 'all', now = new Date()
       const due = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
       return displayFilter === 'today' ? due >= today && due < tomorrow : displayFilter === 'upcoming' && due >= today && (Number(upcomingDays) === 0 || due < upcomingEnd);
     })
-    .sort((a, b) => (Date.parse(a.next_due_date) || Infinity) - (Date.parse(b.next_due_date) || Infinity) || a.task_id - b.task_id);
+    .sort((a, b) => compareTasks(a, b, sortBy, language));
 }
 export function dueText(value, language, now = new Date(), timeFormat) {
   const dateOnly = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -89,8 +95,9 @@ class DonetickUserTodoCard extends HTMLElement {
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
     if (config.user_id !== 'all' && (!Number.isInteger(Number(config.user_id)) || Number(config.user_id) < 1)) throw new Error('Choose a Donetick user');
     if (config.display_filter && !['all','overdue','today','upcoming'].includes(config.display_filter)) throw new Error('Choose a valid display filter');
+    if (config.sort_by && !['due_date','priority','name'].includes(config.sort_by)) throw new Error('Choose a valid sort order');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
-    this._config = {display_filter:'all', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
+    this._config = {display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
       button_content: 'icon', complete_control: 'checkbox', show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, user_id: config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:Number(config.upcoming_days ?? 7)};
     if (this._panel && this._panel.kind !== 'details' && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
     this.render();
@@ -145,7 +152,8 @@ class DonetickUserTodoCard extends HTMLElement {
       .due .recurring { --mdc-icon-size:14px; flex-shrink:0; }
       .due .assignee { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       ha-card button.task, ha-card div.task { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; border:0; border-radius:0; padding:0; min-width:0; min-height:44px; text-align:left; background:transparent; color:var(--primary-text-color); font:inherit; }
-      .task .name { display:block; line-height:20px; } .task .due { margin-top:0; line-height:16px; }
+      .task .name { display:flex; align-items:center; gap:4px; line-height:20px; } .task .due { margin-top:0; line-height:16px; }
+      .description-indicator { --mdc-icon-size:16px; flex-shrink:0; color:var(--secondary-text-color); }
       .description { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; color:var(--secondary-text-color); margin:2px 0 8px; }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
       button:disabled, input:disabled { opacity: .5; cursor: default; }
@@ -176,8 +184,9 @@ class DonetickUserTodoCard extends HTMLElement {
     addText(card, 'h2', this._config.title || (this._config.user_id === 'all' ? 'All users — Tasks' : `${member?.display_name || 'User ' + this._config.user_id} — Tasks`));
     if (this._error && !this._panel) addText(card, 'p', this._error, 'error');
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
-    const tasks = userTasks(state, this._config.user_id, this._config.display_filter, new Date(), this._config.upcoming_days);
+    const tasks = userTasks(state, this._config.user_id, this._config.display_filter, new Date(), this._config.upcoming_days, this._config.sort_by, this._hass.locale?.language);
     for (const task of this._completed.values()) if (!tasks.some(item => item.task_id === task.task_id) && userTasks({attributes:{tasks:[task]}}, this._config.user_id, this._config.display_filter, new Date(), this._config.upcoming_days).length) tasks.push(task);
+    tasks.sort((a,b) => compareTasks(a,b,this._config.sort_by,this._hass.locale?.language));
     if (!tasks.length) addText(card, 'p', emptyMessage(this._config, member?.display_name || member?.username || `User ${this._config.user_id}`), 'empty');
     for (const task of tasks) {
       const row = document.createElement('div'); row.className = 'row'; card.append(row);
@@ -203,7 +212,12 @@ class DonetickUserTodoCard extends HTMLElement {
       text.addEventListener('click', () => this.togglePanel(task, 'details'));
       text.addEventListener('keydown', event => { if (event.key === 'Escape' && this._panel?.kind === 'details') { event.stopPropagation(); this.closePanel(); } });
       }
-      addText(text, 'span', task.name, 'name');
+      const name = addText(text, 'span', task.name, 'name');
+      if (hasDescription) {
+        const indicator = document.createElement('ha-icon'); indicator.className = 'description-indicator';
+        indicator.setAttribute('icon', this._panel?.taskId === task.task_id && this._panel.kind === 'details' ? 'mdi:chevron-up' : 'mdi:chevron-down');
+        indicator.setAttribute('aria-hidden', 'true'); name.append(indicator);
+      }
       const due = task.next_due_date ? new Date(task.next_due_date) : null;
       const dueLabel = addText(text, 'span', dueText(task.next_due_date, this._hass.locale?.language, new Date(), this._hass.locale?.time_format), 'due');
       if (!completed && isOverdue(task.next_due_date)) dueLabel.classList.add('overdue');
@@ -388,7 +402,7 @@ class DonetickUserTodoCard extends HTMLElement {
   }
 }
 const EDITOR_DEFAULTS = {
-  display_filter:'all', upcoming_days:7, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
+  display_filter:'all', sort_by:'due_date', upcoming_days:7, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
   due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
   due_date_icon:'mdi:calendar-edit', reassign_label:'Reassign', reassign_icon:'mdi:account-switch-outline', complete_color:'primary', postpone_color:'primary', due_date_color:'primary', reassign_color:'primary'
@@ -410,6 +424,7 @@ const EDITOR_HELP = {
   show_postpone:'Show Skip occurrence for tasks with a recurring schedule.',
   show_due_date:'Show the action to choose a due date manually, including for one-off tasks.',
   display_filter:'Today and Upcoming include tasks due earlier today. Undated tasks appear only in All tasks.',
+  sort_by:'Due date: earliest first, undated last. Priority: urgent first, then due date. Name: A–Z using your HA language.',
   upcoming_days:'Maximum days ahead; 0 removes the limit. The integration’s task window must also include those days.',
   title:'Leave empty to use the selected user’s name.',
   appearance_preset:'Choose a ready-made style. Applying a preset resets custom action icons, labels and colors.',
@@ -481,7 +496,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       this.shadowRoot.innerHTML='<style>:host{display:block}ha-form{display:block}ha-alert{display:block;margin-bottom:16px}ha-alert[hidden]{display:none}</style>';
       this._warning=document.createElement('ha-alert');this._warning.setAttribute('alert-type','info');this.shadowRoot.append(this._warning);
       this._form=document.createElement('ha-form');this.shadowRoot.append(this._form);
-      this._form.computeLabel=schema=>schema.title || {show_assignee:'Show assigned user',show_complete:'Complete task',show_postpone:'Skip occurrence',show_due_date:'Change due date',show_reassign:'Reassign task'}[schema.name] || EDITOR_LABELS[schema.name] || schema.name;
+      this._form.computeLabel=schema=>schema.title || {sort_by:'Sort tasks by',show_assignee:'Show assigned user',show_complete:'Complete task',show_postpone:'Skip occurrence',show_due_date:'Change due date',show_reassign:'Reassign task'}[schema.name] || EDITOR_LABELS[schema.name] || schema.name;
       this._form.computeHelper=schema=>EDITOR_HELP[schema.name] || (schema.name.endsWith('_color') ? 'Theme color. Used for the icon/text, or the background of filled buttons.' : schema.name.endsWith('_icon') ? 'Choose an icon using HA’s searchable icon picker.' : schema.name.endsWith('_label') ? 'Also used in tooltips and accessibility labels, even with icons only.' : undefined);
       this._form.addEventListener('value-changed',event=>this.formChanged(event));
     }
@@ -502,6 +517,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       ...(this._config.user_id === 'all' && !this._hass.states[this._config.entity]?.attributes.donetick_user_id && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
       {...group('visible_actions','Actions to show',['show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))),expanded:true},
       select('display_filter',[['all','All tasks'],['overdue','Overdue'],['today','Today'],['upcoming','Upcoming']]),
+      select('sort_by',[['due_date','Due date — earliest first'],['priority','Priority — highest first'],['name','Name — A–Z']]),
       ...(this._config.display_filter==='upcoming' ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : []),
       {name:'title',selector:{text:{}}},
       select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),

@@ -102,6 +102,10 @@ Choose **Display filter** in the card editor: **All tasks** (including undated),
 (from today onward). Today and Upcoming can include tasks already overdue earlier today.
 Each card stores its own filter. Empty cards show the selected user, active filter and
 Upcoming day limit so you can see which settings to adjust.
+**Sort tasks by** offers earliest due date (the default, with undated tasks last),
+highest priority (Urgent through Low, then unspecified), or alphabetical name using
+your HA language. Priority ties use due date. YAML supports `sort_by: due_date`,
+`sort_by: priority`, and `sort_by: name`. Card visibility remains controlled by HA.
 When Upcoming is selected, **Days ahead** limits the window (default 7; 0 means unlimited).
 For example, 3 includes today through the third day from today, including the whole
 last day. Set `upcoming_days: 3` in YAML or use the card editor's number field.
@@ -127,7 +131,9 @@ The inline editor uses HA's native date and time selectors, including its standa
 calendar dialog and locale-aware time fields. Browser inputs provide a fallback if
 HA's controls cannot be loaded. Tap the task name or due text to expand its description
 below the row; tap again to collapse it. Descriptions preserve line breaks and display
-as plain text. Tasks without a description are plain text and do not open a panel.
+as plain text. A subtle chevron beside the name indicates an available description
+and points upward while expanded. Tasks without a description are plain text and
+do not open a panel.
 The current time is preserved unless edited with Set time; undated tasks default to 09:00.
 Only Save changes the task. Tapping the original action, Escape or tapping outside dismisses the editor.
 This uses `donetick.update_task` without skipping an occurrence or changing recurrence.
