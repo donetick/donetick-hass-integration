@@ -4,7 +4,14 @@ const window = new Window();
 Object.assign(globalThis, {window, document: window.document, HTMLElement: window.HTMLElement,
   customElements: window.customElements, CustomEvent: window.CustomEvent});
 customElements.define('ha-form',class extends HTMLElement {});
-const {localDateTime, dueText, userTasks, isOverdue} = await import('../www/donetick-user-todo-card.js');
+const {localDateTime, dueText, userTasks, isOverdue, descriptionText} = await import('../www/donetick-user-todo-card.js');
+assert.equal(descriptionText('<p>TEST DESCRIPTION</p>'),'TEST DESCRIPTION');
+assert.equal(descriptionText('<p>First &amp; second</p><p>Next<br>line</p>'),'First & second\n\nNext\nline');
+assert.equal(descriptionText('<ul><li>One</li><li>Two</li></ul>'),'- One\n- Two');
+assert.equal(descriptionText('Plain text\nnext line'),'Plain text\nnext line');
+assert.equal(descriptionText('<p><br></p><p>&nbsp;</p>'),'');
+assert.equal(descriptionText('<script>alert(1)</script><style>body{display:none}</style><p onclick="alert(1)">Safe<img src="bad" onerror="alert(1)"></p>'),'Safe');
+assert.equal(descriptionText('<p>&lt;script&gt;literal&lt;/script&gt;</p>'),'<script>literal</script>');
 const calls=[]; let fail=false;
 const hass={locale:{language:'en'},states:{'todo.all':{state:'2',attributes:{config_entry_id:'entry',circle_members:[{user_id:1,display_name:'Torben'}],tasks:[
   {task_id:1,assigned_to:1,name:'Weekly',description:'First line\n<script>plain text</script>',can_postpone:true,next_due_date:'2026-10-20T16:00:00Z'},
@@ -178,7 +185,7 @@ assert.ok(root.querySelector('form'));
 card.setConfig({entity:'todo.all',user_id:'all',show_due_date:false});assert.equal(root.querySelector('form'),null);
 click('Show description: Weekly');
 assert.equal(root.querySelector('.description-indicator').getAttribute('icon'),'mdi:chevron-up');
-assert.equal(root.querySelector('.description').textContent,'First line\n<script>plain text</script>');
+assert.equal(root.querySelector('.description').textContent,'First line');
 assert.equal(root.querySelector('.description script'),null);
 assert.equal(root.querySelector('[aria-label="Show description: Weekly"]').getAttribute('aria-expanded'),'true');
 click('Show description: Weekly');assert.equal(root.querySelector('.description'),null);
@@ -186,7 +193,7 @@ assert.equal(root.querySelector('.description-indicator').getAttribute('icon'),'
 assert.equal(root.querySelector('[aria-label="Show description: One-off"]'),null);
 const oneOffText=[...root.querySelectorAll('.task')].find(node=>node.querySelector('.name').textContent==='One-off');
 assert.equal(oneOffText.tagName,'DIV');oneOffText.click();assert.equal(root.querySelector('.description'),null);
-hass.states['todo.all'].attributes.tasks[1].description='  \n  ';card.hass=hass;
+hass.states['todo.all'].attributes.tasks[1].description='<p><br></p>';card.hass=hass;
 assert.equal(root.querySelector('[aria-label="Show description: One-off"]'),null);
 click('Reassign: Weekly');assert.equal(root.querySelector('.description'),null);
 click('Show description: Weekly');assert.equal(root.querySelector('form'),null);

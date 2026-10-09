@@ -65,6 +65,25 @@ export function localDateTime(value) {
   const pad = value => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
+export function descriptionText(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  // Template contents are inert and never attached to the page. Only text is rendered.
+  const template = document.createElement('template'); template.innerHTML = value;
+  const omitted = new Set(['SCRIPT','STYLE','NOSCRIPT','IFRAME','OBJECT','EMBED','SVG','MATH','HEAD','TEMPLATE']);
+  const blocks = new Set(['P','DIV','SECTION','ARTICLE','BLOCKQUOTE','PRE','H1','H2','H3','H4','H5','H6']);
+  const text = node => {
+    if (node.nodeType === 3) return node.nodeValue || '';
+    if (node.nodeType !== 1 || omitted.has(node.tagName)) return '';
+    if (node.tagName === 'BR') return '\n';
+    const content = [...node.childNodes].map(text).join('');
+    if (node.tagName === 'LI') return `- ${content.trim()}\n`;
+    if (blocks.has(node.tagName) || ['UL','OL','TR'].includes(node.tagName)) return `\n${content}\n`;
+    if (['TD','TH'].includes(node.tagName)) return `${content}\t`;
+    return content;
+  };
+  return [...template.content.childNodes].map(text).join('').replace(/\u00a0/g,' ')
+    .replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
 class DonetickUserTodoCard extends HTMLElement {
   static getConfigElement() { return document.createElement('donetick-user-todo-editor'); }
   static getStubConfig(hass) {
@@ -200,7 +219,7 @@ class DonetickUserTodoCard extends HTMLElement {
         checkbox.title = `Complete: ${task.name}`;
         checkbox.addEventListener('change', () => this.act(task, true)); target.append(checkbox);
       }
-      const hasDescription = !!task.description?.trim();
+      const hasDescription = !!descriptionText(task.description);
       const text = document.createElement(hasDescription ? 'button' : 'div'); text.className = 'task'; row.append(text);
       if (hasDescription) {
       text.type = 'button';
@@ -290,10 +309,11 @@ class DonetickUserTodoCard extends HTMLElement {
   renderPanel(row, task, addText) {
     const panel = this._panel;
     if (panel.kind === 'details') {
-      if (!task.description?.trim()) { this._panel = null; return; }
+      const content = descriptionText(task.description);
+      if (!content) { this._panel = null; return; }
       const description = document.createElement('div'); description.className = 'description';
       description.id = `description-${task.task_id}`;
-      description.textContent = task.description.trim();
+      description.textContent = content;
       row.after(description); return;
     }
     const busy = this._pending.has(task.task_id);

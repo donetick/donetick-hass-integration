@@ -131,7 +131,8 @@ The inline editor uses HA's native date and time selectors, including its standa
 calendar dialog and locale-aware time fields. Browser inputs provide a fallback if
 HA's controls cannot be loaded. Tap the task name or due text to expand its description
 below the row; tap again to collapse it. Descriptions preserve line breaks and display
-as plain text. A subtle chevron beside the name indicates an available description
+as readable plain text, with HTML tags and embedded scripts removed while paragraphs,
+line breaks, lists, and decoded entities are preserved. A subtle chevron beside the name indicates an available description
 and points upward while expanded. Tasks without a description are plain text and
 do not open a panel.
 The current time is preserved unless edited with Set time; undated tasks default to 09:00.
