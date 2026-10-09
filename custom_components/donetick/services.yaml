@@ -65,7 +65,7 @@ create_task:
 
 update_task:
   name: Update Task
-  description: Update an existing Donetick task
+  description: Update an existing Donetick task. Archived tasks remain archived unless Force Unarchive is enabled.
   fields:
     task_id:
       name: Task ID
@@ -94,6 +94,21 @@ update_task:
       required: false
       selector:
         text:
+    force_unarchive:
+      name: Force Unarchive
+      description: Reactivate this task if it is archived (optional; defaults to false)
+      required: false
+      default: false
+      selector:
+        boolean:
+    assigned_to:
+      name: Assignee User ID
+      description: Assign the task to a Donetick user already in its assignee list (optional)
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
     config_entry_id:
       name: Config Entry ID
       description: The specific Donetick integration to use (optional, uses first if not specified)

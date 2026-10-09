@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.components.number import NumberEntity
@@ -26,6 +27,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up Donetick thing entities for specific platform."""
     config = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = config["coordinator"]
     session = async_get_clientsession(hass)
     client = DonetickApiClient(
         config[CONF_URL],
@@ -40,13 +42,13 @@ async def async_setup_entry(
         for thing in things:
             # Only create entities for the current platform
             if platform == "switch" and thing.type == "boolean":
-                entities.append(DonetickThingSwitch(client, thing))
+                entities.append(DonetickThingSwitch(client, thing, coordinator))
             elif platform == "number" and thing.type == "number":
-                entities.append(DonetickThingNumber(client, thing))
+                entities.append(DonetickThingNumber(client, thing, coordinator))
             elif platform == "text" and thing.type == "text":
-                entities.append(DonetickThingText(client, thing))
+                entities.append(DonetickThingText(client, thing, coordinator))
             elif platform == "sensor" and thing.type not in ["boolean", "number", "text"]:
-                entities.append(DonetickThingSensor(client, thing))
+                entities.append(DonetickThingSensor(client, thing, coordinator))
         
         if entities:
             async_add_entities(entities, True)
@@ -57,10 +59,11 @@ async def async_setup_entry(
 class DonetickThingBase(Entity):
     """Base class for Donetick thing entities."""
     
-    def __init__(self, client: DonetickApiClient, thing: DonetickThing) -> None:
+    def __init__(self, client: DonetickApiClient, thing: DonetickThing, coordinator: DataUpdateCoordinator) -> None:
         """Initialize the entity."""
         self._client = client
         self._thing = thing
+        self._coordinator = coordinator
         self._attr_unique_id = f"donetick_thing_{thing.id}"
         self._attr_name = thing.name
         self._attr_has_entity_name = True
@@ -109,6 +112,7 @@ class DonetickThingSwitch(DonetickThingBase, SwitchEntity):
             if success:
                 self._thing.state = "true"
                 self.async_write_ha_state()
+                await self._coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error turning on thing %s: %s", self._thing.name, err)
     
@@ -121,6 +125,7 @@ class DonetickThingSwitch(DonetickThingBase, SwitchEntity):
             if success:
                 self._thing.state = "false"
                 self.async_write_ha_state()
+                await self._coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error turning off thing %s: %s", self._thing.name, err)
 
@@ -144,6 +149,7 @@ class DonetickThingNumber(DonetickThingBase, NumberEntity):
             if success:
                 self._thing.state = str(value)
                 self.async_write_ha_state()
+                await self._coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error setting number thing %s: %s", self._thing.name, err)
 
@@ -164,5 +170,6 @@ class DonetickThingText(DonetickThingBase, TextEntity):
             if success:
                 self._thing.state = value
                 self.async_write_ha_state()
+                await self._coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error setting text thing %s: %s", self._thing.name, err)

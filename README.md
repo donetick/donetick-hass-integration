@@ -11,7 +11,7 @@ A Home Assistant integration for Donetick that provides support for managing tod
 ## Features
 
 ### 📋 Todo Lists
-- **Multiple Todo Lists**: "All Tasks" view and individual assignee-specific lists
+- **Multiple Todo Lists**: "All Tasks" view, individual assignee lists, and optional project lists
 - **Task Management**: Create, update, delete, and complete tasks
 - **Task attributes**: Task descriptions, due dates can be managed in Home Assistant
 
@@ -25,9 +25,13 @@ A Home Assistant integration for Donetick that provides support for managing tod
 
 ### 🔧 Services
 - `donetick.create_task` - Create new tasks
-- `donetick.update_task` - Update existing tasks  
+- `donetick.update_task` - Update existing tasks
 - `donetick.delete_task` - Delete tasks
 - `donetick.complete_task` - Mark tasks complete with user attribution
+
+To reactivate an archived task with `donetick.update_task`, set `force_unarchive: true`. This requires a Donetick server that supports `forceUnarchive`.
+
+To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick user ID. The user must already be in that task's assignee list, and the API token must have permission to edit the task.
 
 ## Installation
 

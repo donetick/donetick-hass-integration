@@ -1,48 +1,47 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Connect to Donetick",
-                "description": "Set up your Donetick integration",
-                "data": {
-                    "url": "Donetick URL",
-                    "token": "API Token"
-                }
-            },
-            "options": {
-                "title": "Organize Your Tasks",
-                "description": "Choose how you'd like to organize your Donetick tasks in Home Assistant",
-                "data": {
-                    "show_due_in": "Days ahead to show upcoming tasks",
-                    "create_unified_list": "Create \"All Tasks\" list",
-                    "create_project_lists": "Create individual task lists per project",
-                    "create_assignee_lists": "Create individual task lists per person"
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Failed to connect to Donetick",
-            "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Donetick",
+        "description": "Set up your Donetick integration",
+        "data": {
+          "url": "Donetick URL",
+          "token": "API Token"
         }
+      },
+      "options": {
+        "title": "Organize Your Tasks",
+        "description": "Choose how you'd like to organize your Donetick tasks in Home Assistant",
+        "data": {
+          "show_due_in": "Days ahead to show upcoming tasks",
+          "show_no_due_date": "Show tasks with no due date",
+          "create_unified_list": "Create \"All Tasks\" list",
+          "create_project_lists": "Create individual task lists per project",
+          "create_assignee_lists": "Create individual task lists per person",
+          "refresh_interval": "Refresh interval"
+        }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Configure Donetick Options",
-                "description": "Adjust your Donetick integration settings",
-                "data": {
-                    "show_due_in": "Days ahead to show upcoming tasks",
-                    "create_unified_list": "Create \"All Tasks\" list",
-                    "create_project_lists": "Create individual task lists per project",
-                    "create_assignee_lists": "Create individual task lists per person"
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Failed to connect to Donetick",
-            "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
-        }
+    "error": {
+      "cannot_connect": "Failed to connect to Donetick",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Donetick Options",
+        "description": "Adjust your Donetick integration settings",
+        "data": {
+          "show_due_in": "Days ahead to show upcoming tasks",
+          "show_no_due_date": "Show tasks with no due date",
+          "create_unified_list": "Create \"All Tasks\" list",
+          "create_project_lists": "Create individual task lists per project",
+          "create_assignee_lists": "Create individual task lists per person",
+          "refresh_interval": "Refresh interval"
+        }
+      }
+    }
+  }
 }

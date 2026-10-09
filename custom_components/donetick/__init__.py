@@ -8,6 +8,7 @@ from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
 from .api import DonetickApiClient
 
@@ -40,6 +41,8 @@ UPDATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("name"): cv.string,
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
+    vol.Optional("force_unarchive", default=False): cv.boolean,
+    vol.Optional("assigned_to"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -69,7 +72,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
-        name="donetick_chores",
+        name=f"{DOMAIN}_chores",
         update_method=client.async_get_tasks,
         update_interval=timedelta(seconds=refresh_interval_seconds),
     )
@@ -154,30 +157,10 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
     completed_by = call.data.get("completed_by")
     config_entry_id = call.data.get("config_entry_id")
     
-    # Find the config entry to use
-    entry = None
-    if config_entry_id:
-        # Check if it's a config entry ID
-        entry = hass.config_entries.async_get_entry(config_entry_id)
-        
-        # If not found, check if it's an entity ID and extract config entry from it
-        if not entry and config_entry_id.startswith("todo."):
-            entity_registry = hass.helpers.entity_registry.async_get()
-            entity_entry = entity_registry.async_get(config_entry_id)
-            if entity_entry:
-                entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
-        
-        if not entry:
-            _LOGGER.error("Config entry not found for: %s", config_entry_id)
-            return
-    else:
-        # Use the first Donetick integration if no specific entry provided
-        entries = [entry for entry in hass.config_entries.async_entries(DOMAIN)]
-        if not entries:
-            _LOGGER.error("No Donetick integration found")
-            return
-        entry = entries[0]
-    
+    entry = await _get_config_entry(hass, config_entry_id)
+    if not entry:
+        return
+
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
     client = config["client"]
@@ -223,12 +206,17 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     name = call.data.get("name")
     description = call.data.get("description")
     due_date = call.data.get("due_date")
+    force_unarchive = call.data.get("force_unarchive", False)
+    assigned_to = call.data.get("assigned_to")
     config_entry_id = call.data.get("config_entry_id")
+
+    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive:
+        raise HomeAssistantError("Provide at least one task field to update")
     
     # Find the config entry to use
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
-        return
+        raise HomeAssistantError("No matching Donetick integration found for update_task")
     
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
@@ -236,12 +224,23 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     coordinator = config["coordinator"]
 
     try:
-        result = await client.async_update_task(task_id, name, description, due_date)
+        result = None
+        if force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
+            result = await client.async_update_task(task_id, name, description, due_date, force_unarchive)
+        if assigned_to is not None:
+            await client.async_assign_task(task_id, assigned_to)
         _LOGGER.info("Task %d updated successfully", task_id)
         await coordinator.async_request_refresh()
 
     except Exception as e:
         _LOGGER.error("Failed to update task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to update Donetick task {task_id}: {e}") from e
+
+    if result is not None and not result.is_active:
+        raise HomeAssistantError(
+            f"Donetick task {task_id} was updated but remains archived. "
+            "Set force_unarchive to true to reactivate it."
+        )
 
 async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the delete_task service call."""
@@ -251,7 +250,7 @@ async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     # Find the config entry to use
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
-        return
+        raise HomeAssistantError("No matching Donetick integration found for delete_task")
     
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
@@ -264,10 +263,11 @@ async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> N
             _LOGGER.info("Task %d deleted successfully", task_id)
             await coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to delete task %d", task_id)
+            raise HomeAssistantError(f"Donetick did not delete task {task_id}")
 
     except Exception as e:
         _LOGGER.error("Failed to delete task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to delete Donetick task {task_id}: {e}") from e
 
 async def async_skip_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the skip_task service call."""
@@ -316,6 +316,13 @@ async def _get_config_entry(hass: HomeAssistant, config_entry_id: str = None) ->
             return None
         entry = entries[0]
     
+    if entry.domain != DOMAIN:
+        _LOGGER.error("Config entry %s belongs to %s, expected %s", entry.entry_id, entry.domain, DOMAIN)
+        return None
+    if entry.entry_id not in hass.data.get(DOMAIN, {}):
+        _LOGGER.error("Config entry %s is not loaded", entry.entry_id)
+        return None
+
     return entry
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
