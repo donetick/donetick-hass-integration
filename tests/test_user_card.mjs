@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 globalThis.HTMLElement = class {};
-globalThis.customElements = {define() {}};
+globalThis.customElements = {define() {}, get() {}};
 globalThis.window = {};
-const {userTasks, actionData, emptyMessage} = await import('../www/donetick-user-todo-card.js');
+const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
 const state = {attributes: {config_entry_id: 'entry', tasks: [
   {task_id: 1, assigned_to: 2}, {task_id: 2, assigned_to: 1}, {task_id: 3, assigned_to: null}
 ]}};
@@ -39,7 +39,8 @@ const ids = filter => userTasks(filterState,1,filter,now).map(task=>task.task_id
 assert.deepEqual(ids('all'),[1,2,3,4,5,7]);
 assert.deepEqual(ids('overdue'),[1,2]);
 assert.deepEqual(ids('today'),[2,3]);
-assert.deepEqual(ids('upcoming'),[2,3,4]);
+assert.deepEqual(ids('upcoming'),[3,4]);
+assert.deepEqual(userTasks(filterState,1,'upcoming',now,7,'due_date','en',true).map(task=>task.task_id),[1,2,3,4]);
 assert.deepEqual(userTasks(filterState,1,'today',new Date('2026-10-25T12:00:00+01:00')).map(task=>task.task_id),[4]);
 const windowState={attributes:{tasks:[
   {task_id:1,assigned_to:1,next_due_date:'2026-10-24'},
@@ -58,3 +59,19 @@ assert.equal(emptyMessage({display_filter:'today'},'Torben'),'No tasks for Torbe
 assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:1},'Torben'),/1 day ahead/);
 assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:0},'Torben'),/no day limit/);
 assert.match(emptyMessage({display_filter:'upcoming'},'Torben'),/7 days ahead/);
+assert.match(emptyMessage({display_filter:'upcoming',upcoming_days:null},'Torben'),/no day limit/);
+assert.equal(upcomingDayLimit(undefined),7);
+assert.equal(upcomingDayLimit(null),0);
+assert.equal(upcomingDayLimit(''),0);
+assert.deepEqual(userTasks(windowState,1,'upcoming',now,null).map(task=>task.task_id),[1,2,3,4]);
+const relativeNow = new Date(2026,9,24,12);
+assert.equal(dueText('2026-10-25','en',relativeNow,'24','relative'),'Tomorrow');
+assert.equal(dueText('2026-10-27','en',relativeNow,'24','relative'),'In 3 days');
+assert.equal(dueText('2026-10-31','en',relativeNow,'24','relative'),'Next week');
+assert.equal(dueText('2026-10-23','en',relativeNow,'24','relative'),'Yesterday');
+assert.equal(dueText(new Date(2026,9,24,9).toISOString(),'en',relativeNow,'24','relative'),'3 hours ago');
+assert.match(dueText('2026-10-27','en',relativeNow,'24','both'),/^In 3 days · .*Oct.*27/);
+assert.equal(dueText('2026-10-25','fr',relativeNow,'24','relative'),'Demain');
+assert.equal(dueText(null,'en',relativeNow,'24','relative'),'No due date');
+assert.equal(dueText('invalid','en',relativeNow,'24','both'),'No due date');
+console.log('Unlimited windows, optional overdue tasks and relative date modes passed');

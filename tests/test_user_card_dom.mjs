@@ -4,7 +4,7 @@ const window = new Window();
 Object.assign(globalThis, {window, document: window.document, HTMLElement: window.HTMLElement,
   customElements: window.customElements, CustomEvent: window.CustomEvent});
 customElements.define('ha-form',class extends HTMLElement {});
-const {localDateTime, dueText, userTasks, isOverdue, descriptionText} = await import('../www/donetick-user-todo-card.js');
+const {localDateTime, dueText, userTasks, isOverdue, descriptionText} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
 assert.equal(descriptionText('<p>TEST DESCRIPTION</p>'),'TEST DESCRIPTION');
 assert.equal(descriptionText('<p>First &amp; second</p><p>Next<br>line</p>'),'First & second\n\nNext\nline');
 assert.equal(descriptionText('<ul><li>One</li><li>Two</li></ul>'),'- One\n- Two');
@@ -47,6 +47,16 @@ hass.states['todo.all'].attributes.tasks=[{task_id:4,assigned_to:1,name:'Past du
 card.hass=hass;
 assert.equal(root.querySelectorAll('.due.overdue').length,1);
 assert.equal(root.querySelector('.due.overdue').parentElement.querySelector('.name').textContent,'Past due');
+assert.equal(root.querySelector('.due.overdue .due-clock').getAttribute('icon'),'mdi:clock');
+card.setConfig({entity:'todo.all',user_id:1,display_filter:'upcoming',upcoming_days:null,due_display:'relative'});
+assert.equal(root.querySelectorAll('.row').length,2);
+assert.equal(card.getCardSize(),4);
+assert.equal(root.querySelectorAll('.due.overdue').length,1);
+card.setConfig({entity:'todo.all',user_id:1,display_filter:'upcoming',upcoming_days:null,include_overdue:false});
+assert.equal(root.querySelectorAll('.row').length,1);
+assert.equal(root.querySelector('.name').textContent,'Upcoming');
+assert.equal(card.getCardSize(),3);
+card.setConfig({entity:'todo.all',user_id:1});
 hass.states['todo.all'].attributes.tasks=savedTasks;card.hass=hass;
 const today=localDateTime(new Date()).slice(0,10);
 hass.states['todo.all'].attributes.tasks=[{task_id:4,assigned_to:1,name:'Today only',next_due_date:today},{task_id:5,assigned_to:1,name:'Later',next_due_date:'2100-01-01T12:00:00Z'}];
