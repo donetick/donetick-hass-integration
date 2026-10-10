@@ -59,11 +59,15 @@ Configure via **Settings** → **Devices & Services** → **Add Integration** �
 - **Create Unified List**: Enable "All Tasks" todo list (default: true)  
 - **Create Assignee Lists**: Individual todo lists per user (default: false) 
 
-## Per-user task card (feature branch)
+## Per-user task card
 
-Copy `www/donetick-user-todo-card.js` to `/config/www/donetick/` and register
-`/local/donetick/donetick-user-todo-card.js` as a JavaScript module in dashboard resources.
-Then add **Donetick User Tasks** to any dashboard. Its visual editor lets you choose
+The **Donetick User Tasks** card is bundled with the integration and loaded
+automatically when Donetick is set up, for both UI and YAML dashboards. No separate
+card installation or dashboard resource registration is required. Reload your browser
+after updating the integration, then add **Donetick User Tasks** to any dashboard.
+Existing cards and their settings continue to work. Remove any old manually registered
+`/local/donetick/donetick-user-todo-card.js` resource to avoid loading an outdated copy.
+Its visual editor lets you choose
 a Donetick todo entity, the assigned user, a title and button appearance.
 Use the All Tasks entity to display any user's tasks; individual assignee entities also work.
 Select **All users** to combine their tasks. **Show assigned user** adds the assignee's
@@ -99,18 +103,30 @@ button_content: icon
 
 Choose **Display filter** in the card editor: **All tasks** (including undated), **Overdue**
 (due date/time has passed), **Today** (due on the current local date), or **Upcoming**
-(from today onward). Today and Upcoming can include tasks already overdue earlier today.
+(from today onward). **Include overdue tasks** is enabled by default for Upcoming,
+and includes all past deadlines alongside future tasks. Turn it off to show only tasks
+that are still due, including date-only tasks due today. Today includes tasks overdue earlier today.
+Overdue due text uses your theme's warning color, with a clock icon beside the due text.
+YAML supports `include_overdue: false`.
 Each card stores its own filter. Empty cards show the selected user, active filter and
 Upcoming day limit so you can see which settings to adjust.
 **Sort tasks by** offers earliest due date (the default, with undated tasks last),
 highest priority (Urgent through Low, then unspecified), or alphabetical name using
 your HA language. Priority ties use due date. YAML supports `sort_by: due_date`,
 `sort_by: priority`, and `sort_by: name`. Card visibility remains controlled by HA.
-When Upcoming is selected, **Days ahead** limits the window (default 7; 0 means unlimited).
+When Upcoming is selected, **Days ahead** limits the window (default 7; empty or 0 means unlimited).
+Clearing the field keeps it empty and saves `upcoming_days: null`, without restoring 7.
 For example, 3 includes today through the third day from today, including the whole
 last day. Set `upcoming_days: 3` in YAML or use the card editor's number field.
 Filters use the tasks supplied by the integration. Set its upcoming-task window to 0
 if you want every future task available to the card.
+
+**Due date display** offers **Date and time** (the existing default), **Relative**
+(for example, In 3 days, Tomorrow, Next week, or 13 hours ago), and **Relative and
+date/time**. Relative labels follow your HA language and count calendar days across
+daylight-saving changes. Date-only deadlines remain due for their whole day.
+The full date is available in the tooltip in every mode. YAML supports
+`due_display: date`, `due_display: relative`, or `due_display: both`.
 
 Complete fetches the current task from Donetick and attributes completion to its actual
 assigned user, even if someone else clicks the button. Unassigned tasks cannot be completed
