@@ -21,6 +21,8 @@ SERVICE_CREATE_TASK = "create_task"
 SERVICE_UPDATE_TASK = "update_task"
 SERVICE_DELETE_TASK = "delete_task"
 SERVICE_SKIP_TASK = "skip_task"
+SERVICE_COMPLETE_ASSIGNED_TASK = "complete_assigned_task"
+SERVICE_POSTPONE_TASK = "postpone_task"
 
 COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Required("task_id"): vol.Coerce(int),
@@ -56,6 +58,12 @@ SKIP_TASK_SCHEMA = vol.Schema({
     vol.Optional("completed_by"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
+
+ASSIGNED_TASK_SCHEMA = vol.Schema({
+    vol.Required("task_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("config_entry_id"): cv.string,
+})
+POSTPONE_TASK_SCHEMA = ASSIGNED_TASK_SCHEMA
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Donetick from a config entry."""
@@ -145,6 +153,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                   DOMAIN, SERVICE_UPDATE_TASK, DOMAIN, SERVICE_DELETE_TASK,
                   DOMAIN, SERVICE_SKIP_TASK)
     
+    async def complete_assigned_handler(call: ServiceCall) -> None:
+        await async_task_row_action(hass, call, complete=True)
+
+    async def postpone_handler(call: ServiceCall) -> None:
+        await async_task_row_action(hass, call, complete=False)
+
+    hass.services.async_register(DOMAIN, SERVICE_COMPLETE_ASSIGNED_TASK,
+                                 complete_assigned_handler, schema=ASSIGNED_TASK_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_POSTPONE_TASK,
+                                 postpone_handler, schema=POSTPONE_TASK_SCHEMA)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.add_update_listener(async_reload_entry)
@@ -325,6 +343,35 @@ async def _get_config_entry(hass: HomeAssistant, config_entry_id: str = None) ->
 
     return entry
 
+async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, complete: bool) -> None:
+    """Resolve the current server assignment/date before a dashboard action."""
+    entry = await _get_config_entry(hass, call.data.get("config_entry_id"))
+    if entry is None:
+        raise HomeAssistantError("No matching Donetick integration found")
+    config = hass.data[DOMAIN][entry.entry_id]
+    client = config["client"]
+    try:
+        tasks = await client.async_get_tasks()
+        task = next((task for task in tasks if task.id == call.data["task_id"] and task.is_active), None)
+        if task is None:
+            raise HomeAssistantError("Task is no longer active or visible; refresh the list")
+        if complete:
+            if task.assigned_to is None:
+                raise HomeAssistantError("Assign this task to a user before completing it")
+            await client.async_complete_task(task.id, completed_by=task.assigned_to)
+        else:
+            if task.frequency_type in ("once", "no_repeat", "trigger", "always"):
+                raise HomeAssistantError("This task has no next scheduled occurrence")
+            await client.async_reschedule_task(task.id)
+
+    except HomeAssistantError:
+        raise
+    except Exception as err:
+        raise HomeAssistantError(f"Donetick task action failed: {err}") from err
+    finally:
+        await config["coordinator"].async_request_refresh()
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
@@ -333,7 +380,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Remove services if this is the last config entry
         if not hass.data[DOMAIN]:
-            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK]:
+            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK]:
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)
             _LOGGER.debug("Removed services: %s.%s, %s.%s, %s.%s, %s.%s", 

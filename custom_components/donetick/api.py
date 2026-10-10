@@ -352,6 +352,16 @@ class DonetickApiClient:
             _LOGGER.error("Error assigning Donetick task %d: %s", task_id, err)
             raise
 
+    async def async_reschedule_task(self, task_id: int) -> DonetickTask:
+        """Use Donetick's scheduler to skip to the next occurrence."""
+        async with self._session.post(
+            f"{self._base_url}/api/v1/chores/{task_id}/skip",
+            headers=self._headers(), timeout=API_TIMEOUT,
+        ) as response:
+            await self._raise_for_status(response, "reschedule")
+            data = await response.json()
+            return DonetickTask.from_json(data["res"])
+
     async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
         """Skip a task, advancing to the next scheduled occurrence without recording a completion."""
         headers = self._headers()

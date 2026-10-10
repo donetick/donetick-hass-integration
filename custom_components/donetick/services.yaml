@@ -161,3 +161,30 @@ delete_task:
       required: false
       selector:
         text:
+
+complete_assigned_task:
+  name: Complete as assigned user
+  description: Complete a task as its current Donetick assignee.
+  fields:
+    task_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      selector:
+        text:
+postpone_task:
+  name: Reschedule task
+  description: Use Donetick's scheduler to skip to the next occurrence without completing the task.
+  fields:
+    task_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      selector:
+        text:
