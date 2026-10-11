@@ -139,6 +139,8 @@ class DonetickChoreSensor(CoordinatorEntity, SensorEntity):
             "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
             "frequency_type": task.frequency_type,
             "frequency": task.frequency,
+            "interval_type": task.interval_type,
+            "points": task.points,
             "priority": task.priority,
             "labels": task.labels,
             "is_active": task.is_active,
