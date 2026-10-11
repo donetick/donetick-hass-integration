@@ -180,6 +180,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
              "assignee_ids": task.assignee_ids or [],
              "description": task.description,
              "priority": task.priority,
+             "labels": task.labels or [],
              "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
              "is_recurring": bool(task.frequency_type) and task.frequency_type not in ("once", "no_repeat"),
              "can_postpone": task.frequency_type not in ("once", "no_repeat", "trigger", "always")}

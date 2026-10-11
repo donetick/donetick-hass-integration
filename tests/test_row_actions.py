@@ -22,6 +22,13 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task.assigned_to, 1)
         self.assertEqual(task.assignee_ids, [1, 2])
         self.assertEqual(namespace['DonetickTask'].from_json({'id':2,'name':'Unassigned'}).assignee_ids, [])
+        labels = [{'id': 7, 'name': 'maintenance'}]
+        self.assertEqual(namespace['DonetickTask'].from_json({
+            'id': 3, 'name': 'Labelled', 'labels': 'old-label', 'labelsV2': labels}).labels, labels)
+        self.assertEqual(namespace['DonetickTask'].from_json({
+            'id': 4, 'name': 'Legacy', 'labels': 'maintenance,technical'}).labels, 'maintenance,technical')
+        self.assertEqual(namespace['DonetickTask'].from_json({
+            'id': 5, 'name': 'Cleared', 'labels': 'old-label', 'labelsV2': []}).labels, [])
 
     def setUp(self):
         source = ROOT / '__init__.py'

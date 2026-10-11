@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 globalThis.HTMLElement = class {};
 globalThis.customElements = {define() {}, get() {}};
 globalThis.window = {};
-const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit, taskLabels, dateFilters} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
 const state = {attributes: {config_entry_id: 'entry', tasks: [
   {task_id: 1, assigned_to: 2}, {task_id: 2, assigned_to: 1}, {task_id: 3, assigned_to: null}
 ]}};
@@ -75,3 +75,56 @@ assert.equal(dueText('2026-10-25','fr',relativeNow,'24','relative'),'Demain');
 assert.equal(dueText(null,'en',relativeNow,'24','relative'),'No due date');
 assert.equal(dueText('invalid','en',relativeNow,'24','both'),'No due date');
 console.log('Unlimited windows, optional overdue tasks and relative date modes passed');
+const labelState={attributes:{tasks:[
+  {task_id:1,assigned_to:1,name:'HVAC',labels:[{id:7,name:'maintenance'},{id:8,name:'technical'}],next_due_date:'2026-10-25'},
+  {task_id:2,assigned_to:1,name:'Cleaning',labels:'household, daily',next_due_date:'2026-10-24'},
+  {task_id:3,assigned_to:2,name:'Inspection',labels:[{id:7,name:'maintenance'}],next_due_date:'2026-10-25'},
+  {task_id:4,assigned_to:1,name:'Filter',labels:['technical'],next_due_date:'2027-10-25'},
+  {task_id:5,assigned_to:1,name:'Unlabelled'}
+]}};
+const labelIds=(labels,user='all',filter='all',days=0,sort='due_date')=>userTasks(labelState,user,filter,now,days,sort,'en',false,labels).map(task=>task.task_id);
+assert.deepEqual(labelIds(['maintenance']),[1,3]);
+assert.deepEqual(labelIds(['maintenance','technical']),[1,3,4]);
+assert.deepEqual(labelIds(['maintenance'],1),[1]);
+assert.deepEqual(labelIds(['maintenance','technical'],1,'upcoming',1),[1]);
+assert.deepEqual(labelIds(['technical'],1,'upcoming',0),[1,4]);
+assert.deepEqual(labelIds(['daily'],1,'today'),[2]);
+assert.deepEqual(labelIds(['maintenance','technical'],'all','all',0,'name'),[4,1,3]);
+assert.deepEqual(labelIds(['missing']),[]);
+assert.equal(labelIds([]).length,5);
+assert.deepEqual(taskLabels(' daily, household, daily, '),['daily','household']);
+assert.deepEqual(taskLabels([null,{}, {name:'maintenance'},' technical ',{name:5}]),['maintenance','technical']);
+assert.deepEqual(taskLabels(null),[]);
+assert.equal(emptyMessage({user_id:'all',labels:['maintenance','technical']}),'No tasks for all users · Filter: All tasks · Labels: maintenance, technical');
+assert.deepEqual(actionData(labelState,labelState.attributes.tasks[0]),{task_id:1,config_entry_id:undefined});
+console.log('Label selection combines with user, date and sort filters without changing action payloads');
+const groupIds=(filters,days=7)=>userTasks(filterState,1,filters,now,days).map(task=>task.task_id);
+assert.deepEqual(groupIds(['overdue']),[1,2]);
+assert.deepEqual(groupIds(['today']),[2,3]);
+assert.deepEqual(groupIds(['overdue','today']),[1,2,3]); // Overlap never duplicates tasks.
+assert.deepEqual(groupIds(['future']),[4]);
+assert.deepEqual(groupIds(['undated']),[5]);
+assert.deepEqual(groupIds(['today','future','undated']),[2,3,4,5]);
+assert.deepEqual(groupIds([]),[1,2,3,4,5,7]);
+assert.deepEqual(userTasks(windowState,1,['future'],now,1).map(task=>task.task_id),[2]);
+assert.deepEqual(userTasks(windowState,1,['future'],now,0).map(task=>task.task_id),[2,3,4]);
+assert.deepEqual(userTasks(labelState,1,['future'],now,0,'due_date','en',false,['technical']).map(task=>task.task_id),[1,4]);
+assert.deepEqual(dateFilters({display_filter:'upcoming'}),['overdue','today','future']);
+assert.deepEqual(dateFilters({display_filter:'upcoming',include_overdue:false}),['today','future']);
+assert.deepEqual(dateFilters({display_filters:[],display_filter:'overdue'}),[]);
+assert.deepEqual(dateFilters({display_filter:'today'}),['today']);
+assert.equal(emptyMessage({user_id:'all',display_filters:['overdue','undated']}),'No tasks for all users · Filter: Overdue, Without a due date');
+assert.match(emptyMessage({display_filters:['future'],upcoming_days:0},'Admin'),/Future \(no day limit\)/);
+const ownerState={attributes:{...state.attributes,donetick_user_id:2}};
+assert.deepEqual(userTasks(ownerState,1).map(task=>task.task_id),[1]);
+assert.deepEqual(userTasks(ownerState,undefined).map(task=>task.task_id),[1]);
+console.log('Date groups combine without duplicates and per-user lists override stale assignment');
+const matchIds=(labels,mode)=>userTasks(labelState,'all',['future'],now,0,'due_date','en',false,labels,mode).map(task=>task.task_id);
+assert.deepEqual(matchIds(['maintenance','technical'],'any'),[1,3,4]);
+assert.deepEqual(matchIds(['maintenance','technical'],'all'),[1]);
+assert.deepEqual(matchIds(['maintenance','missing'],'all'),[]);
+assert.deepEqual(matchIds(['maintenance'],'all'),matchIds(['maintenance'],'any'));
+assert.deepEqual(matchIds([],'all'),[1,3,4]);
+assert.deepEqual(userTasks(labelState,2,['future'],now,0,'due_date','en',false,['maintenance','technical'],'all'),[]);
+assert.match(emptyMessage({user_id:'all',labels:['maintenance','technical'],label_match:'all'}),/maintenance AND technical/);
+console.log('AND and OR label matching compose with user and date groups');

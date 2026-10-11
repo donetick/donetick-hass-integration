@@ -134,7 +134,7 @@ class DonetickTask:
             next_due_date=_parse_datetime(data.get("nextDueDate")),
             status=data.get("status", 0),
             priority=data.get("priority", 0),
-            labels=data.get("labels") or data.get("labelsV2"),
+            labels=data.get("labelsV2") if data.get("labelsV2") is not None else data.get("labels"),
             is_active=data.get("isActive", True),
             is_rolling=data.get("isRolling", False),
             frequency_type=data.get("frequencyType", "once"),
