@@ -141,12 +141,16 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         }}})
         for fields, expected in (
             ({"assigned_to": 2}, ["assign", "refresh"]),
+            ({"assigned_to": None}, ["assign", "refresh"]),
             ({"force_unarchive": True}, ["update", "refresh"]),
             ({"force_unarchive": True, "assigned_to": 2}, ["update", "assign", "refresh"]),
         ):
             calls.clear()
             await namespace["async_update_task_service"](hass, SimpleNamespace(data={"task_id": 1, **fields}))
             self.assertEqual([name for name, _ in calls], expected)
+            if "assigned_to" in fields:
+                assignment = next(args for name, args in calls if name == "assign")
+                self.assertEqual(assignment, (1, fields["assigned_to"]))
             if fields.get("force_unarchive"):
                 self.assertTrue(calls[0][1][-1])
 

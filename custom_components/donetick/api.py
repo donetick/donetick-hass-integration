@@ -333,8 +333,42 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick update task response: %s", err)
             raise
 
-    async def async_assign_task(self, task_id: int, assigned_to: int) -> None:
-        """Assign a task to one of its existing assignees."""
+    async def async_assign_task(self, task_id: int, assigned_to: int | None) -> None:
+        """Assign a task to a user, or to Anyone when assigned_to is None."""
+        # The assignee endpoint cannot clear assignments. Fetch the full task for
+        # the editor API so recurrence, labels, subtasks and triggers are retained.
+        async with self._session.get(
+            f"{self._base_url}/api/v1/chores/{task_id}",
+            headers=self._headers(), timeout=API_TIMEOUT,
+        ) as response:
+            response.raise_for_status()
+            data = await response.json()
+        task = data.get("res", data)
+        if not isinstance(task, dict) or task.get("id") != task_id:
+            raise ValueError("Unable to fetch the current task for reassignment")
+
+        if assigned_to is None or task.get("assignStrategy") == "no_assignee" or not task.get("assignees"):
+            payload = dict(task)
+            payload["assignedTo"] = assigned_to
+            payload["assignStrategy"] = "no_assignee" if assigned_to is None else "keep_last_assigned"
+            payload["assignees"] = [] if assigned_to is None else [{"userId": assigned_to}]
+            payload["labelsV2"] = [{"id": label["id"]} for label in task.get("labelsV2") or []]
+            # Use the fetched updatedAt to retain Donetick's concurrent-edit check.
+            if not payload.get("updatedAt"):
+                raise ValueError("Task has no update timestamp; refresh before reassigning")
+            thing = task.get("thingChore")
+            if thing:
+                payload["thingTrigger"] = {
+                    "thingID": thing["thingId"], "triggerState": thing["triggerState"],
+                    "condition": thing.get("condition", ""),
+                }
+            async with self._session.put(
+                f"{self._base_url}/api/v1/chores/",
+                headers=self._headers(), json=payload, timeout=API_TIMEOUT,
+            ) as response:
+                await self._raise_for_status(response, "reassignment")
+            return
+
         payload = {
             "assignee": assigned_to,
             "updatedAt": datetime.now(timezone.utc).isoformat(),

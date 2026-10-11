@@ -103,7 +103,7 @@ update_task:
         boolean:
     assigned_to:
       name: Assignee User ID
-      description: Assign the task to a Donetick user already in its assignee list (optional)
+      description: Assign to an eligible Donetick user ID, or use null in YAML for Anyone. Switching to or from Anyone requires task edit permission.
       required: false
       selector:
         number:
@@ -164,7 +164,7 @@ delete_task:
 
 complete_assigned_task:
   name: Complete as assigned user
-  description: Complete a task as its current Donetick assignee.
+  description: Complete a task as its current Donetick assignee, or as the API token owner for tasks assigned to Anyone.
   fields:
     task_id:
       required: true

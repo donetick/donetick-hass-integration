@@ -175,16 +175,23 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             ]
         
         tasks = self._apply_due_window(self._filter_tasks(self.coordinator.data or []))
-        attributes["tasks"] = [
-            {"task_id": task.id, "name": task.name, "assigned_to": task.assigned_to,
-             "assignee_ids": task.assignee_ids or [],
-             "description": task.description,
-             "priority": task.priority,
-             "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
-             "is_recurring": bool(task.frequency_type) and task.frequency_type not in ("once", "no_repeat"),
-             "can_postpone": task.frequency_type not in ("once", "no_repeat", "trigger", "always")}
-            for task in tasks if task.is_active
-        ]
+        task_groups = {"tasks": tasks}
+        if hasattr(self, "_member"):
+            task_groups["anyone_tasks"] = self._apply_due_window([
+                task for task in self.coordinator.data or []
+                if task.is_active and task.assigned_to is None
+            ])
+        for attribute, tasks in task_groups.items():
+            attributes[attribute] = [
+                {"task_id": task.id, "name": task.name, "assigned_to": task.assigned_to,
+                 "assignee_ids": task.assignee_ids or [],
+                 "description": task.description,
+                 "priority": task.priority,
+                 "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
+                 "is_recurring": bool(task.frequency_type) and task.frequency_type not in ("once", "no_repeat"),
+                 "can_postpone": task.frequency_type not in ("once", "no_repeat", "trigger", "always")}
+                for task in tasks if task.is_active
+            ]
         if hasattr(self, "_member"):
             attributes["donetick_user_id"] = self._member.user_id
         return attributes
@@ -310,8 +317,9 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         task_id = int(item.uid.split("--")[0])
         tasks = await client.async_get_tasks()
         task = next((task for task in tasks if task.id == task_id and task.is_active), None)
-        if task is None or task.assigned_to is None:
-            raise ValueError("Task must be active and assigned to a user before completion")
+        if task is None:
+            raise ValueError("Task is no longer active or visible; refresh the list")
+        # For Anyone tasks, omit completedBy so Donetick uses the API token owner.
         return task.assigned_to
 
 
