@@ -28,7 +28,7 @@ A Home Assistant integration for Donetick that provides support for managing tod
 
 To reactivate an archived task with `donetick.update_task`, set `force_unarchive: true`. This requires a Donetick server that supports `forceUnarchive`.
 
-To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick user ID. The user must already be in that task's assignee list, and the API token must have permission to edit the task.
+To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick user ID, or `null` for Anyone. The user must already be in that task's assignee list, unless the task is currently assigned to Anyone. Switching to or from Anyone uses Donetick's task editor and requires permission to edit the task.
 
 ## Installation
 
@@ -67,15 +67,21 @@ Existing cards and their settings continue to work. Remove any old manually regi
 Its visual editor lets you choose
 a Donetick todo entity, the assigned user, a title and button appearance.
 Use the All Tasks entity to display any user's tasks; individual assignee entities also work.
+Enable **Include tasks assigned to Anyone** to show Anyone tasks alongside the selected
+user's tasks. This is off by default and works with both All Tasks and individual
+assignee entities. YAML supports `include_anyone: true`. Date filters and sorting
+apply to both groups, and Anyone completions are credited to the API token owner.
 Select **All users** to combine their tasks. **Show assigned user** adds the assignee's
-name beside the due date in this view when the entity can contain multiple users.
-Single-user views omit the name. The setting depends on the view's scope, so it stays
+name beside the due date in this view, or when Anyone tasks are included beside a selected user.
+Views containing only one user's tasks omit the name. The setting depends on the view's scope, so it stays
 useful even when the current filter happens to match only one user's tasks.
 **Allow reassignment** enables a user-switch icon on each row.
-Tap it to choose a user, then confirm with the save icon; tap again to close.
-When no alternative assignee is available, it explains what to configure in Donetick.
-The picker includes only current circle members in that task's Donetick assignee list.
-Add eligible assignees in Donetick first if needed. This uses `donetick.update_task`
+Tap it to choose **Anyone** or a user, then confirm with the save icon; tap again to close.
+The picker includes Anyone even in a single-user circle. User choices are current
+circle members in that task's Donetick assignee list, or all circle members when
+the task has no assignee list. Selecting Anyone disables automatic user assignment;
+selecting a user for an Anyone task keeps that user assigned on future occurrences.
+Switching to or from Anyone requires permission to edit the task. This uses `donetick.update_task`
 with `assigned_to`, preserves recurrence, and refreshes all lists. A reassigned task
 leaves its previous user's card. Future completion uses the new current assignee.
 YAML supports `user_id: all`, `show_assignee: false`, and `show_reassign: false`.
@@ -126,8 +132,9 @@ The full date is available in the tooltip in every mode. YAML supports
 `due_display: date`, `due_display: relative`, or `due_display: both`.
 
 Complete fetches the current task from Donetick and attributes completion to its actual
-assigned user, even if someone else clicks the button. Unassigned tasks cannot be completed
-with this action. **Skip occurrence** (the `donetick.postpone_task` action) uses Donetick's internal skip/rescheduling endpoint to advance
+assigned user, even if someone else clicks the button. Tasks assigned to **Anyone** are
+completed as the Donetick user who owns the integration's API token. This also applies
+to completion from native Home Assistant to-do lists. **Skip occurrence** (the `donetick.postpone_task` action) uses Donetick's internal skip/rescheduling endpoint to advance
 to the next occurrence. Donetick records a skipped occurrence, keeps the assignee and
 calculates the next date from the task's schedule. Tasks without a recurring schedule
 have Skip occurrence hidden. Tap the icon to open a confirmation; tap it again to close
