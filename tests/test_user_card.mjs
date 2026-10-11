@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 globalThis.HTMLElement = class {};
-globalThis.customElements = {define() {}, get() {}};
+globalThis.customElements = {define() {}, get() {}, whenDefined() { return Promise.resolve(); }};
 globalThis.window = {};
 const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
 const state = {attributes: {config_entry_id: 'entry', tasks: [

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 const {Window}=await import(process.env.DOM_TEST_MODULE || 'happy-dom');
 const window=new Window();
 Object.assign(globalThis,{window,document:window.document,HTMLElement:window.HTMLElement,customElements:window.customElements,CustomEvent:window.CustomEvent});
+customElements.define('home-assistant',class extends HTMLElement {});
 let loaded=0;
 window.loadCardHelpers=async()=>({createCardElement:()=>({constructor:{getConfigElement:async()=>{loaded++;customElements.define('ha-form',class extends HTMLElement {});}}})});
 const {actionColor}=await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
