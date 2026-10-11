@@ -1,3 +1,8 @@
+// HA starts extra modules alongside its app bundle, which replaces both the
+// custom-element registry and HTMLElement with its scoped-registry polyfill.
+// Wait before defining classes so they use the final registry and base class.
+await customElements.whenDefined('home-assistant');
+
 function compareTasks(a, b, sortBy, language) {
   const timestamp = value => Number.isFinite(Date.parse(value)) ? Date.parse(value) : Infinity;
   const primary = sortBy === 'priority' ? (Number(b.priority) || 0) - (Number(a.priority) || 0)

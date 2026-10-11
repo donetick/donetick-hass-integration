@@ -4,6 +4,7 @@ const window = new Window();
 Object.assign(globalThis, {window, document: window.document, HTMLElement: window.HTMLElement,
   customElements: window.customElements, CustomEvent: window.CustomEvent});
 customElements.define('ha-form',class extends HTMLElement {});
+customElements.define('home-assistant',class extends HTMLElement {});
 const {localDateTime, dueText, userTasks, isOverdue, descriptionText} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
 assert.equal(descriptionText('<p>TEST DESCRIPTION</p>'),'TEST DESCRIPTION');
 assert.equal(descriptionText('<p>First &amp; second</p><p>Next<br>line</p>'),'First & second\n\nNext\nline');
