@@ -190,6 +190,12 @@ assert.match(root.querySelector('.skip-prompt').textContent,/Add assignees to th
 assert.equal(root.querySelector('[aria-label="Save assignee"]').disabled,true);
 click('Reassign: One-off');
 click('Reassign: Weekly');assert.equal(root.querySelector('select').value,'1');
+assert.equal(root.querySelector('select').style.colorScheme,'light');
+hass.themes={darkMode:true};card.hass=hass;
+assert.equal(root.querySelector('select').style.colorScheme,'dark');
+assert.equal(root.querySelector('select').value,'1');
+hass.themes={darkMode:false};card.hass=hass;
+assert.equal(root.querySelector('select').style.colorScheme,'light');
 assert.equal(root.querySelector('.save-action').disabled,true);
 assert.deepEqual([...root.querySelector('select').options].map(option=>option.value),['','1','2']);
 click('Reassign: Weekly');assert.equal(root.querySelector('form'),null);

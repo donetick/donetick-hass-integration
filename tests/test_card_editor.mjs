@@ -11,6 +11,7 @@ editor.setConfig({type:'custom:donetick-user-todo-card',entity:'todo.all',user_i
 editor.hass=hass;document.body.append(editor);await new Promise(resolve=>setTimeout(resolve,0));
 assert.equal(loaded,1);
 const form=editor.shadowRoot.querySelector('ha-form');assert.ok(form);
+const toggles=()=>form.schema.find(field=>field.name==='toggles').schema;
 assert.equal(editor.shadowRoot.querySelectorAll('input,select').length,0);
 assert.equal(form.data.appearance_preset,'todo');
 assert.match(form.computeHelper({name:'display_filters'}),/any selected group/);
@@ -43,12 +44,12 @@ assert.equal(latest.include_overdue,undefined);assert.equal(latest.display_filte
 update({display_filters:['today']});assert.equal(form.schema.some(field=>field.name==='upcoming_days'),false);
 assert.equal(latest.upcoming_days,3);
 update({user_id:'2'});assert.equal(latest.user_id,2);assert.equal(latest.unrelated_option,'preserved');
-assert.equal(form.schema.some(field=>field.name==='show_assignee'),false);
+assert.equal(toggles().some(field=>field.name==='show_assignee'),false);
 update({user_id:'all'});assert.equal(latest.user_id,'all');
-assert.ok(form.schema.find(field=>field.name==='show_assignee').selector.boolean);
+assert.ok(toggles().find(field=>field.name==='show_assignee').selector.boolean);
 update({show_assignee:false,show_reassign:false});assert.equal(latest.show_assignee,false);
 assert.equal(actions().some(group=>group.name==='reassign'),false);
-update({user_id:'2',show_reassign:true});assert.equal(form.schema.some(field=>field.name==='show_assignee'),false);
+update({user_id:'2',show_reassign:true});assert.equal(toggles().some(field=>field.name==='show_assignee'),false);
 assert.ok(actions().find(group=>group.name==='reassign'));
 assert.equal(latest.button_style,undefined); // Editing a user must not persist every displayed default.
 update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');
@@ -58,9 +59,11 @@ update({postpone_color:'red',postpone_icon:'mdi:skip-next'});assert.equal(latest
 update({appearance_preset:'todo'});assert.equal(latest.complete_control,'checkbox');assert.equal(latest.postpone_color,undefined);assert.equal(latest.postpone_icon,undefined);assert.equal(latest.title,'My tasks');
 update({entity:'todo.other'});assert.equal(latest.user_id,3);assert.equal(form.data.user_id,'3');
 assert.equal(editor.shadowRoot.querySelector('ha-form'),form); // Keep the native form mounted across changes.
-const visibleActions=form.schema.find(field=>field.name==='visible_actions');
-assert.equal(visibleActions.expanded,true);
-assert.deepEqual(visibleActions.schema.map(field=>field.name),['show_complete','show_postpone','show_due_date','show_reassign']);
+const visibleActions=form.schema.find(field=>field.name==='toggles');
+assert.equal(visibleActions.title,'Toggles');
+assert.equal(visibleActions.expanded,false);
+assert.equal(form.schema.some(field=>field.selector?.boolean),false);
+assert.deepEqual(visibleActions.schema.map(field=>field.name),['show_labels','show_complete','show_postpone','show_due_date','show_reassign']);
 update({show_complete:false,show_postpone:false,show_due_date:false,show_reassign:false});
 assert.equal(actions().length,0);
 assert.equal(form.schema.find(field=>field.name==='appearance').schema.some(field=>field.name==='complete_control'),false);
@@ -120,7 +123,7 @@ editor.setConfig({entity:'todo.admin'});assert.equal(form.schema.some(field=>fie
 update({entity:'todo.all'});assert.equal(form.schema.some(field=>field.name==='user_id'),true);
 assert.equal(latest.user_id,1);
 console.log('Date multi-select migration and automatic per-user entity selection passed');
-assert.ok(form.schema.find(field=>field.name==='show_labels').selector.boolean);
+assert.ok(toggles().find(field=>field.name==='show_labels').selector.boolean);
 assert.equal(form.data.show_labels,false);
 update({show_labels:true});assert.equal(latest.show_labels,true);
 update({appearance_preset:'filled'});assert.equal(latest.show_labels,true);

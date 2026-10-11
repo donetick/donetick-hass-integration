@@ -98,7 +98,7 @@ with `assigned_to`, preserves recurrence, and refreshes all lists. A reassigned 
 leaves its previous user's card. Future completion uses the new current assignee.
 YAML supports `user_id: all`, `show_assignee: false`, and `show_reassign: false`.
 For a per-user task list such as **admin's Tasks**, the editor hides **Assigned user** and the card uses the list's owner automatically. YAML can omit `user_id` for these lists; any older user selection is overridden by the list's owner.
-The editor's **Actions to show** switches independently control completion, Skip
+The editor's **Toggles** section groups label display, assigned names, completion, Skip
 occurrence, Change due date, and reassignment. Completion visibility applies to both
 the checkbox and button styles. Turn all four off for a display-only card with no
 unused action space. Appearance presets preserve these visibility choices.

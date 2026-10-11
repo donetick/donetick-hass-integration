@@ -255,6 +255,8 @@ class DonetickUserTodoCard extends HTMLElement {
       .date-panel .error { grid-column:1 / -1; }
       .panel-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; margin-inline-start:auto; }
       .action-panel input, .action-panel select { flex:1; min-width:125px; width:0; box-sizing:border-box; height:44px; padding:8px; color-scheme:var(--ha-color-scheme,light); background:var(--secondary-background-color); color:var(--primary-text-color); border:0; border-bottom:1px solid var(--secondary-text-color); border-radius:4px 4px 0 0; font:inherit; font-size:14px; }
+      .action-panel select option { background:var(--secondary-background-color); color:var(--primary-text-color); }
+      .action-panel select option:hover, .action-panel select option:checked { background:Highlight; color:HighlightText; }
       .action-panel button { flex-shrink:0; border-color:transparent; background:transparent; color:var(--primary-color); }
       .action-panel .error { flex-basis:100%; margin:0; font-size:12px; } .skip-prompt { flex:1; font-size:13px; color:var(--secondary-text-color); }
       button[aria-pressed="true"], button[aria-expanded="true"] { background:var(--secondary-background-color); }
@@ -463,6 +465,7 @@ class DonetickUserTodoCard extends HTMLElement {
           : 'No other eligible users. Add assignees to this task in Donetick.', 'skip-prompt');
       } else {
       const select = document.createElement('select'); select.required = true; select.disabled = busy;
+      select.style.colorScheme = this._hass.themes?.darkMode ? 'dark' : 'light';
       select.dataset.field = 'assignee'; select.setAttribute('aria-label', 'Assigned user');
       const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Choose a user'; placeholder.disabled = true; select.append(placeholder);
       for (const member of members) {
@@ -627,12 +630,13 @@ class DonetickUserTodoEditor extends HTMLElement {
     const schema=[
       {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
       ...(owner === undefined ? [{...select('user_id',[...(members.length > 1 ? [['all','All users']] : []), ...members.map(member=>[String(member.user_id),member.display_name || member.username || `User ${member.user_id}`])]),required:true,disabled:!members.length}] : []),
-      ...(this._config.user_id === 'all' && owner === undefined && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
-      {...group('visible_actions','Actions to show',['show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))),expanded:true},
+      group('toggles','Toggles',[
+        ...(this._config.user_id === 'all' && owner === undefined && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
+        ...['show_labels','show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))
+      ]),
       {name:'display_filters',selector:{select:{mode:'dropdown',multiple:true,options:[{value:'overdue',label:'Overdue'},{value:'today',label:'Today'},{value:'future',label:'Future'},{value:'undated',label:'Without a due date'}]}}},
       {name:'labels',selector:{select:{mode:'dropdown',multiple:true,options:labels.map(label=>({value:label,label}))}}},
       ...(taskLabels(this._config.labels).length > 1 ? [select('label_match',[['any','Any selected label (OR)'],['all','All selected labels (AND)']])] : []),
-      {name:'show_labels',selector:{boolean:{}}},
       select('sort_by',[['due_date','Due date — earliest first'],['priority','Priority — highest first'],['name','Name — A–Z']]),
       ...(filters.includes('future') ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : []),
       select('due_display',[['date','Date and time'],['relative','Relative — Tomorrow, In 3 days, Next week'],['both','Relative and date/time']]),
