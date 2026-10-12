@@ -62,6 +62,15 @@ Choose one or more **Labels** in the card editor. With two or more selected, **M
 
 **Show labels** is off by default. Enable it to display small label chips below each task's due date; long names and multiple labels wrap within the task column. Tasks without labels keep their existing layout. YAML supports `show_labels: true`.
 
+Enable **Use Donetick label colors** under **Toggles** after enabling **Show labels**
+to match each label's Donetick background and black or white text. This is off by
+default; labels without color metadata or a valid hex color keep the neutral style.
+YAML supports `use_label_colors: true` alongside `show_labels: true`.
+
+**Task spacing** under **Fine-tune appearance** controls row padding. YAML supports
+`row_spacing: auto` (default; extra space for visible labels), `compact`, or `comfortable`
+(extra space for every task). Appearance presets preserve this setting.
+
 For a maintenance dashboard with tasks due months ahead, set the integration's upcoming-task window to **0** (unlimited). Then leave **Tasks to show** empty for all tasks, or select **Overdue**, **Today** and **Future** with **Days ahead** empty or **0**. A card cannot show tasks excluded by the integration's window. YAML supports the same selections:
 
 ```yaml
