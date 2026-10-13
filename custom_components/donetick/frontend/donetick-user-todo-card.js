@@ -28,6 +28,16 @@ export function taskLabels(value) {
   return [...new Set(labels.map(label => typeof label === 'string' ? label : label?.name)
     .filter(name => typeof name === 'string' && name.trim()).map(name => name.trim()))];
 }
+export function labelColors(value, name) {
+  const label = Array.isArray(value) ? value.find(label => typeof label?.name === 'string' && label.name.trim() === name
+    && typeof label.color === 'string' && /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(label.color)) : null;
+  if (!label) return null;
+  const hex = label.color.slice(1);
+  const full = hex.length === 3 ? [...hex].map(char => char + char).join('') : hex;
+  const [r, g, b] = [0, 2, 4].map(offset => parseInt(full.slice(offset, offset + 2), 16));
+  // Match Donetick's choice of black or white text for label backgrounds.
+  return {backgroundColor: label.color, color: r * 0.299 + g * 0.587 + b * 0.114 > 186 ? '#000000' : '#ffffff'};
+}
 export function dateFilters(config) {
   if (config.display_filters !== undefined) return config.display_filters;
   switch (config.display_filter) {
@@ -191,9 +201,10 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.label_match !== undefined && !['any','all'].includes(config.label_match)) throw new Error('Choose any or all for label matching');
     if (config.sort_by && !['due_date','priority','name'].includes(config.sort_by)) throw new Error('Choose a valid sort order');
     if (config.due_display && !['date','relative','both'].includes(config.due_display)) throw new Error('Choose a valid due date display');
+    if (config.row_spacing !== undefined && !['auto','compact','comfortable'].includes(config.row_spacing)) throw new Error('Choose valid task spacing');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
-    this._config = {display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
+    this._config = {row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
+      button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
     if (this._panel && this._panel.kind !== 'details' && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
     this.render();
   }
@@ -243,6 +254,10 @@ class DonetickUserTodoCard extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>
       ha-card { padding: 12px; } h2 { margin: 0 0 8px; font-size: 20px; font-weight: 500; }
       .row { position:relative; display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+      .row.has-labels { padding:8px 0; }
+      ha-card[data-spacing="compact"] .row { padding:2px 0; }
+      ha-card[data-spacing="comfortable"] .row { padding:8px 0; }
+      ha-card[data-labels="true"] { margin-block:4px; }
       .completed .name { text-decoration:line-through; color:var(--secondary-text-color); }
       .actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
       .task { flex: 1; min-width: 0; } .name { overflow-wrap: anywhere; } .due { color: var(--secondary-text-color); font-size: 12px; margin-top: 2px; }
@@ -287,6 +302,7 @@ class DonetickUserTodoCard extends HTMLElement {
     card.dataset.style = this._config.button_style;
     card.dataset.size = this._config.button_size;
     card.dataset.shape = this._config.button_shape;
+    card.dataset.spacing = this._config.row_spacing;
     const addText = (parent, tag, text, cls) => { const el = document.createElement(tag); el.textContent = text; if(cls) el.className = cls; parent.append(el); return el; };
     addText(card, 'h2', this._config.title || (userId === 'all' ? 'All users — Tasks' : `${member?.display_name || 'User ' + userId} — Tasks`));
     if (this._error && !this._panel) addText(card, 'p', this._error, 'error');
@@ -361,8 +377,13 @@ class DonetickUserTodoCard extends HTMLElement {
       if (this._config.show_labels) {
         const labels = taskLabels(task.labels);
         if (labels.length) {
+          row.classList.add('has-labels'); card.dataset.labels = 'true';
           const chips = document.createElement('span'); chips.className = 'task-labels'; text.append(chips);
-          for (const label of labels) addText(chips, 'span', label, 'task-label');
+          for (const label of labels) {
+            const chip = addText(chips, 'span', label, 'task-label');
+            const colors = this._config.use_label_colors ? labelColors(task.labels, label) : null;
+            if (colors) Object.assign(chip.style, colors);
+          }
         }
       }
       const actions = document.createElement('div'); actions.className = 'actions'; row.append(actions);
@@ -529,7 +550,8 @@ class DonetickUserTodoCard extends HTMLElement {
   }
 }
 const EDITOR_DEFAULTS = {
-  display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
+  row_spacing:'auto',
+  display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
   due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
   due_date_icon:'mdi:calendar-edit', reassign_label:'Reassign', reassign_icon:'mdi:account-switch-outline', complete_color:'primary', postpone_color:'primary', due_date_color:'primary', reassign_color:'primary'
@@ -545,9 +567,11 @@ const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',inclu
 const EDITOR_HELP = {
   show_points:'Show a small points badge beside the task name. Tasks without points omit the badge.',
   show_recurrence:'Show the recurrence on its own muted line, including the unit for interval schedules.',
+  row_spacing:'Auto adds space to tasks with visible labels. Compact keeps all rows tight; Comfortable adds space to every task.',
   labels:'Filter by selected labels. Leave empty for all labels. Choices come from this list’s tasks; set the integration’s task window to 0 to include distant tasks.',
   label_match:'Any (OR) matches at least one selected label. All (AND) requires every selected label. User and date filters still apply.',
   show_labels:'Show small label chips below each task’s due date. Hidden by default; long names wrap within the task column.',
+  use_label_colors:'Use each label’s Donetick background color and matching readable text. Labels without a valid color keep the neutral style.',
   entity:'Choose All Tasks to make tasks for every circle user available.',
   user_id:'Show one user’s tasks or all users. Completion is credited to each task’s current assignee, or the API token owner for Anyone tasks.',
   include_anyone:'Show Anyone tasks alongside the selected user’s tasks, using the same date filters and sorting.',
@@ -638,7 +662,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       this.shadowRoot.innerHTML='<style>:host{display:block}ha-form{display:block}ha-alert{display:block;margin-bottom:16px}ha-alert[hidden]{display:none}</style>';
       this._warning=document.createElement('ha-alert');this._warning.setAttribute('alert-type','info');this.shadowRoot.append(this._warning);
       this._form=document.createElement('ha-form');this.shadowRoot.append(this._form);
-      this._form.computeLabel=schema=>schema.title || {show_labels:'Show labels',label_match:'Match labels',labels:'Labels',sort_by:'Sort tasks by',show_assignee:'Show assigned user',show_complete:'Complete task',show_postpone:'Skip occurrence',show_due_date:'Change due date',show_reassign:'Reassign task'}[schema.name] || EDITOR_LABELS[schema.name] || schema.name;
+      this._form.computeLabel=schema=>schema.title || {row_spacing:'Task spacing',show_labels:'Show labels',use_label_colors:'Use Donetick label colors',label_match:'Match labels',labels:'Labels',sort_by:'Sort tasks by',show_assignee:'Show assigned user',show_complete:'Complete task',show_postpone:'Skip occurrence',show_due_date:'Change due date',show_reassign:'Reassign task'}[schema.name] || EDITOR_LABELS[schema.name] || schema.name;
       this._form.computeHelper=schema=>EDITOR_HELP[schema.name] || (schema.name.endsWith('_color') ? 'Theme color. Used for the icon/text, or the background of filled buttons.' : schema.name.endsWith('_icon') ? 'Choose an icon using HA’s searchable icon picker.' : schema.name.endsWith('_label') ? 'Also used in tooltips and accessibility labels, even with icons only.' : undefined);
       this._form.addEventListener('value-changed',event=>this.formChanged(event));
     }
@@ -664,7 +688,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       group('toggles','Toggles',[
         ...(selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' ? [{name:'include_anyone',selector:{boolean:{}}}] : []),
         ...(selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' && this._config.include_anyone || this._config.user_id === 'all' && owner === undefined && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
-        ...['show_labels','show_points','show_recurrence','show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))
+        ...['show_labels',...(this._config.show_labels ? ['use_label_colors'] : []),'show_points','show_recurrence','show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))
       ]),
       {name:'display_filters',selector:{select:{mode:'dropdown',multiple:true,options:[{value:'overdue',label:'Overdue'},{value:'today',label:'Today'},{value:'future',label:'Future'},{value:'undated',label:'Without a due date'}]}}},
       {name:'labels',selector:{select:{mode:'dropdown',multiple:true,options:labels.map(label=>({value:label,label}))}}},
@@ -675,6 +699,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       {name:'title',selector:{text:{}}},
       select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),
       group('appearance','Fine-tune appearance',[
+        select('row_spacing',[['auto','Auto — extra space for labels'],['compact','Compact'],['comfortable','Comfortable']]),
         ...(this._config.show_complete !== false ? [select('complete_control',[['checkbox','Checkbox on the left'],['button','Button on the right']])] : []),
         select('button_content',[['icon','Icons only'],['icon_and_label','Icons and labels'],['label','Labels only']]),
         select('button_style',[['text','Flat — HA style'],['outlined','Outlined'],['filled','Filled']]),

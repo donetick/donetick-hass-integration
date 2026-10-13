@@ -53,6 +53,29 @@ class TaskFilteringTests(unittest.TestCase):
         self.assertEqual(self.project_filter(SimpleNamespace(_project_id=2),
                          [matching, other, archived, unassigned]), [matching])
 
+    def test_card_task_attributes_expose_labels(self):
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        base = next(node for node in tree.body if isinstance(node, ast.ClassDef)
+                    and node.name == "DonetickTodoListBase")
+        method = next(node for node in base.body if isinstance(node, ast.FunctionDef)
+                      and node.name == "extra_state_attributes")
+        method.decorator_list = []
+        namespace = {"CONF_URL": "url"}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        labels = [{"id": 7, "name": "maintenance"}]
+        task = SimpleNamespace(id=1, name="HVAC", assigned_to=2, assignee_ids=[2],
+                               description=None, priority=1, labels=labels,
+                               next_due_date=None, frequency_type="yearly", is_active=True)
+        entity = SimpleNamespace(_config_entry=SimpleNamespace(entry_id="entry", data={"url": "http://donetick"}),
+                                 coordinator=SimpleNamespace(data=[task]),
+                                 _filter_tasks=lambda tasks: tasks, _apply_due_window=lambda tasks: tasks)
+        attributes = namespace["extra_state_attributes"](entity)
+        self.assertEqual(attributes["tasks"][0]["labels"], labels)
+        self.assertEqual(attributes["tasks"][0]["task_id"], 1)
+        task.labels = None
+        self.assertEqual(namespace["extra_state_attributes"](entity)["tasks"][0]["labels"], [])
+
     def test_member_attributes_expose_anyone_tasks_with_same_due_window(self):
         source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
