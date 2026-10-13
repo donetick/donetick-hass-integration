@@ -58,6 +58,33 @@ Configure via **Settings** → **Devices & Services** → **Add Integration** �
 
 ## Per-user task card
 
+Choose one or more **Labels** in the card editor. With two or more selected, **Match labels** offers **Any selected label (OR)** (the default) or **All selected labels (AND)**. Leave the selection empty to show all labels, including unlabelled tasks. Label names are matched exactly and combine with the assigned-user, date and sorting settings. Choices come from tasks in the selected Donetick list; saved selections remain available even when no current task has those labels. YAML supports `label_match: any` or `label_match: all`.
+
+**Show labels** is off by default. Enable it to display small label chips below each task's due date; long names and multiple labels wrap within the task column. Tasks without labels keep their existing layout. YAML supports `show_labels: true`.
+
+Enable **Use Donetick label colors** under **Toggles** after enabling **Show labels**
+to match each label's Donetick background and black or white text. This is off by
+default; labels without color metadata or a valid hex color keep the neutral style.
+YAML supports `use_label_colors: true` alongside `show_labels: true`.
+
+**Task spacing** under **Fine-tune appearance** controls row padding. YAML supports
+`row_spacing: auto` (default; extra space for visible labels), `compact`, or `comfortable`
+(extra space for every task). Appearance presets preserve this setting.
+
+For a maintenance dashboard with tasks due months ahead, set the integration's upcoming-task window to **0** (unlimited). Then leave **Tasks to show** empty for all tasks, or select **Overdue**, **Today** and **Future** with **Days ahead** empty or **0**. A card cannot show tasks excluded by the integration's window. YAML supports the same selections:
+
+```yaml
+type: custom:donetick-user-todo-card
+entity: todo.all_tasks
+user_id: all
+labels:
+  - maintenance
+  - technical
+display_filters: [overdue, today, future]
+upcoming_days: 0
+```
+
+
 The **Donetick User Tasks** card is bundled with the integration and loaded
 automatically when Donetick is set up, for both UI and YAML dashboards. No separate
 card installation or dashboard resource registration is required. Reload your browser
@@ -85,7 +112,8 @@ Switching to or from Anyone requires permission to edit the task. This uses `don
 with `assigned_to`, preserves recurrence, and refreshes all lists. A reassigned task
 leaves its previous user's card. Future completion uses the new current assignee.
 YAML supports `user_id: all`, `show_assignee: false`, and `show_reassign: false`.
-The editor's **Actions to show** switches independently control completion, Skip
+For a per-user task list such as **admin's Tasks**, the editor hides **Assigned user** and the card uses the list's owner automatically. YAML can omit `user_id` for these lists; any older user selection is overridden by the list's owner.
+The editor's **Toggles** section groups label display, assigned names, completion, Skip
 occurrence, Change due date, and reassignment. Completion visibility applies to both
 the checkbox and button styles. Turn all four off for a display-only card with no
 unused action space. Appearance presets preserve these visibility choices.
@@ -97,30 +125,34 @@ The card respects the integration's upcoming-task window. Set it to 0 to show al
 type: custom:donetick-user-todo-card
 entity: todo.all_tasks
 user_id: 1
-display_filter: all
+display_filters: []
 button_style: text
 button_size: compact
 button_shape: pill
 button_content: icon
 ```
 
-Choose **Display filter** in the card editor: **All tasks** (including undated), **Overdue**
-(due date/time has passed), **Today** (due on the current local date), or **Upcoming**
-(from today onward). **Include overdue tasks** is enabled by default for Upcoming,
-and includes all past deadlines alongside future tasks. Turn it off to show only tasks
-that are still due, including date-only tasks due today. Today includes tasks overdue earlier today.
+Choose one or more groups in **Tasks to show**: **Overdue** (due date/time has passed),
+**Today** (due on the current local date), **Future** (from tomorrow onward), and
+**Without a due date**. A task appears if it matches any selected group, without duplicates.
+Leave the selection empty for all tasks. Today includes tasks overdue earlier today.
 Overdue due text uses your theme's warning color, with a clock icon beside the due text.
-YAML supports `include_overdue: false`.
+YAML supports `display_filters: [overdue, today, future, undated]` or `display_filters: []`.
+The editor replaces **Include overdue tasks** with the **Overdue** selection. Existing
+`display_filter: all/overdue/today/upcoming` and `include_overdue` YAML settings keep
+their original behavior until you change **Tasks to show**. New `display_filters`
+selections take precedence over those legacy settings.
 Each card stores its own filter. Empty cards show the selected user, active filter and
-Upcoming day limit so you can see which settings to adjust.
+Future day limit so you can see which settings to adjust.
 **Sort tasks by** offers earliest due date (the default, with undated tasks last),
 highest priority (Urgent through Low, then unspecified), or alphabetical name using
 your HA language. Priority ties use due date. YAML supports `sort_by: due_date`,
 `sort_by: priority`, and `sort_by: name`. Card visibility remains controlled by HA.
-When Upcoming is selected, **Days ahead** limits the window (default 7; empty or 0 means unlimited).
+When Future is selected, **Days ahead** limits that group (default 7; empty or 0 means unlimited).
 Clearing the field keeps it empty and saves `upcoming_days: null`, without restoring 7.
-For example, 3 includes today through the third day from today, including the whole
-last day. Set `upcoming_days: 3` in YAML or use the card editor's number field.
+For example, 3 includes tomorrow through the third day from today, including the whole
+last day. The other selected groups remain visible regardless of this limit.
+Set `upcoming_days: 3` in YAML or use the card editor's number field.
 Filters use the tasks supplied by the integration. Set its upcoming-task window to 0
 if you want every future task available to the card.
 
