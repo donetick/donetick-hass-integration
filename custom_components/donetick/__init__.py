@@ -12,6 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
 from .api import DonetickApiClient
 from .frontend import async_setup_frontend
+from .completion_history import async_completed_occurrences
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -79,11 +80,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     refresh_interval_seconds = entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
+    async def async_update_tasks():
+        tasks = await client.async_get_tasks()
+        coordinator.completed_tasks = await async_completed_occurrences(client, tasks)
+        return tasks
+
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
         name=f"{DOMAIN}_chores",
-        update_method=client.async_get_tasks,
+        update_method=async_update_tasks,
         update_interval=timedelta(seconds=refresh_interval_seconds),
     )
     await coordinator.async_config_entry_first_refresh()

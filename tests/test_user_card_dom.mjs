@@ -89,7 +89,7 @@ assert.equal(root.querySelector('.empty').textContent,'No tasks for Torben · Fi
 const editor=document.createElement('donetick-user-todo-editor');editor.setConfig({entity:'todo.all',user_id:1});editor.hass=hass;
 const nativeForm=editor.shadowRoot.querySelector('ha-form');
 assert.equal(nativeForm.data.display_filter,'all');
-assert.equal(nativeForm.schema.find(field=>field.name==='display_filter').selector.select.options.length,4);
+assert.equal(nativeForm.schema.find(field=>field.name==='pending_options').schema.find(field=>field.name==='display_filter').selector.select.options.length,4);
 let changed;editor.addEventListener('config-changed',event=>{changed=event.detail.config;});
 nativeForm.dispatchEvent(new CustomEvent('value-changed',{detail:{value:{...nativeForm.data,display_filter:'upcoming'}}}));
 assert.equal(changed.display_filter,'upcoming');assert.equal(changed.user_id,1);
