@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 globalThis.HTMLElement = class {};
 globalThis.customElements = {define() {}, get() {}, whenDefined() { return Promise.resolve(); }};
 globalThis.window = {};
-const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit, taskLabels, dateFilters} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit, taskLabels, dateFilters, recurrenceText} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+for (const unit of ['hours','days','weeks','months','years']) {
+  assert.equal(recurrenceText({frequency_type:'interval',frequency:6,interval_type:unit}),`Every 6 ${unit}`);
+  assert.equal(recurrenceText({frequency_type:'interval',frequency:1,interval_type:unit}),`Every 1 ${unit.slice(0,-1)}`);
+}
+assert.equal(recurrenceText({frequency_type:'weekly'}),'Weekly');
+assert.equal(recurrenceText({frequency_type:'once'}),'');
+assert.equal(recurrenceText({frequency_type:'interval',frequency:6}),'');
+assert.equal(recurrenceText({frequency_type:'interval',frequency:0,interval_type:'weeks'}),'');
 const state = {attributes: {config_entry_id: 'entry', tasks: [
   {task_id: 1, assigned_to: 2}, {task_id: 2, assigned_to: 1}, {task_id: 3, assigned_to: null}
 ]}};

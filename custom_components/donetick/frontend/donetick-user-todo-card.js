@@ -12,6 +12,17 @@ function compareTasks(a, b, sortBy, language) {
 export function upcomingDayLimit(value) {
   return value === undefined ? 7 : value === null || value === '' ? 0 : Number(value);
 }
+export function recurrenceText(task) {
+  const fixed = {daily:'Daily', weekly:'Weekly', monthly:'Monthly', yearly:'Yearly',
+    adaptive:'Adaptive', trigger:'Event-based', always:'Always available',
+    days_of_the_week:'Selected weekdays', day_of_the_month:'Monthly schedule'};
+  if (task.frequency_type !== 'interval') return Object.hasOwn(fixed, task.frequency_type) ? fixed[task.frequency_type] : '';
+  const units = {hours:'hour', days:'day', weeks:'week', months:'month', years:'year'};
+  const unit = Object.hasOwn(units, task.interval_type) ? units[task.interval_type] : null;
+  const count = task.frequency;
+  if (!unit || !Number.isInteger(count) || count < 1) return '';
+  return `Every ${count} ${count === 1 ? unit : task.interval_type}`;
+}
 export function taskLabels(value) {
   const labels = typeof value === 'string' ? value.split(',') : Array.isArray(value) ? value : [];
   return [...new Set(labels.map(label => typeof label === 'string' ? label : label?.name)
@@ -193,7 +204,7 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.row_spacing !== undefined && !['auto','compact','comfortable'].includes(config.row_spacing)) throw new Error('Choose valid task spacing');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
     this._config = {row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
+      button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
     if (this._panel && this._panel.kind !== 'details' && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
     this.render();
   }
@@ -252,10 +263,14 @@ class DonetickUserTodoCard extends HTMLElement {
       .task { flex: 1; min-width: 0; } .name { overflow-wrap: anywhere; } .due { color: var(--secondary-text-color); font-size: 12px; margin-top: 2px; }
       .due.overdue { color:var(--warning-color); }
       .due { display:flex; align-items:center; gap:4px; }
+      .task-points { display:inline-flex; align-items:center; gap:3px; flex-shrink:0; padding:0 5px; border-radius:10px; background:var(--secondary-background-color); color:var(--secondary-text-color); font-size:11px; line-height:18px; }
+      .task-points ha-icon { --mdc-icon-size:12px; }
+      .task-recurrence { display:flex; align-items:center; gap:4px; color:var(--secondary-text-color); font-size:12px; line-height:16px; }
+      .task-recurrence ha-icon { --mdc-icon-size:14px; flex-shrink:0; }
       .due .recurring, .due .due-clock { --mdc-icon-size:14px; flex-shrink:0; }
       .due .assignee { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       ha-card button.task, ha-card div.task { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; border:0; border-radius:0; padding:0; min-width:0; min-height:44px; text-align:left; background:transparent; color:var(--primary-text-color); font:inherit; }
-      .task .name { display:flex; align-items:center; gap:4px; line-height:20px; } .task .due { margin-top:0; line-height:16px; }
+      .task .name { display:flex; flex-wrap:wrap; align-items:center; gap:4px; line-height:20px; } .task .due { margin-top:0; line-height:16px; }
       .task-labels { display:flex; flex-wrap:wrap; gap:4px; max-width:100%; margin-top:2px; }
       .task-label { max-width:100%; box-sizing:border-box; padding:1px 6px; border-radius:10px; background:var(--secondary-background-color); color:var(--secondary-text-color); font-size:11px; line-height:16px; overflow-wrap:anywhere; text-align:start; }
       .description-indicator { --mdc-icon-size:16px; flex-shrink:0; color:var(--secondary-text-color); }
@@ -321,6 +336,13 @@ class DonetickUserTodoCard extends HTMLElement {
       text.addEventListener('keydown', event => { if (event.key === 'Escape' && this._panel?.kind === 'details') { event.stopPropagation(); this.closePanel(); } });
       }
       const name = addText(text, 'span', task.name, 'name');
+      if (this._config.show_points && Number.isFinite(task.points)) {
+        const label = `${task.points} ${task.points === 1 ? 'point' : 'points'}`;
+        const badge = addText(name, 'span', String(task.points), 'task-points');
+        badge.title = `Task value: ${label}`; badge.setAttribute('aria-label', label);
+        const star = document.createElement('ha-icon'); star.setAttribute('icon', 'mdi:star-outline');
+        star.setAttribute('aria-hidden', 'true'); badge.prepend(star);
+      }
       if (hasDescription) {
         const indicator = document.createElement('ha-icon'); indicator.className = 'description-indicator';
         indicator.setAttribute('icon', this._panel?.taskId === task.task_id && this._panel.kind === 'details' ? 'mdi:chevron-up' : 'mdi:chevron-down');
@@ -335,7 +357,8 @@ class DonetickUserTodoCard extends HTMLElement {
         clock.setAttribute('icon', 'mdi:clock'); clock.setAttribute('aria-hidden', 'true'); dueLabel.prepend(clock);
       }
       if (due && !isNaN(due)) dueLabel.title = due.toLocaleString(this._hass.locale?.language, {dateStyle:'full',timeStyle:hasDueTime(task.next_due_date) ? 'short' : undefined});
-      if (task.is_recurring ?? task.can_postpone) {
+      const recurrence = this._config.show_recurrence ? recurrenceText(task) : '';
+      if (!recurrence && (task.is_recurring ?? task.can_postpone)) {
         const recurring = document.createElement('ha-icon'); recurring.className = 'recurring';
         recurring.setAttribute('icon', 'mdi:autorenew'); recurring.title = 'Recurring task';
         recurring.setAttribute('role', 'img'); recurring.setAttribute('aria-label', 'Recurring task');
@@ -345,6 +368,11 @@ class DonetickUserTodoCard extends HTMLElement {
         const assignee = state.attributes.circle_members.find(member => member.user_id === task.assigned_to);
         const name = assignee?.display_name || assignee?.username || (task.assigned_to ? `User ${task.assigned_to}` : 'Anyone');
         const label = addText(dueLabel, 'span', `· ${name}`, 'assignee'); label.title = `Assigned to: ${name}`;
+      }
+      if (recurrence) {
+        const label = addText(text, 'span', recurrence, 'task-recurrence'); label.title = recurrence;
+        const icon = document.createElement('ha-icon'); icon.setAttribute('icon', 'mdi:autorenew');
+        icon.setAttribute('aria-hidden', 'true'); label.prepend(icon);
       }
       if (this._config.show_labels) {
         const labels = taskLabels(task.labels);
@@ -523,7 +551,7 @@ class DonetickUserTodoCard extends HTMLElement {
 }
 const EDITOR_DEFAULTS = {
   row_spacing:'auto',
-  display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
+  display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
   due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
   due_date_icon:'mdi:calendar-edit', reassign_label:'Reassign', reassign_icon:'mdi:account-switch-outline', complete_color:'primary', postpone_color:'primary', due_date_color:'primary', reassign_color:'primary'
@@ -535,8 +563,10 @@ const STYLE_PRESETS = {
   filled:{complete_control:'checkbox',button_style:'filled',button_size:'normal',button_shape:'rounded',button_content:'icon'}
 };
 const ACTION_OVERRIDES = ['complete','postpone','due_date','reassign'].flatMap(action=>['label','icon','color'].map(part=>`${action}_${part}`));
-const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',include_anyone:'Include tasks assigned to Anyone',display_filters:'Tasks to show',upcoming_days:'Days ahead',due_display:'Due date display',title:'Card title (optional)',appearance_preset:'Starting style',appearance:'Appearance',actions:'Action icons and colors',complete_control:'Complete tasks with',button_style:'Action button style',button_size:'Tap target size',button_shape:'Button corners',button_content:'Show on action buttons'};
+const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',include_anyone:'Include tasks assigned to Anyone',show_points:'Show task points',show_recurrence:'Show recurrence',display_filters:'Tasks to show',upcoming_days:'Days ahead',due_display:'Due date display',title:'Card title (optional)',appearance_preset:'Starting style',appearance:'Appearance',actions:'Action icons and colors',complete_control:'Complete tasks with',button_style:'Action button style',button_size:'Tap target size',button_shape:'Button corners',button_content:'Show on action buttons'};
 const EDITOR_HELP = {
+  show_points:'Show a small points badge beside the task name. Tasks without points omit the badge.',
+  show_recurrence:'Show the recurrence on its own muted line, including the unit for interval schedules.',
   row_spacing:'Auto adds space to tasks with visible labels. Compact keeps all rows tight; Comfortable adds space to every task.',
   labels:'Filter by selected labels. Leave empty for all labels. Choices come from this list’s tasks; set the integration’s task window to 0 to include distant tasks.',
   label_match:'Any (OR) matches at least one selected label. All (AND) requires every selected label. User and date filters still apply.',
@@ -656,9 +686,9 @@ class DonetickUserTodoEditor extends HTMLElement {
       {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
       ...(owner === undefined ? [{...select('user_id',[...(members.length > 1 ? [['all','All users']] : []), ...members.map(member=>[String(member.user_id),member.display_name || member.username || `User ${member.user_id}`])]),required:true,disabled:!members.length}] : []),
       group('toggles','Toggles',[
-        ...(this._config.user_id !== 'all' ? [{name:'include_anyone',selector:{boolean:{}}}] : []),
-        ...(this._config.user_id !== 'all' && this._config.include_anyone || this._config.user_id === 'all' && owner === undefined && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
-        ...['show_labels',...(this._config.show_labels ? ['use_label_colors'] : []),'show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))
+        ...(selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' ? [{name:'include_anyone',selector:{boolean:{}}}] : []),
+        ...(selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' && this._config.include_anyone || this._config.user_id === 'all' && owner === undefined && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
+        ...['show_labels',...(this._config.show_labels ? ['use_label_colors'] : []),'show_points','show_recurrence','show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))
       ]),
       {name:'display_filters',selector:{select:{mode:'dropdown',multiple:true,options:[{value:'overdue',label:'Overdue'},{value:'today',label:'Today'},{value:'future',label:'Future'},{value:'undated',label:'Without a due date'}]}}},
       {name:'labels',selector:{select:{mode:'dropdown',multiple:true,options:labels.map(label=>({value:label,label}))}}},
