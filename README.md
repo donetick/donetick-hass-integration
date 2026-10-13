@@ -98,11 +98,16 @@ due earlier or had no due date. Increase `completed_days` for a longer history,
 or use `task_view: completed` for a separate history card with the same component.
 
 The editor starts with **Basics** (list, user, title, task view), followed by
-**Pending tasks**, **Completed tasks**, **Display and actions**, and **Appearance**.
-Basics and pending filters start open; detailed settings stay collapsed. Completed-only
+**Task filters**, **Completed tasks**, **Task details**, **Available actions**, and **Appearance**.
+Shared label filters always stay in Task filters, with choices from pending,
+Anyone, and completed tasks as well as saved selections. Basics and task filters
+start open; detailed settings stay collapsed. Completed-only
 mode hides pending actions, sorting, and button appearance. If completion filtering
 uses original due dates, its date controls remain available. Action icon, label, and
-color settings sit together under Appearance, without nested expandable sections.
+color settings sit together in a separate **Customize action icons, labels and colors**
+section, without nested expandable sections. Task details contains points, recurrence,
+labels and date display; Available actions controls completion, skipping, date changes
+and reassignment. Appearance contains the preset and button layout controls.
 Editable fields can be cleared before typing a replacement without restoring defaults.
 
 Native Home Assistant to-do lists also expose today's completed occurrences.
@@ -115,7 +120,7 @@ browser's local calendar days for its configured history period.
 History requires access to Donetick's `/api/v1/chores/history` endpoint; unavailable
 history leaves pending-task functionality intact.
 
-Under **Display and actions**, enable **Show task points** or **Show recurrence** to display
+Under **Task details**, enable **Show task points** or **Show recurrence** to display
 points as a small badge beside the task name and recurrence on a separate muted line.
 The due date and assignee keep their existing layout. Both options are off by default and also work in YAML:
 `show_points: true` and `show_recurrence: true`. For example, an interval task can show
@@ -127,7 +132,7 @@ Choose one or more **Labels** in the card editor. With two or more selected, **M
 
 **Show labels** is off by default. Enable it to display small label chips below each task's due date; long names and multiple labels wrap within the task column. Tasks without labels keep their existing layout. YAML supports `show_labels: true`.
 
-Enable **Use Donetick label colors** under **Display and actions** after enabling **Show labels**
+Enable **Use Donetick label colors** under **Task details** after enabling **Show labels**
 to match each label's Donetick background and black or white text. This is off by
 default; labels without color metadata or a valid hex color keep the neutral style.
 YAML supports `use_label_colors: true` alongside `show_labels: true`.
@@ -136,7 +141,7 @@ YAML supports `use_label_colors: true` alongside `show_labels: true`.
 `row_spacing: auto` (default; extra space for visible labels), `compact`, or `comfortable`
 (extra space for every task). Appearance presets preserve this setting.
 
-For a maintenance dashboard with tasks due months ahead, set the integration's upcoming-task window to **0** (unlimited). Then leave **Tasks to show** empty for all tasks, or select **Overdue**, **Today** and **Future** with **Days ahead** empty or **0**. A card cannot show tasks excluded by the integration's window. YAML supports the same selections:
+For a maintenance dashboard with tasks due months ahead, set the integration's upcoming-task window to **0** (unlimited). Then leave **Pending task dates** empty for all tasks, or select **Overdue**, **Today** and **Future** with **Days ahead** empty or **0**. A card cannot show tasks excluded by the integration's window. YAML supports the same selections:
 
 ```yaml
 type: custom:donetick-user-todo-card
@@ -197,7 +202,7 @@ button_shape: pill
 button_content: icon
 ```
 
-Choose one or more groups in **Tasks to show**: **Overdue** (due date/time has passed),
+Choose one or more groups in **Pending task dates**: **Overdue** (due date/time has passed),
 **Today** (due on the current local date), **Future** (from tomorrow onward), and
 **Without a due date**. A task appears if it matches any selected group, without duplicates.
 Leave the selection empty for all tasks. Today includes tasks overdue earlier today.
@@ -205,7 +210,7 @@ Overdue due text uses your theme's warning color, with a clock icon beside the d
 YAML supports `display_filters: [overdue, today, future, undated]` or `display_filters: []`.
 The editor replaces **Include overdue tasks** with the **Overdue** selection. Existing
 `display_filter: all/overdue/today/upcoming` and `include_overdue` YAML settings keep
-their original behavior until you change **Tasks to show**. New `display_filters`
+their original behavior until you change **Pending task dates**. New `display_filters`
 selections take precedence over those legacy settings.
 Each card stores its own filter. Empty cards show the selected user, active filter and
 Future day limit so you can see which settings to adjust.
