@@ -66,7 +66,56 @@ Configure via **Settings** → **Devices & Services** → **Add Integration** �
 
 ## Per-user task card
 
-Under **Toggles**, enable **Show task points** or **Show recurrence** to display
+The existing card includes a **Completed today** section by default, showing the
+completion time and performer. **Task view** can show pending tasks, completed
+tasks only, or both (`task_view: pending`, `completed`, or `both`). History survives
+a browser refresh and includes completions made outside Home Assistant.
+
+Expand **Completed tasks** in the editor to adjust:
+
+| Setting | Default | Options |
+| --- | --- | --- |
+| History period | Today | 1–7 calendar days, including today (`completed_days`) |
+| Completed tasks to include | All completions in the period | Match task date filter uses the completed occurrence's original due date (`completed_filter: matching`); `all` ignores due-date filters |
+| Maximum completed entries | All | 0 for all, or 1–500 entries, newest first (`completed_limit`) |
+
+These settings disappear in pending-only mode and are preserved when switching
+views or appearance presets. Completed entries are always filtered by the selected
+performer and list/project. For tasks due today with their completed occurrences:
+
+```yaml
+type: custom:donetick-user-todo-card
+entity: todo.all_tasks
+user_id: all
+display_filters: [today]
+task_view: both
+completed_filter: matching
+completed_days: 1
+```
+
+Change `completed_filter` to `all` to also include tasks completed today that were
+due earlier or had no due date. Increase `completed_days` for a longer history,
+or use `task_view: completed` for a separate history card with the same component.
+
+The editor starts with **Basics** (list, user, title, task view), followed by
+**Pending tasks**, **Completed tasks**, **Display and actions**, and **Appearance**.
+Basics and pending filters start open; detailed settings stay collapsed. Completed-only
+mode hides pending actions, sorting, and button appearance. If completion filtering
+uses original due dates, its date controls remain available. Action icon, label, and
+color settings sit together under Appearance, without nested expandable sections.
+Editable fields can be cleared before typing a replacement without restoring defaults.
+
+Native Home Assistant to-do lists also expose today's completed occurrences.
+Recurring tasks keep their next pending occurrence separately. Completed records
+have distinct history IDs and are read-only; edit or remove history in Donetick.
+Per-user lists attribute completions to the performer, even if the next occurrence
+is assigned to someone else. The integration retrieves seven days of history and
+the native list selects today in the Home Assistant timezone. The card uses the
+browser's local calendar days for its configured history period.
+History requires access to Donetick's `/api/v1/chores/history` endpoint; unavailable
+history leaves pending-task functionality intact.
+
+Under **Display and actions**, enable **Show task points** or **Show recurrence** to display
 points as a small badge beside the task name and recurrence on a separate muted line.
 The due date and assignee keep their existing layout. Both options are off by default and also work in YAML:
 `show_points: true` and `show_recurrence: true`. For example, an interval task can show
@@ -78,12 +127,12 @@ Choose one or more **Labels** in the card editor. With two or more selected, **M
 
 **Show labels** is off by default. Enable it to display small label chips below each task's due date; long names and multiple labels wrap within the task column. Tasks without labels keep their existing layout. YAML supports `show_labels: true`.
 
-Enable **Use Donetick label colors** under **Toggles** after enabling **Show labels**
+Enable **Use Donetick label colors** under **Display and actions** after enabling **Show labels**
 to match each label's Donetick background and black or white text. This is off by
 default; labels without color metadata or a valid hex color keep the neutral style.
 YAML supports `use_label_colors: true` alongside `show_labels: true`.
 
-**Task spacing** under **Fine-tune appearance** controls row padding. YAML supports
+**Task spacing** under **Appearance** controls row padding. YAML supports
 `row_spacing: auto` (default; extra space for visible labels), `compact`, or `comfortable`
 (extra space for every task). Appearance presets preserve this setting.
 

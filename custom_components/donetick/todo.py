@@ -19,6 +19,8 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_SHOW_NO_DUE_DATE, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_PROJECT_LISTS, CONF_CREATE_ASSIGNEE_LISTS
 from .api import DonetickApiClient
@@ -138,7 +140,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         _LOGGER.debug("Generating todo items for entity %s (after filtering to: %d)", self._attr_name, len(filtered_tasks))
         filtered_tasks = self._apply_due_window(filtered_tasks)
         _LOGGER.debug("Generating todo items for entity %s (after applying due window: %d)", self._attr_name, len(filtered_tasks))
-        return [
+        pending = [
             TodoItem(
                 summary=task.name,
                 uid="%s--%s" % (task.id, task.next_due_date),
@@ -147,6 +149,24 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                 description=task.description or ""
             ) for task in filtered_tasks if task.is_active
         ]
+        today = dt_util.now().date()
+        completed = [
+            TodoItem(summary=task["name"], uid=task["uid"],
+                     status=TodoItemStatus.COMPLETED,
+                     description=task["description"] or "")
+            for task in self._completed_tasks()
+            if dt_util.as_local(datetime.fromisoformat(task["completed_at"])).date() == today
+        ]
+        return pending + completed
+
+    def _completed_tasks(self):
+        """Filter history by the performer and project, not today's assignment."""
+        tasks = getattr(self.coordinator, "completed_tasks", [])
+        if hasattr(self, "_member"):
+            tasks = [task for task in tasks if task["completed_by"] == self._member.user_id]
+        if hasattr(self, "_project"):
+            tasks = [task for task in tasks if task["project_id"] == self._project.id]
+        return tasks
 
     def get_status(self, due_date: datetime, is_active: bool) -> TodoItemStatus:
         """Return the status of the task."""
@@ -199,6 +219,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             ]
         if hasattr(self, "_member"):
             attributes["donetick_user_id"] = self._member.user_id
+        attributes["completed_tasks"] = getattr(self, "_completed_tasks", lambda: [])()
         return attributes
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
@@ -243,6 +264,8 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
 
     async def async_update_todo_item(self, item: TodoItem, context = None) -> None:
         """Update a todo item."""
+        if item.uid and item.uid.startswith("history--"):
+            raise HomeAssistantError("Completed occurrences are read-only; manage history in Donetick")
         _LOGGER.debug("Update todo item: %s %s", item.uid, item.status)
         if not self.coordinator.data:
             return None
@@ -294,6 +317,8 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
         """Delete todo items."""
+        if any(uid.startswith("history--") for uid in uids):
+            raise HomeAssistantError("Completed occurrences are read-only; manage history in Donetick")
         session = async_get_clientsession(self.hass)
         client = DonetickApiClient(
             self._config_entry.data[CONF_URL],

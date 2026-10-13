@@ -12,6 +12,22 @@ function compareTasks(a, b, sortBy, language) {
 export function upcomingDayLimit(value) {
   return value === undefined ? 7 : value === null || value === '' ? 0 : Number(value);
 }
+export function completedTasks(state, userId, now = new Date(), config = {}) {
+  const owner = state?.attributes?.donetick_user_id ?? userId;
+  const days = Number(config.completed_days ?? 1);
+  const since = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1);
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tasks = (state?.attributes?.completed_tasks || []).filter(task => {
+    const completed = new Date(task.completed_at);
+    const matchesDate = userTasks({attributes:{tasks:[task]}}, 'all',
+      config.completed_filter === 'matching' ? config.display_filters ?? config.display_filter : 'all',
+      now, config.upcoming_days, 'due_date', undefined, config.include_overdue, config.labels, config.label_match).length > 0;
+    return completed >= since && completed <= now && completed < tomorrow && matchesDate
+      && (owner === 'all' || task.completed_by === Number(owner));
+  }).sort((a,b) => Date.parse(b.completed_at) - Date.parse(a.completed_at));
+  const limit = Number(config.completed_limit ?? 0);
+  return limit > 0 ? tasks.slice(0, limit) : tasks;
+}
 export function recurrenceText(task) {
   const fixed = {daily:'Daily', weekly:'Weekly', monthly:'Monthly', yearly:'Yearly',
     adaptive:'Adaptive', trigger:'Event-based', always:'Always available',
@@ -194,6 +210,11 @@ class DonetickUserTodoCard extends HTMLElement {
   disconnectedCallback() { document.removeEventListener('pointerdown', this._outside); }
   setConfig(config) {
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
+    if (config.task_view && !['both','pending','completed'].includes(config.task_view)) throw new Error('Choose a valid task view');
+    if (config.completed_filter !== undefined && !['all','matching'].includes(config.completed_filter)) throw new Error('Choose a valid completed task filter');
+    for (const [key, min, max] of [['completed_days',1,7],['completed_limit',0,500]]) {
+      if (config[key] != null && (config[key] === '' || typeof config[key] === 'boolean' || !Number.isInteger(Number(config[key])) || Number(config[key]) < min || Number(config[key]) > max)) throw new Error(`${key === 'completed_days' ? 'Completed history days' : 'Completed task limit'} must be a whole number from ${min} to ${max}`);
+    }
     if (config.user_id !== undefined && config.user_id !== 'all' && (!Number.isInteger(Number(config.user_id)) || Number(config.user_id) < 1)) throw new Error('Choose a Donetick user');
     if (config.display_filter && !['all','overdue','today','upcoming'].includes(config.display_filter)) throw new Error('Choose a valid display filter');
     if (config.display_filters !== undefined && (!Array.isArray(config.display_filters) || config.display_filters.some(filter=>!['overdue','today','future','undated'].includes(filter)))) throw new Error('Choose valid task date groups');
@@ -203,13 +224,17 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.due_display && !['date','relative','both'].includes(config.due_display)) throw new Error('Choose a valid due date display');
     if (config.row_spacing !== undefined && !['auto','compact','comfortable'].includes(config.row_spacing)) throw new Error('Choose valid task spacing');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
-    this._config = {row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
+    this._config = {task_view:'both', completed_days:1, completed_filter:'all', completed_limit:0, row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
+      button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
     if (this._panel && this._panel.kind !== 'details' && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
     this.render();
   }
   set hass(hass) { this._hass = hass; this.render(); }
-  getCardSize() { return 2 + this.filteredTasks(this._hass?.states[this._config?.entity]).length; }
+  getCardSize() {
+    const state = this._hass?.states[this._config?.entity];
+    return 2 + (this._config?.task_view === 'completed' ? 0 : this.filteredTasks(state).length)
+      + (this._config?.task_view === 'pending' ? 0 : completedTasks(state, this._config?.user_id, new Date(), this._config).length);
+  }
   filteredTasks(state) {
     return userTasks(state, this._config?.user_id, this._config?.display_filters ?? this._config?.display_filter, new Date(), this._config?.upcoming_days, this._config?.sort_by, this._hass?.locale?.language, this._config?.include_overdue, this._config?.labels, this._config?.label_match, this._config?.include_anyone);
   }
@@ -259,6 +284,9 @@ class DonetickUserTodoCard extends HTMLElement {
       ha-card[data-spacing="comfortable"] .row { padding:8px 0; }
       ha-card[data-labels="true"] { margin-block:4px; }
       .completed .name { text-decoration:line-through; color:var(--secondary-text-color); }
+      .history-heading { font-size:14px; font-weight:500; color:var(--secondary-text-color); margin:16px 0 6px; border-top:1px solid var(--divider-color); padding-top:12px; }
+      .history-check { color:var(--success-color, #43a047); width:44px; flex-shrink:0; }
+      .history-row { padding:6px 0; }
       .actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
       .task { flex: 1; min-width: 0; } .name { overflow-wrap: anywhere; } .due { color: var(--secondary-text-color); font-size: 12px; margin-top: 2px; }
       .due.overdue { color:var(--warning-color); }
@@ -307,10 +335,10 @@ class DonetickUserTodoCard extends HTMLElement {
     addText(card, 'h2', this._config.title || (userId === 'all' ? 'All users — Tasks' : `${member?.display_name || 'User ' + userId} — Tasks`));
     if (this._error && !this._panel) addText(card, 'p', this._error, 'error');
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
-    const tasks = this.filteredTasks(state);
-    for (const task of this._completed.values()) if (!tasks.some(item => item.task_id === task.task_id) && this.filteredTasks({attributes:{tasks:[task]}}).length) tasks.push(task);
+    const tasks = this._config.task_view === 'completed' ? [] : this.filteredTasks(state);
+    for (const task of this._completed.values()) if (this._config.task_view !== 'completed' && !tasks.some(item => item.task_id === task.task_id) && this.filteredTasks({attributes:{tasks:[task]}}).length) tasks.push(task);
     tasks.sort((a,b) => compareTasks(a,b,this._config.sort_by,this._hass.locale?.language));
-    if (!tasks.length) addText(card, 'p', emptyMessage({...this._config,user_id:userId}, member?.display_name || member?.username || `User ${userId}`), 'empty');
+    if (!tasks.length && this._config.task_view !== 'completed') addText(card, 'p', emptyMessage({...this._config,user_id:userId}, member?.display_name || member?.username || `User ${userId}`), 'empty');
     for (const task of tasks) {
       const row = document.createElement('div'); row.className = 'row'; card.append(row);
       const completed = this._completed.has(task.task_id);
@@ -438,6 +466,24 @@ class DonetickUserTodoCard extends HTMLElement {
       if (!actions.childElementCount) actions.remove();
       if (this._panel?.taskId === task.task_id) this.renderPanel(row, task, addText);
     }
+    if (this._config.task_view !== 'pending') {
+      const history = completedTasks(state, this._config.user_id, new Date(), this._config);
+      const period = Number(this._config.completed_days) === 1 ? 'today' : `in the last ${this._config.completed_days} days`;
+      addText(card, 'h3', `Completed ${period} · ${history.length}`, 'history-heading');
+      if (!history.length) addText(card, 'p', this._config.completed_filter === 'matching' ? `No completed tasks ${period} match the task date filter` : `No tasks completed ${period}`, 'empty');
+      for (const task of history) {
+        const row = document.createElement('div'); row.className = 'row completed history-row'; row.dataset.uid = task.uid; card.append(row);
+        const check = document.createElement('ha-icon'); check.className = 'history-check'; check.setAttribute('icon','mdi:check-circle-outline'); check.setAttribute('aria-label','Completed'); row.append(check);
+        const text = document.createElement('div'); text.className = 'task'; row.append(text);
+        addText(text, 'span', task.name, 'name');
+        const performer = state.attributes.circle_members?.find(member => member.user_id === task.completed_by);
+        const name = performer?.display_name || performer?.username || (task.completed_by ? `User ${task.completed_by}` : 'Unknown user');
+        const time = Number(this._config.completed_days) > 1
+          ? new Date(task.completed_at).toLocaleString(this._hass.locale?.language, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:this._hass.locale?.time_format === '12' ? true : this._hass.locale?.time_format === '24' ? false : undefined})
+          : new Date(task.completed_at).toLocaleTimeString(this._hass.locale?.language, {hour:'2-digit', minute:'2-digit', hour12:this._hass.locale?.time_format === '12' ? true : this._hass.locale?.time_format === '24' ? false : undefined});
+        addText(text, 'span', `${time} · ${name}`, 'due');
+      }
+    }
     if (focusedField) this.shadowRoot.querySelector(`[data-field="${focusedField}"]`)?.focus();
   }
   renderPanel(row, task, addText) {
@@ -550,6 +596,8 @@ class DonetickUserTodoCard extends HTMLElement {
   }
 }
 const EDITOR_DEFAULTS = {
+  task_view:'both',
+  completed_days:1, completed_filter:'all', completed_limit:0,
   row_spacing:'auto',
   display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
@@ -563,8 +611,12 @@ const STYLE_PRESETS = {
   filled:{complete_control:'checkbox',button_style:'filled',button_size:'normal',button_shape:'rounded',button_content:'icon'}
 };
 const ACTION_OVERRIDES = ['complete','postpone','due_date','reassign'].flatMap(action=>['label','icon','color'].map(part=>`${action}_${part}`));
-const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',include_anyone:'Include tasks assigned to Anyone',show_points:'Show task points',show_recurrence:'Show recurrence',display_filters:'Tasks to show',upcoming_days:'Days ahead',due_display:'Due date display',title:'Card title (optional)',appearance_preset:'Starting style',appearance:'Appearance',actions:'Action icons and colors',complete_control:'Complete tasks with',button_style:'Action button style',button_size:'Tap target size',button_shape:'Button corners',button_content:'Show on action buttons'};
+const EDITOR_LABELS = {entity:'Donetick task list',user_id:'Assigned user',include_anyone:'Include tasks assigned to Anyone',display_filters:'Pending task dates',show_points:'Show task points',show_recurrence:'Show recurrence',upcoming_days:'Days ahead',include_overdue:'Include overdue tasks',due_display:'Due date display',title:'Card title (optional)',appearance_preset:'Starting style',appearance:'Appearance',complete_control:'Complete tasks with',button_style:'Action button style',button_size:'Tap target size',button_shape:'Button corners',button_content:'Show on action buttons'};
 const EDITOR_HELP = {
+  task_view:'Show pending tasks, completed occurrences, or both. Completed entries are read-only and attributed to the person who completed them.',
+  completed_days:'Today is 1 day. Leave empty for today. Includes today and the previous days, up to 7 days of history. The most recent completions appear first.',
+  completed_filter:'All completions includes tasks finished in this period regardless of their due date. Match task date filter uses the occurrence’s original due date, so Tomorrow’s next occurrence does not hide a task completed today.',
+  completed_limit:'Maximum completed entries to show, newest first. Use 0 for all matching entries. Does not limit pending tasks.',
   show_points:'Show a small points badge beside the task name. Tasks without points omit the badge.',
   show_recurrence:'Show the recurrence on its own muted line, including the unit for interval schedules.',
   row_spacing:'Auto adds space to tasks with visible labels. Compact keeps all rows tight; Comfortable adds space to every task.',
@@ -592,6 +644,8 @@ const EDITOR_HELP = {
   button_content:'Icons save space. Labels explain actions, but may make narrow cards wider.',
   button_shape:'Changes action buttons; the completion checkbox stays the same.'
 };
+EDITOR_LABELS.task_view = 'Task view';
+Object.assign(EDITOR_LABELS, {completed_days:'History period (days)',completed_filter:'Completed tasks to include',completed_limit:'Maximum completed entries'});
 export function actionColor(value) {
   if (!value || value === 'none') return null;
   if (value === 'primary' || value === 'accent') return `var(--${value}-color)`;
@@ -630,7 +684,9 @@ class DonetickUserTodoEditor extends HTMLElement {
         delete config.display_filter;
         delete config.include_overdue;
       }
-      else if (key==='upcoming_days' && (value==='' || value===undefined || value===null)) config[key]=null;
+      // Preserve an explicitly cleared editable field across HA's setConfig
+      // feedback so displayed defaults do not interrupt typing a replacement.
+      else if ((['upcoming_days','completed_days','completed_limit'].includes(key) || ACTION_OVERRIDES.includes(key)) && (value==='' || value===undefined || value===null)) config[key]=null;
       else if (value==='' || value===undefined || value===null) delete config[key];
       else config[key]=key==='user_id' && value !== 'all' ? Number(value) : value;
     }
@@ -677,41 +733,56 @@ class DonetickUserTodoEditor extends HTMLElement {
     this._warning.textContent='Select a Donetick list with circle members to choose its users. The integration must be loaded.';
     const select=(name,options)=>({name,selector:{select:{mode:'dropdown',options:options.map(([value,label])=>({value,label}))}}});
     const group=(name,title,schema)=>({name,title,type:'expandable',flatten:true,expanded:false,schema});
+    const hasPending = this._config.task_view !== 'completed';
+    const hasCompleted = this._config.task_view !== 'pending';
+    const matchesCompleted = hasCompleted && this._config.completed_filter === 'matching';
+    const labelFields = [
+      {name:'labels',selector:{select:{mode:'dropdown',multiple:true,options:labels.map(label=>({value:label,label}))}}},
+      ...(taskLabels(this._config.labels).length > 1 ? [select('label_match',[['any','Any selected label (OR)'],['all','All selected labels (AND)']])] : [])
+    ];
     const actionGroup=(action,title)=>{
       const fields=[{name:`${action}_icon`,selector:{icon:{}}},{name:`${action}_label`,selector:{text:{}}},{name:`${action}_color`,selector:{ui_color:{default_color:'primary'}}}];
-      fields.forEach((field,index)=>{EDITOR_LABELS[field.name]=['Icon','Label','Color'][index];});
-      return group(action,title,fields);
+      fields.forEach((field,index)=>{EDITOR_LABELS[field.name]=`${title} · ${['Icon','Label','Color'][index]}`;});
+      return {name:action,type:'grid',flatten:true,column_min_width:'150px',schema:fields};
     };
     const schema=[
+      {...group('basics','Basics',[
       {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
       ...(owner === undefined ? [{...select('user_id',[...(members.length > 1 ? [['all','All users']] : []), ...members.map(member=>[String(member.user_id),member.display_name || member.username || `User ${member.user_id}`])]),required:true,disabled:!members.length}] : []),
-      group('toggles','Toggles',[
-        ...(selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' ? [{name:'include_anyone',selector:{boolean:{}}}] : []),
-        ...(selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' && this._config.include_anyone || this._config.user_id === 'all' && owner === undefined && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
-        ...['show_labels',...(this._config.show_labels ? ['use_label_colors'] : []),'show_points','show_recurrence','show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))
-      ]),
-      {name:'display_filters',selector:{select:{mode:'dropdown',multiple:true,options:[{value:'overdue',label:'Overdue'},{value:'today',label:'Today'},{value:'future',label:'Future'},{value:'undated',label:'Without a due date'}]}}},
-      {name:'labels',selector:{select:{mode:'dropdown',multiple:true,options:labels.map(label=>({value:label,label}))}}},
-      ...(taskLabels(this._config.labels).length > 1 ? [select('label_match',[['any','Any selected label (OR)'],['all','All selected labels (AND)']])] : []),
-      select('sort_by',[['due_date','Due date — earliest first'],['priority','Priority — highest first'],['name','Name — A–Z']]),
-      ...(filters.includes('future') ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : []),
-      select('due_display',[['date','Date and time'],['relative','Relative — Tomorrow, In 3 days, Next week'],['both','Relative and date/time']]),
+      ...(hasPending && selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' ? [{name:'include_anyone',selector:{boolean:{}}}] : []),
       {name:'title',selector:{text:{}}},
-      select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),
-      group('appearance','Fine-tune appearance',[
+      select('task_view',[['both','Pending and completed'],['pending','Pending tasks only'],['completed','Completed tasks only']])
+      ]),expanded:true},
+      ...(hasPending || matchesCompleted ? [{...group('pending_options',hasPending ? 'Pending tasks' : 'Task date filter',[
+      {name:'display_filters',title:hasPending ? 'Pending task dates' : 'Original due dates',selector:{select:{mode:'dropdown',multiple:true,options:[{value:'overdue',label:'Overdue'},{value:'today',label:'Today'},{value:'future',label:'Future'},{value:'undated',label:'Without a due date'}]}}},
+      ...(filters.includes('future') ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : []),
+      ...labelFields,
+      ...(hasPending ? [select('sort_by',[['due_date','Due date — earliest first'],['priority','Priority — highest first'],['name','Name — A–Z']])] : [])
+      ]),expanded:true}] : []),
+      ...(hasCompleted ? [group('completed_options','Completed tasks',[
+        ...(!hasPending && !matchesCompleted ? labelFields : []),
+        {name:'completed_days',selector:{number:{min:1,max:7,step:1,mode:'box',unit_of_measurement:'days'}}},
+        select('completed_filter',[['all','All completions in the period'],['matching','Match task date filter']]),
+        {name:'completed_limit',selector:{number:{min:0,max:500,step:1,mode:'box'}}}
+      ])] : []),
+      ...(hasPending ? [group('display_options','Display and actions',[
+      ...(selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' && this._config.include_anyone || this._config.user_id === 'all' && !this._hass.states[this._config.entity]?.attributes.donetick_user_id && members.length > 1 ? [{name:'show_assignee',selector:{boolean:{}}}] : []),
+      select('due_display',[['date','Date and time'],['relative','Relative — Tomorrow, In 3 days, Next week'],['both','Relative and date/time']]),
+      ...['show_labels',...(this._config.show_labels ? ['use_label_colors'] : []),'show_points','show_recurrence','show_complete','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}}))
+      ])] : []),
+      ...(hasPending ? [group('appearance','Appearance',[
+        select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),
         select('row_spacing',[['auto','Auto — extra space for labels'],['compact','Compact'],['comfortable','Comfortable']]),
         ...(this._config.show_complete !== false ? [select('complete_control',[['checkbox','Checkbox on the left'],['button','Button on the right']])] : []),
         select('button_content',[['icon','Icons only'],['icon_and_label','Icons and labels'],['label','Labels only']]),
         select('button_style',[['text','Flat — HA style'],['outlined','Outlined'],['filled','Filled']]),
         select('button_size',[['compact','Compact — 44 px'],['normal','Standard — 48 px'],['large','Large — 52 px']]),
-        select('button_shape',[['rounded','Rounded'],['pill','Pill'],['square','Square']])
-      ]),
-      group('actions','Customize individual actions',[
+        select('button_shape',[['rounded','Rounded'],['pill','Pill'],['square','Square']]),
         ...(this._config.show_complete !== false && this._config.complete_control==='button' ? [actionGroup('complete','Complete task')] : []),
-        ...(this._config.show_postpone !== false ? [actionGroup('postpone','Skip occurrence — Donetick’s next scheduled date')] : []),
-        ...(this._config.show_due_date !== false ? [actionGroup('due_date','Change due date — choose a date manually')] : []),
+        ...(this._config.show_postpone !== false ? [actionGroup('postpone','Skip occurrence')] : []),
+        ...(this._config.show_due_date !== false ? [actionGroup('due_date','Change due date')] : []),
         ...(this._config.show_reassign !== false ? [actionGroup('reassign','Reassign task')] : [])
-      ])
+      ])] : [])
     ];
     const signature=JSON.stringify(schema);
     if (signature!==this._schemaSignature) {this._schemaSignature=signature;this._form.schema=schema;}
