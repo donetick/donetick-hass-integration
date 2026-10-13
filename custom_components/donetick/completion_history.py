@@ -21,6 +21,7 @@ async def async_completed_occurrences(client, tasks):
             "task_id": task.id,
             "name": task.name,
             "description": task.description,
+            "labels": task.labels,
             "project_id": task.project_id,
             "assigned_to": occurrence.assigned_to,
             "completed_by": occurrence.completed_by,

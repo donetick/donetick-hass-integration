@@ -118,6 +118,15 @@ class DonetickTask:
     start_time: Optional[datetime] = None
     timer_updated_at: Optional[datetime] = None
     assignee_ids: Optional[List[int]] = None
+    points: Optional[int] = None
+
+    @property
+    def interval_type(self) -> Optional[str]:
+        """Return the interval unit, when this task uses interval recurrence."""
+        if self.frequency_type != "interval" or not isinstance(self.frequency_metadata, dict):
+            return None
+        unit = self.frequency_metadata.get("unit")
+        return unit if isinstance(unit, str) and unit else None
     
     @classmethod
     def from_json(cls, data: dict) -> "DonetickTask":
@@ -134,7 +143,7 @@ class DonetickTask:
             next_due_date=_parse_datetime(data.get("nextDueDate")),
             status=data.get("status", 0),
             priority=data.get("priority", 0),
-            labels=data.get("labels") or data.get("labelsV2"),
+            labels=data.get("labelsV2") if data.get("labelsV2") is not None else data.get("labels"),
             is_active=data.get("isActive", True),
             is_rolling=data.get("isRolling", False),
             frequency_type=data.get("frequencyType", "once"),
@@ -152,6 +161,7 @@ class DonetickTask:
             duration=data.get("duration"),
             start_time=_parse_datetime(data.get("startTime")),
             timer_updated_at=_parse_datetime(data.get("timerUpdatedAt")),
+            points=data.get("points"),
         )
     
     @classmethod

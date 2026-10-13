@@ -41,6 +41,10 @@ assert.deepEqual(completedTasks(historyState,1,now,{completed_days:2,completed_f
 assert.deepEqual(completedTasks(historyState,1,now,{completed_days:2,completed_limit:1}).map(t=>t.uid),['h1']);
 assert.equal(completedTasks(historyState,'all',now,{completed_days:2,completed_limit:0}).length,4);
 assert.equal(completedTasks(historyState,1,now,{completed_days:2,completed_filter:'matching',display_filter:'all'}).length,3);
+assert.deepEqual(completedTasks(historyState,1,now,{completed_days:2,completed_filter:'matching',display_filters:['today','undated']}).map(t=>t.uid),['h1','h3']);
+historyState.attributes.completed_tasks[0].labels=['maintenance'];
+assert.deepEqual(completedTasks(historyState,1,now,{completed_days:2,labels:['maintenance']}).map(t=>t.uid),['h1']);
+assert.deepEqual(completedTasks(historyState,1,now,{completed_days:2,completed_filter:'matching',display_filters:['undated'],labels:['maintenance']}).map(t=>t.uid),[]);
 for (const options of [{completed_days:0},{completed_days:8},{completed_days:1.5},{completed_limit:-1},{completed_limit:501},{completed_limit:true},{completed_filter:'bad'}]) {
   assert.throws(()=>card.setConfig({entity:'todo.all',user_id:'all',...options}));
 }
