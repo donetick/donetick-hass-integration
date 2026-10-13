@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 globalThis.HTMLElement = class {};
-globalThis.customElements = {define() {}, get() {}};
+globalThis.customElements = {define() {}, get() {}, whenDefined() { return Promise.resolve(); }};
 globalThis.window = {};
 const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit, taskLabels, dateFilters} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
 const state = {attributes: {config_entry_id: 'entry', tasks: [
@@ -8,6 +8,22 @@ const state = {attributes: {config_entry_id: 'entry', tasks: [
 ]}};
 assert.deepEqual(userTasks(state, '2').map(t => t.task_id), [1]);
 assert.deepEqual(userTasks(state, 'all').map(t => t.task_id), [1,2,3]);
+assert.deepEqual(userTasks(state, '2', 'all', new Date(), 7, 'due_date', 'en', false, true).map(t => t.task_id), [1,3]);
+const memberState = {attributes:{tasks:[{task_id:1,assigned_to:2}], anyone_tasks:[{task_id:3,assigned_to:null}]}};
+assert.deepEqual(userTasks(memberState, 2).map(t=>t.task_id),[1]);
+assert.deepEqual(userTasks(memberState, 2, 'all', new Date(), 7, 'due_date', 'en', false, true).map(t=>t.task_id),[1,3]);
+assert.equal(emptyMessage({user_id:2,include_anyone:true},'Melissa'),'No tasks for Melissa or Anyone · Filter: All tasks');
+const mixedState = {attributes:{tasks:[
+  {task_id:1,assigned_to:2,next_due_date:'2026-10-20',name:'Zebra'},
+  {task_id:2,assigned_to:null,next_due_date:'2026-10-20',name:'Apple'},
+  {task_id:3,assigned_to:null,next_due_date:'2026-10-19',name:'Overdue'},
+  {task_id:4,assigned_to:1,next_due_date:'2026-10-20',name:'Other user'},
+  {task_id:5,assigned_to:null,name:'Undated'}
+]}};
+const mixedNow = new Date(2026,9,20,12);
+assert.deepEqual(userTasks(mixedState,2,'today',mixedNow,7,'name','en',false,true).map(t=>t.task_id),[2,1]);
+assert.deepEqual(userTasks(mixedState,2,'overdue',mixedNow,7,'name','en',false,true).map(t=>t.task_id),[3]);
+assert.deepEqual(userTasks(mixedState,2,'upcoming',mixedNow,7,'name','en',true,true).map(t=>t.task_id),[2,3,1]);
 assert.equal(emptyMessage({user_id:'all',display_filter:'today'}),'No tasks for all users · Filter: Today');
 assert.deepEqual(userTasks(undefined, 2), []);
 const sortingState={attributes:{tasks:[

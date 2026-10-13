@@ -75,3 +75,29 @@ class TaskFilteringTests(unittest.TestCase):
         self.assertEqual(attributes["tasks"][0]["task_id"], 1)
         task.labels = None
         self.assertEqual(namespace["extra_state_attributes"](entity)["tasks"][0]["labels"], [])
+
+    def test_member_attributes_expose_anyone_tasks_with_same_due_window(self):
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        base = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'DonetickTodoListBase')
+        method = next(node for node in base.body if isinstance(node, ast.FunctionDef) and node.name == 'extra_state_attributes')
+        method.decorator_list = []
+        namespace = {'CONF_URL': 'url'}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
+        def task(task_id, assigned_to, due, active=True):
+            return SimpleNamespace(id=task_id, assigned_to=assigned_to, next_due_date=due,
+                                   is_active=active, name='Task', assignee_ids=[], description='',
+                                   priority=1, frequency_type='weekly', labels=[])
+        tasks = [task(1, 2, self.near.next_due_date), task(2, None, self.near.next_due_date),
+                 task(3, None, self.far.next_due_date), task(4, None, self.near.next_due_date, False),
+                 task(5, 3, self.near.next_due_date)]
+        owner = SimpleNamespace(_member=SimpleNamespace(user_id=2),
+                                _config_entry=SimpleNamespace(entry_id='entry', data={'url':'test', 'show_due_in':7}),
+                                coordinator=SimpleNamespace(data=tasks),
+                                _filter_tasks=lambda items:[task for task in items if task.assigned_to == 2])
+        owner._apply_due_window = lambda items:self.window(owner, items)
+        attributes = namespace['extra_state_attributes'](owner)
+        self.assertEqual([task['task_id'] for task in attributes['tasks']], [1])
+        self.assertEqual([task['task_id'] for task in attributes['anyone_tasks']], [2])
+        self.assertIsNone(attributes['anyone_tasks'][0]['assigned_to'])
+        self.assertEqual(attributes['donetick_user_id'], 2)

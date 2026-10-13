@@ -45,7 +45,7 @@ UPDATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
     vol.Optional("force_unarchive", default=False): cv.boolean,
-    vol.Optional("assigned_to"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -247,7 +247,7 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
         result = None
         if force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
             result = await client.async_update_task(task_id, name, description, due_date, force_unarchive)
-        if assigned_to is not None:
+        if "assigned_to" in call.data:
             await client.async_assign_task(task_id, assigned_to)
         _LOGGER.info("Task %d updated successfully", task_id)
         await coordinator.async_request_refresh()
@@ -358,8 +358,7 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
         if task is None:
             raise HomeAssistantError("Task is no longer active or visible; refresh the list")
         if complete:
-            if task.assigned_to is None:
-                raise HomeAssistantError("Assign this task to a user before completing it")
+            # None leaves attribution to Donetick's authenticated API token owner.
             await client.async_complete_task(task.id, completed_by=task.assigned_to)
         else:
             if task.frequency_type in ("once", "no_repeat", "trigger", "always"):

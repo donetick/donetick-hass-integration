@@ -65,14 +65,22 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         await self.run_action(True)
         self.assertEqual(self.calls, [('complete', 1, 2), ('refresh',)])
 
-    async def test_unassigned_and_inactive_tasks_are_rejected(self):
-        for attribute in ('assigned_to', 'is_active'):
-            with self.subTest(attribute=attribute):
-                setattr(self.task, attribute, None if attribute == 'assigned_to' else False)
-                with self.assertRaises(ValueError):
-                    await self.run_action(True)
-                setattr(self.task, attribute, 2 if attribute == 'assigned_to' else True)
-        self.assertTrue(all(call[0] == 'refresh' for call in self.calls))
+    async def test_anyone_task_completion_uses_api_default(self):
+        self.task.assigned_to = None
+        await self.run_action(True)
+        self.assertEqual(self.calls, [('complete', 1, None), ('refresh',)])
+
+    async def test_inactive_tasks_are_rejected(self):
+        self.task.is_active = False
+        with self.assertRaisesRegex(ValueError, 'no longer active'):
+            await self.run_action(True)
+        self.assertEqual(self.calls, [('refresh',)])
+
+    async def test_missing_tasks_are_rejected(self):
+        self.task.id = 2
+        with self.assertRaisesRegex(ValueError, 'no longer active'):
+            await self.run_action(True)
+        self.assertEqual(self.calls, [('refresh',)])
 
     async def test_postpone_uses_server_scheduler(self):
         await self.run_action(False)
@@ -98,3 +106,17 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         result = await namespace['_get_completion_user_id'](owner, SimpleNamespace(async_get_tasks=tasks),
                                                             SimpleNamespace(uid='1--old-date'), SimpleNamespace(user_id='caller'))
         self.assertEqual(result, 2)
+
+        self.task.assigned_to = None
+        result = await namespace['_get_completion_user_id'](owner, SimpleNamespace(async_get_tasks=tasks),
+                                                            SimpleNamespace(uid='1--old-date'))
+        self.assertIsNone(result)
+
+        for attribute, value in (('is_active', False), ('id', 2)):
+            with self.subTest(attribute=attribute):
+                original = getattr(self.task, attribute)
+                setattr(self.task, attribute, value)
+                with self.assertRaisesRegex(ValueError, 'no longer active'):
+                    await namespace['_get_completion_user_id'](owner, SimpleNamespace(async_get_tasks=tasks),
+                                                               SimpleNamespace(uid='1--old-date'))
+                setattr(self.task, attribute, original)
