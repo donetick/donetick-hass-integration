@@ -13,7 +13,9 @@ editor.hass=hass;document.body.append(editor);await new Promise(resolve=>setTime
 assert.equal(loaded,1);
 const form=editor.shadowRoot.querySelector('ha-form');assert.ok(form);
 const toggles=()=>editorFields().find(field=>field.name==='display_options').schema;
-const editorFields=()=>{const flatten=fields=>fields.flatMap(field=>[field,...flatten(field.schema || [])]);return flatten(form.schema);};
+// Inspect configuration choices even when their controls are lazily unmounted.
+// Actual mounted schemas and expansion behavior are checked in test_card_updates.
+const editorFields=()=>{const flatten=fields=>fields.flatMap(field=>{const schema=field.type==='expandable' ? editor._groupSchemas.get(field.name) : field.schema;return [{...field,schema},...flatten(schema || [])];});return flatten(form.schema);};
 assert.equal(editor.shadowRoot.querySelectorAll('input,select').length,0);
 assert.equal(form.data.appearance_preset,'todo');
 assert.match(form.computeHelper({name:'display_filters'}),/any selected group/);
