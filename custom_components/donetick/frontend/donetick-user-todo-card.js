@@ -182,6 +182,12 @@ export function descriptionText(value) {
   return [...template.content.childNodes].map(text).join('').replace(/\u00a0/g,' ')
     .replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
 }
+// HA replaces its hass object for unrelated entity updates too. Only the selected
+// list and presentation settings affect this card's DOM.
+function samePresentation(previous, next) {
+  return previous.locale === next.locale && previous.themes === next.themes
+    && previous.config === next.config && previous.localize === next.localize;
+}
 class DonetickUserTodoCard extends HTMLElement {
   static getConfigElement() { return document.createElement('donetick-user-todo-editor'); }
   static getStubConfig(hass) {
@@ -209,6 +215,8 @@ class DonetickUserTodoCard extends HTMLElement {
   }
   disconnectedCallback() { document.removeEventListener('pointerdown', this._outside); }
   setConfig(config) {
+    const signature = JSON.stringify(config);
+    if (signature === this._configInputSignature) return;
     if (!config.entity?.startsWith('todo.')) throw new Error('Choose a Donetick todo list');
     if (config.task_view && !['both','pending','completed'].includes(config.task_view)) throw new Error('Choose a valid task view');
     if (config.completed_filter !== undefined && !['all','matching'].includes(config.completed_filter)) throw new Error('Choose a valid completed task filter');
@@ -227,9 +235,18 @@ class DonetickUserTodoCard extends HTMLElement {
     this._config = {task_view:'both', completed_days:1, completed_filter:'all', completed_limit:0, row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
       button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_postpone:true, show_due_date:true, show_reassign:true, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
     if (this._panel && this._panel.kind !== 'details' && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]]) this._panel = null;
+    this._configInputSignature = signature;
     this.render();
   }
-  set hass(hass) { this._hass = hass; this.render(); }
+  set hass(hass) {
+    const previous = this._hass;
+    const minute = Math.floor(Date.now() / 60000);
+    const unchanged = previous && previous !== hass && this._lastHassMinute === minute
+      && previous.states[this._config?.entity] === hass.states[this._config?.entity]
+      && samePresentation(previous, hass);
+    this._hass = hass; this._lastHassMinute = minute;
+    if (!unchanged) this.render();
+  }
   getCardSize() {
     const state = this._hass?.states[this._config?.entity];
     return 2 + (this._config?.task_view === 'completed' ? 0 : this.filteredTasks(state).length)
@@ -653,7 +670,17 @@ export function actionColor(value) {
   return value;
 }
 class DonetickUserTodoEditor extends HTMLElement {
-  constructor() { super(); this.attachShadow({mode:'open'}); }
+  constructor() {
+    super(); this.attachShadow({mode:'open'});
+    this._expandedGroups=new Map();this._groupSchemas=new Map();
+    this.shadowRoot.addEventListener('expanded-will-change',event=>{
+      const group=event.composedPath().find(node=>node.localName==='ha-form-expandable');
+      const name=group?.schema?.name;
+      if (!this._groupSchemas.has(name) || typeof event.detail?.expanded !== 'boolean') return;
+      this._expandedGroups.set(name,event.detail.expanded);
+      this.render();
+    });
+  }
   connectedCallback() { this.ensureForm(); }
   async ensureForm() {
     if (customElements.get('ha-form') || this._loading) return;
@@ -667,8 +694,20 @@ class DonetickUserTodoEditor extends HTMLElement {
     } catch { this._loadError='Could not load Home Assistant editor controls. Reload the dashboard and reopen this editor.'; }
     finally { this._loading=false; this.render(); }
   }
-  setConfig(config) { this._config={...config}; this.render(); }
-  set hass(hass) { this._hass=hass; this.render(); }
+  setConfig(config) {
+    if (JSON.stringify(config) === JSON.stringify(this._config)) return;
+    this._config={...config}; this.render();
+  }
+  set hass(hass) {
+    const previous = this._hass;
+    const lists = Object.entries(hass.states).filter(([id,state])=>id.startsWith('todo.') && state.attributes.circle_members);
+    const unchanged = previous && previous !== hass && samePresentation(previous,hass)
+      && previous.entities === hass.entities && previous.devices === hass.devices && previous.areas === hass.areas
+      && this._editorLists?.length === lists.length
+      && lists.every(([id,state],index)=>this._editorLists[index][0] === id && this._editorLists[index][1] === state);
+    this._hass=hass; this._editorLists=lists;
+    if (!unchanged) this.render();
+  }
   preset() {
     if (ACTION_OVERRIDES.some(key=>this._config[key] && this._config[key] !== EDITOR_DEFAULTS[key])) return 'custom';
     return Object.keys(STYLE_PRESETS).find(name=>Object.entries(STYLE_PRESETS[name]).every(([key,value])=>(this._config[key] ?? EDITOR_DEFAULTS[key])===value)) || 'custom';
@@ -703,6 +742,7 @@ class DonetickUserTodoEditor extends HTMLElement {
         else delete config.user_id;
       }
     }
+    if (JSON.stringify(config) === JSON.stringify(this._config)) return;
     this._config=config;
     this.dispatchEvent(new CustomEvent('config-changed',{detail:{config},bubbles:true,composed:true}));
     this.render();
@@ -733,7 +773,14 @@ class DonetickUserTodoEditor extends HTMLElement {
     this._warning.hidden=owner !== undefined || !!members.length;
     this._warning.textContent='Select a Donetick list with circle members to choose its users. The integration must be loaded.';
     const select=(name,options)=>({name,selector:{select:{mode:'dropdown',options:options.map(([value,label])=>({value,label}))}}});
-    const group=(name,title,schema)=>({name,title,type:'expandable',flatten:true,expanded:false,schema});
+    this._groupSchemas.clear();
+    const group=(name,title,schema)=>{
+      const expanded=this._expandedGroups.get(name) ?? ['basics','filters'].includes(name);
+      this._groupSchemas.set(name,schema);
+      // HA creates nested forms even in collapsed panels. Keep expensive
+      // selectors unmounted until opened, and remove them again when closed.
+      return {name,title,type:'expandable',flatten:true,expanded,schema:expanded ? schema : []};
+    };
     const hasPending = this._config.task_view !== 'completed';
     const hasCompleted = this._config.task_view !== 'pending';
     const matchesCompleted = hasCompleted && this._config.completed_filter === 'matching';
@@ -759,7 +806,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       ...(hasPending && selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' ? [{name:'include_anyone',selector:{boolean:{}}}] : []),
       {name:'title',selector:{text:{}}},
       select('task_view',[['both','Pending and completed'],['pending','Pending tasks only'],['completed','Completed tasks only']])
-      ]),expanded:true},
+      ])},
       {...group('filters','Task filters',[
       ...labelFields,
       ...(hasPending || matchesCompleted ? [
@@ -767,7 +814,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       ...(filters.includes('future') ? [{name:'upcoming_days',selector:{number:{min:0,max:365,step:1,mode:'box',unit_of_measurement:'days'}}}] : [])
       ] : []),
       ...(hasPending ? [select('sort_by',[['due_date','Due date — earliest first'],['priority','Priority — highest first'],['name','Name — A–Z']])] : [])
-      ]),expanded:true},
+      ])},
       ...(hasCompleted ? [group('completed_options','Completed tasks',[
         {name:'completed_days',selector:{number:{min:1,max:7,step:1,mode:'box',unit_of_measurement:'days'}}},
         select('completed_filter',[['all','All completions in the period'],['matching','Match task date filter']]),
@@ -794,8 +841,12 @@ class DonetickUserTodoEditor extends HTMLElement {
     ];
     const signature=JSON.stringify(schema);
     if (signature!==this._schemaSignature) {this._schemaSignature=signature;this._form.schema=schema;}
-    this._formData={...EDITOR_DEFAULTS,...this._config,display_filters:filters,labels:taskLabels(this._config.labels),user_id:String(owner ?? this._config.user_id ?? 'all'),appearance_preset:this.preset()};
-    this._form.hass=this._hass;this._form.data=this._formData;
+    const formData={...EDITOR_DEFAULTS,...this._config,display_filters:filters,labels:taskLabels(this._config.labels),user_id:String(owner ?? this._config.user_id ?? 'all'),appearance_preset:this.preset()};
+    const dataSignature=JSON.stringify(formData);
+    if (this._form.hass !== this._hass) this._form.hass=this._hass;
+    if (dataSignature !== this._formDataSignature) {
+      this._formDataSignature=dataSignature;this._formData=formData;this._form.data=formData;
+    }
   }
 }
 if (!customElements.get('donetick-user-todo-card')) customElements.define('donetick-user-todo-card', DonetickUserTodoCard);

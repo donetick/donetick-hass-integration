@@ -109,6 +109,8 @@ section, without nested expandable sections. Task details contains points, recur
 labels and date display; Available actions controls completion, skipping, date changes
 and reassignment. Appearance contains the preset and button layout controls.
 Editable fields can be cleared before typing a replacement without restoring defaults.
+Collapsed editor sections load their controls only when opened and retain their
+values when closed. Unrelated HA state updates leave the editor and preview intact.
 
 Native Home Assistant to-do lists also expose today's completed occurrences.
 Recurring tasks keep their next pending occurrence separately. Completed records
