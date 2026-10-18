@@ -222,15 +222,22 @@ class DonetickApiClient:
                 params=params,
                 timeout=API_TIMEOUT
             ) as response:
-                response.raise_for_status()
+                # Relay Donetick's own refusal: the card shows this sentence on the row,
+                # and a bare "400, message='Bad Request'" would not say who was refused.
+                await self._raise_for_status(response, "completion")
                 data = await response.json()
                 return DonetickTask.from_json(data)
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error completing task in Donetick: %s", err)
             raise
-        except (KeyError, ValueError, json.JSONDecodeError) as err:
+        except (KeyError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick complete task response: %s", err)
+            raise
+        except ValueError as err:
+            # A refusal relayed by _raise_for_status, not a malformed response (which
+            # JSONDecodeError above catches first): the caller shows it to the user.
+            _LOGGER.debug("Donetick refused the completion: %s", err)
             raise
 
     async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None, project_id: int = None) -> DonetickTask:
@@ -268,14 +275,19 @@ class DonetickApiClient:
 
     async def _raise_for_status(self, response, operation: str) -> None:
         """Expose known server permission errors without echoing proxy responses."""
-        if response.status == 403:
+        if response.status in (400, 403):
             try:
                 error_data = await response.json()
             except (aiohttp.ClientError, ValueError):
                 error_data = None
             if isinstance(error_data, dict):
                 reason = error_data.get("error")
-                if reason in (
+                if response.status == 400 and reason in (
+                    "User is not assigned to chore",
+                    "Chore is out of completion window",
+                ):
+                    raise ValueError(f"Donetick denied the {operation} (400): {reason}")
+                if response.status == 403 and reason in (
                     "Only plus members can access this endpoint",
                     "You can only update your own chores",
                     "You can only delete your own chores",

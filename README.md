@@ -238,7 +238,12 @@ The full date is available in the tooltip in every mode. YAML supports
 Complete fetches the current task from Donetick and attributes completion to its actual
 assigned user, even if someone else clicks the button. Tasks assigned to **Anyone** are
 completed as the Donetick user who owns the integration's API token. This also applies
-to completion from native Home Assistant to-do lists. **Skip occurrence** (the `donetick.postpone_task` action) uses Donetick's internal skip/rescheduling endpoint to advance
+to completion from native Home Assistant to-do lists. `donetick.complete_assigned_task`
+additionally takes an optional `completed_by` to credit the completion to another circle
+member. Donetick alone decides whether it accepts that person — its rules depend on the
+task's privacy, its assignment and its project — and rejects anyone else. The action then
+fails, carrying Donetick's own reason where it gives one, so the integration never
+second-guesses the server. **Skip occurrence** (the `donetick.postpone_task` action) uses Donetick's internal skip/rescheduling endpoint to advance
 to the next occurrence. Donetick records a skipped occurrence, keeps the assignee and
 calculates the next date from the task's schedule. Tasks without a recurring schedule
 have Skip occurrence hidden. Tap the icon to open a confirmation; tap it again to close

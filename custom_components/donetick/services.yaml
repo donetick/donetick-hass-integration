@@ -172,6 +172,19 @@ complete_assigned_task:
         number:
           min: 1
           mode: box
+    completed_by:
+      name: Completed By User ID
+      description: >-
+        Credit the completion to this Donetick user instead of the task's
+        current assignee. Donetick applies its own completion rules, which
+        depend on the task's privacy, its assignment and its project, and
+        rejects anyone it does not accept; the action then fails, carrying
+        Donetick's own reason where it gives one.
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
     config_entry_id:
       selector:
         text:
