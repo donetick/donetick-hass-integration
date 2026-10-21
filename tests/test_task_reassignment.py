@@ -77,6 +77,32 @@ class TaskReassignmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(url, "https://example.invalid/api/v1/chores/5/assignee")
         self.assertEqual(args["json"]["assignee"], 2)
 
+    async def test_new_circle_member_is_added_without_losing_task_settings(self):
+        original = deepcopy(self.task)
+        await self.client.async_assign_task(5, 3)
+        _, url, args = self.requests[-1]
+        self.assertEqual(url, "https://example.invalid/api/v1/chores/")
+        payload = args["json"]
+        self.assertEqual(payload["assignedTo"], 3)
+        self.assertEqual(payload["assignees"], [*original["assignees"], {"userId": 3}])
+        self.assertEqual(payload["assignStrategy"], "round_robin")
+        self.assertEqual(payload["updatedAt"], original["updatedAt"])
+        for key, value in original.items():
+            if key not in ("assignedTo", "assignees", "labelsV2"):
+                self.assertEqual(payload[key], value, key)
+        self.assertEqual(self.task, original)
+
+    async def test_new_member_edit_denial_is_reported(self):
+        self.put_response = Response({"error": "user does not have permission to edit this chore"})
+        with self.assertRaisesRegex(ValueError, "permission to edit"):
+            await self.client.async_assign_task(5, 3)
+
+    async def test_new_member_edit_requires_update_timestamp(self):
+        self.task.pop("updatedAt")
+        with self.assertRaisesRegex(ValueError, "no update timestamp"):
+            await self.client.async_assign_task(5, 3)
+        self.assertEqual(len(self.requests), 1)
+
     async def test_missing_timestamp_prevents_full_edit(self):
         self.task.pop("updatedAt")
         with self.assertRaisesRegex(ValueError, "no update timestamp"):

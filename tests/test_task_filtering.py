@@ -75,6 +75,10 @@ class TaskFilteringTests(unittest.TestCase):
         self.assertEqual(attributes["tasks"][0]["task_id"], 1)
         task.labels = None
         self.assertEqual(namespace["extra_state_attributes"](entity)["tasks"][0]["labels"], [])
+        entity._circle_members = [SimpleNamespace(user_id=2,display_name='Member',username='member',is_active=True),
+                                  SimpleNamespace(user_id=3,display_name='Inactive',username='inactive',is_active=False)]
+        members = namespace["extra_state_attributes"](entity)["circle_members"]
+        self.assertEqual([member["is_active"] for member in members], [True,False])
 
     def test_member_attributes_expose_anyone_tasks_with_same_due_window(self):
         source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"

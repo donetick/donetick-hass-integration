@@ -348,11 +348,21 @@ class DonetickApiClient:
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise ValueError("Unable to fetch the current task for reassignment")
 
-        if assigned_to is None or task.get("assignStrategy") == "no_assignee" or not task.get("assignees"):
+        assignees = task.get("assignees") or []
+        already_eligible = any(assignee.get("userId") == assigned_to for assignee in assignees)
+        if assigned_to is None or task.get("assignStrategy") == "no_assignee" or not already_eligible:
             payload = dict(task)
             payload["assignedTo"] = assigned_to
-            payload["assignStrategy"] = "no_assignee" if assigned_to is None else "keep_last_assigned"
-            payload["assignees"] = [] if assigned_to is None else [{"userId": assigned_to}]
+            if assigned_to is None:
+                payload["assignStrategy"] = "no_assignee"
+                payload["assignees"] = []
+            elif task.get("assignStrategy") == "no_assignee" or not assignees:
+                payload["assignStrategy"] = "keep_last_assigned"
+                payload["assignees"] = [{"userId": assigned_to}]
+            else:
+                # The dedicated endpoint only accepts existing assignees. Add
+                # the selected member without discarding the rotation's users.
+                payload["assignees"] = [*assignees, {"userId": assigned_to}]
             payload["labelsV2"] = [{"id": label["id"]} for label in task.get("labelsV2") or []]
             # Use the fetched updatedAt to retain Donetick's concurrent-edit check.
             if not payload.get("updatedAt"):

@@ -190,6 +190,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                     "user_id": member.user_id,
                     "display_name": member.display_name,
                     "username": member.username,
+                    "is_active": member.is_active,
                 }
                 for member in self._circle_members
             ]
