@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+from mapping_test_helpers import load_completion_user
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = ROOT / "custom_components" / "donetick"
@@ -17,7 +18,7 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
         functions = [node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                      and node.name in ("_get_config_entry", "async_complete_task_service")]
         namespace = {"DOMAIN": DOMAIN, "ConfigEntry": object, "HomeAssistant": object,
-                     "ServiceCall": object, "_LOGGER": logging.getLogger(__name__)}
+                     "ServiceCall": object, "_LOGGER": logging.getLogger(__name__), "completion_user": load_completion_user()}
         exec(compile(ast.Module(body=functions, type_ignores=[]), "routing", "exec"), namespace)
         self.resolve = namespace["_get_config_entry"]
         self.complete = namespace["async_complete_task_service"]
