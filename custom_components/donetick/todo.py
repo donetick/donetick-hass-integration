@@ -24,6 +24,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_SHOW_NO_DUE_DATE, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_PROJECT_LISTS, CONF_CREATE_ASSIGNEE_LISTS
 from .api import DonetickApiClient
+from .user_mapping import completion_user
 from .model import DonetickProject, DonetickTask, DonetickMember
 
 _LOGGER = logging.getLogger(__name__)
@@ -279,6 +280,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         )
         
         task_id = int(item.uid.split("--")[0])
+        context = context if context is not None else getattr(self, "_context", None)
         
         try:
             if item.status == TodoItemStatus.COMPLETED:
@@ -351,7 +353,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
         if task is None:
             raise ValueError("Task is no longer active or visible; refresh the list")
         # For Anyone tasks, omit completedBy so Donetick uses the API token owner.
-        return task.assigned_to
+        return completion_user(self._config_entry, context, default=task.assigned_to)
 
 
 class DonetickAllTasksList(DonetickTodoListBase):

@@ -30,7 +30,7 @@
   },
   "options": {
     "step": {
-      "init": {
+      "settings": {
         "title": "Configure Donetick Options",
         "description": "Adjust your Donetick integration settings",
         "data": {
@@ -41,7 +41,31 @@
           "create_assignee_lists": "Create individual task lists per person",
           "refresh_interval": "Refresh interval"
         }
+      },
+      "init": {
+        "title": "Configure Donetick",
+        "menu_options": {
+          "settings": "Task lists and refresh settings",
+          "user_mapping": "User mapping and completion credit"
+        }
+      },
+      "user_mapping": {
+        "title": "Map HA users to Donetick",
+        "description": "Choose a Donetick user for each HA account below. All changes are saved together. Choose Not mapped to remove a link.\n\n{suggestions}\n\nShared tablets use the HA account signed in. Donetick still controls who can complete each task.",
+        "data": {
+          "map_completion_user": "Credit completions to the mapped HA user",
+          "unmapped_user": "When no mapping is available",
+          "apply_username_matches": "Apply suggested username matches shown above",
+          "mappings": "Home Assistant user → Donetick user"
+        },
+        "data_description": {
+          "unmapped_user": "For the bundled card and native to-do lists, the fallback credits the task assignee; Anyone tasks credit the integration’s API token owner. Direct complete_task actions without a performer also credit the API token owner."
+        }
       }
+    },
+    "error": {
+      "cannot_connect": "Could not load HA users or Donetick members. Check the connection and try again.",
+      "invalid_user": "Choose an available Donetick user or Not mapped for each HA user."
     }
   }
 }
