@@ -33,6 +33,11 @@ Points preserve an explicit zero; tasks without a point value expose `null`.
 - `donetick.update_task` - Update existing tasks
 - `donetick.delete_task` - Delete tasks
 - `donetick.complete_task` - Mark tasks complete with user attribution
+- `donetick.complete_assigned_task` - Complete a task as its current assignee, or as the API token owner for tasks assigned to Anyone
+- `donetick.postpone_task` - Move a task to its next scheduled occurrence without recording a completion
+
+The bundled task card uses the last two for its completion control and its **Skip
+occurrence** action; both resolve the task on the server before acting.
 
 To reactivate an archived task with `donetick.update_task`, set `force_unarchive: true`. This requires a Donetick server that supports `forceUnarchive`.
 
