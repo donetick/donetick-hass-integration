@@ -58,8 +58,8 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
             'client': SimpleNamespace(async_get_tasks=tasks, async_complete_task=complete, async_update_task=update, async_reschedule_task=reschedule),
             'coordinator': SimpleNamespace(async_request_refresh=refresh)}}})
 
-    async def run_action(self, complete):
-        await self.action(self.hass, SimpleNamespace(data={'task_id': 1}), complete=complete)
+    async def run_action(self, complete, **data):
+        await self.action(self.hass, SimpleNamespace(data={'task_id': 1, **data}), complete=complete)
 
     async def test_completion_uses_current_server_assignee(self):
         await self.run_action(True)
@@ -69,6 +69,57 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         self.task.assigned_to = None
         await self.run_action(True)
         self.assertEqual(self.calls, [('complete', 1, None), ('refresh',)])
+
+    async def test_completion_credits_the_chosen_member(self):
+        await self.run_action(True, completed_by=3)
+        self.assertEqual(self.calls, [('complete', 1, 3), ('refresh',)])
+
+    async def test_chosen_member_is_credited_for_anyone_tasks(self):
+        self.task.assigned_to = None
+        await self.run_action(True, completed_by=3)
+        self.assertEqual(self.calls, [('complete', 1, 3), ('refresh',)])
+
+    def test_only_completion_accepts_a_chosen_member(self):
+        tree = ast.parse((ROOT / '__init__.py').read_text(encoding='utf-8'))
+        registered = {}
+        for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
+            if getattr(call.func, 'attr', None) != 'async_register' or len(call.args) < 2:
+                continue
+            schema = next((keyword.value for keyword in call.keywords if keyword.arg == 'schema'), None)
+            registered[getattr(call.args[1], 'id', None)] = getattr(schema, 'id', None)
+        self.assertEqual(registered['SERVICE_COMPLETE_ASSIGNED_TASK'], 'COMPLETE_ASSIGNED_SCHEMA')
+        self.assertEqual(registered['SERVICE_POSTPONE_TASK'], 'POSTPONE_TASK_SCHEMA')
+
+        # Where completed_by lives decides whether postponing can take a performer, so
+        # read the schemas themselves. Asserting on the source line instead would miss
+        # the field being moved into the shared base, which both schemas build on.
+        schemas = {target.id: node.value for node in tree.body if isinstance(node, ast.Assign)
+                   for target in node.targets if isinstance(target, ast.Name)}
+
+        def keys(call):
+            """The field names of a vol.Schema({...}) or .extend({...}) call."""
+            mapping = next((argument for argument in call.args if isinstance(argument, ast.Dict)), None)
+            return {marker.args[0].value for marker in (mapping.keys if mapping else [])
+                    if isinstance(marker, ast.Call) and marker.args
+                    and isinstance(marker.args[0], ast.Constant)}
+
+        self.assertNotIn('completed_by', keys(schemas['ASSIGNED_TASK_SCHEMA']))
+        # POSTPONE_TASK_SCHEMA is that same schema, so it cannot take the field either.
+        self.assertEqual(schemas['POSTPONE_TASK_SCHEMA'].id, 'ASSIGNED_TASK_SCHEMA')
+        extend = schemas['COMPLETE_ASSIGNED_SCHEMA']
+        self.assertEqual(extend.func.value.id, 'ASSIGNED_TASK_SCHEMA')
+        self.assertEqual(extend.func.attr, 'extend')
+        self.assertIn('completed_by', keys(extend))
+
+        blocks, service = {}, None
+        for line in (ROOT / 'services.yaml').read_text(encoding='utf-8').splitlines():
+            if line[:1].isalpha() and line.rstrip().endswith(':'):
+                service = line.rstrip()[:-1]
+                blocks[service] = []
+            elif service:
+                blocks[service].append(line)
+        self.assertIn('completed_by', '\n'.join(blocks['complete_assigned_task']))
+        self.assertNotIn('completed_by', '\n'.join(blocks['postpone_task']))
 
     async def test_inactive_tasks_are_rejected(self):
         self.task.is_active = False

@@ -31,7 +31,7 @@ class Response:
 
     def raise_for_status(self):
         if self.status >= 400:
-            raise HttpError("403 Forbidden")
+            raise HttpError(f"{self.status} from Donetick")
 
 
 class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
@@ -40,7 +40,8 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse(source.read_text(encoding="utf-8"))
         client = next(node for node in tree.body if isinstance(node, ast.ClassDef))
         client.body = [node for node in client.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                       and node.name in ("__init__", "_headers", "_raise_for_status", "async_update_task", "async_delete_task")]
+                       and node.name in ("__init__", "_headers", "_raise_for_status", "async_update_task",
+                                         "async_delete_task", "async_complete_task")]
         future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
         module = ast.fix_missing_locations(ast.Module(body=[future, client], type_ignores=[]))
         namespace = {"aiohttp": SimpleNamespace(ClientError=HttpError), "API_TIMEOUT": 10,
@@ -81,6 +82,40 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
             client = self.client_type("https://example.invalid", "test-token", session)
             with self.assertRaisesRegex(ValueError, reason):
                 await client.async_delete_task(47)
+
+    async def complete(self, body, status=400, completed_by=None):
+        requests = []
+
+        def post(url, **kwargs):
+            requests.append((url, kwargs))
+            return Response(body, status=status)
+
+        client = self.client_type("https://example.invalid", "test-token", SimpleNamespace(post=post))
+        task = await client.async_complete_task(47, completed_by=completed_by)
+        return requests, task
+
+    async def test_refused_completions_say_who_the_server_turned_down(self):
+        for reason in ("User is not assigned to chore", "Chore is out of completion window"):
+            with self.assertRaisesRegex(ValueError, reason):
+                await self.complete({"error": reason})
+
+    async def test_other_completion_failures_preserve_http_failure(self):
+        for body, status in (({"error": "Invalid ID"}, 400), ({"error": "Error getting chore"}, 500),
+                             ({"error": "You can only update your own chores"}, 400),
+                             ({"error": "User is not assigned to chore"}, 500), ([], 400)):
+            with self.assertRaises(HttpError):
+                await self.complete(body, status=status)
+
+    async def test_completion_sends_the_chosen_member_to_the_server(self):
+        body = {"nextDueDate": "2026-10-09T12:00:00Z", "isActive": True}
+        requests, _ = await self.complete(body, status=200, completed_by=3)
+        url, arguments = requests[0]
+        self.assertEqual(url, "https://example.invalid/eapi/v1/chore/47/complete")
+        self.assertEqual(arguments["headers"]["secretkey"], "test-token")
+        self.assertEqual(arguments["params"], {"completedBy": 3})
+        # Without a chosen member the server credits the caller's own account.
+        requests, _ = await self.complete(body, status=200)
+        self.assertEqual(requests[0][1]["params"], {})
 
     async def test_update_sends_external_api_parameters(self):
         requests = []
