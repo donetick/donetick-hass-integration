@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
+from homeassistant.util import dt as dt_util
 
 from .api import DonetickApiClient
 from .const import DOMAIN
@@ -153,8 +154,10 @@ def _metadata_occurrences(task: DonetickTask) -> list[str]:
 
 def _is_date_only_due(value: datetime) -> bool:
     """Return true when a due datetime is acting like an all-day date marker."""
+    value = dt_util.as_local(value)
+    # Donetick represents date-only deadlines as local end-of-day timestamps.
+    # Midnight can be a real due time, especially when received in UTC.
     return (value.hour, value.minute, value.second, value.microsecond) in {
-        (0, 0, 0, 0),
         (23, 59, 0, 0),
         (23, 59, 59, 0),
         (23, 59, 59, 999000),
@@ -179,7 +182,7 @@ def _best_task_start(task: DonetickTask) -> Optional[datetime | date]:
         return None
 
     if not _task_has_due_time(task):
-        return task.next_due_date.date()
+        return dt_util.as_local(task.next_due_date).date()
 
     return task.next_due_date
 
@@ -194,10 +197,9 @@ def _event_end(start: datetime | date, duration: timedelta) -> datetime | date:
 def _comparison_datetime(value: datetime | date) -> datetime:
     """Normalize date/datetime values for internal comparisons."""
     if not isinstance(value, datetime):
-        return datetime.combine(value, datetime.min.time())
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
+        value = datetime.combine(value, datetime.min.time())
+    # Date-only events span local calendar days, including across DST changes.
+    return dt_util.as_utc(value).replace(tzinfo=None)
 
 
 def _event_sort_key(event: CalendarEvent) -> datetime:
@@ -237,7 +239,7 @@ def _normalize_occurrence_start(task: DonetickTask, due_value: datetime) -> date
     """Normalize a due datetime to the display start used by the calendar."""
     if _task_has_due_time(task):
         return due_value
-    return due_value.date()
+    return dt_util.as_local(due_value).date()
 
 
 def _scheduled_task_event(
@@ -590,7 +592,7 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
     def event(self) -> Optional[CalendarEvent]:
         """Return the next upcoming event (used for the entity state)."""
         tasks: List[DonetickTask] = self.coordinator.data or []
-        today = date.today()
+        today = dt_util.now().date()
         closest_event: Optional[CalendarEvent] = None
         closest_date: Optional[datetime] = None
 
@@ -601,7 +603,12 @@ class DonetickCalendar(CoordinatorEntity, CalendarEntity):
             if event is None:
                 continue
             event_start = _event_sort_key(event)
-            if event_start.date() < today:
+            local_date = (
+                dt_util.as_local(event.start).date()
+                if isinstance(event.start, datetime)
+                else event.start
+            )
+            if local_date < today:
                 continue
             if closest_date is None or event_start < closest_date:
                 closest_date = event_start

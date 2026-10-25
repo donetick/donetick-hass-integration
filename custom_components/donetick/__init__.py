@@ -67,6 +67,7 @@ ASSIGNED_TASK_SCHEMA = vol.Schema({
     vol.Optional("config_entry_id"): cv.string,
 })
 POSTPONE_TASK_SCHEMA = ASSIGNED_TASK_SCHEMA
+# Only completion can be credited to someone else; postponing records no performer.
 COMPLETE_ASSIGNED_SCHEMA = ASSIGNED_TASK_SCHEMA.extend({
     vol.Optional("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
 })
@@ -370,6 +371,7 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
         if task is None:
             raise HomeAssistantError("Task is no longer active or visible; refresh the list")
         if complete:
+            # Explicit performer and HA user mapping take priority over the assignee.
             # None leaves attribution to Donetick's authenticated API token owner.
             await client.async_complete_task(task.id, completed_by=completion_user(
                 entry, getattr(call, "context", None), default=task.assigned_to,

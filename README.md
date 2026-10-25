@@ -33,6 +33,11 @@ Points preserve an explicit zero; tasks without a point value expose `null`.
 - `donetick.update_task` - Update existing tasks
 - `donetick.delete_task` - Delete tasks
 - `donetick.complete_task` - Mark tasks complete with user attribution
+- `donetick.complete_assigned_task` - Complete a task as its current assignee, or as the API token owner for tasks assigned to Anyone
+- `donetick.postpone_task` - Move a task to its next scheduled occurrence without recording a completion
+
+The bundled task card uses the last two for its completion control and its **Skip
+occurrence** action; both resolve the task on the server before acting.
 
 To reactivate an archived task with `donetick.update_task`, set `force_unarchive: true`. This requires a Donetick server that supports `forceUnarchive`.
 
@@ -243,7 +248,12 @@ The full date is available in the tooltip in every mode. YAML supports
 By default, Complete fetches the current task from Donetick and attributes completion to its actual
 assigned user, even if someone else clicks the button. Tasks assigned to **Anyone** are
 completed as the Donetick user who owns the integration's API token. This also applies
-to completion from native Home Assistant to-do lists. **Skip occurrence** (the `donetick.postpone_task` action) uses Donetick's internal skip/rescheduling endpoint to advance
+to completion from native Home Assistant to-do lists. `donetick.complete_assigned_task`
+additionally takes an optional `completed_by` to credit the completion to another circle
+member. Donetick alone decides whether it accepts that person — its rules depend on the
+task's privacy, its assignment and its project — and rejects anyone else. The action then
+fails, carrying Donetick's own reason where it gives one, so the integration never
+second-guesses the server. **Skip occurrence** (the `donetick.postpone_task` action) uses Donetick's internal skip/rescheduling endpoint to advance
 to the next occurrence. Donetick records a skipped occurrence, keeps the assignee and
 calculates the next date from the task's schedule. Tasks without a recurring schedule
 have Skip occurrence hidden. Tap the icon to open a confirmation; tap it again to close
