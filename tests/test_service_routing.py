@@ -55,6 +55,18 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
                     if isinstance(node, ast.ImportFrom) for alias in node.names}
         self.assertIn(("homeassistant.helpers", "entity_registry", "er"), imported)
 
+    def test_the_options_listener_is_removed_when_the_entry_unloads(self):
+        # A listener left behind by a reload would reload the entry once more per later change.
+        tree = ast.parse((COMPONENT / "__init__.py").read_text(encoding="utf-8"))
+        setup = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
+                     and node.name == "async_setup_entry")
+        calls = [node for node in ast.walk(setup) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Attribute)]
+        listeners = [call for call in calls if call.func.attr == "add_update_listener"]
+        self.assertEqual(len(listeners), 1)
+        unloads = [call for call in calls if call.func.attr == "async_on_unload"]
+        self.assertTrue(any(listeners[0] in call.args for call in unloads))
+
     def test_component_identity_and_python_syntax(self):
         manifest = json.loads((COMPONENT / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], COMPONENT.name)
