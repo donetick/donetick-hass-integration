@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.exceptions import HomeAssistantError
@@ -330,7 +331,7 @@ async def _get_config_entry(hass: HomeAssistant, config_entry_id: str = None) ->
         
         # If not found, check if it's an entity ID and extract config entry from it
         if not entry and config_entry_id.startswith("todo."):
-            entity_registry = hass.helpers.entity_registry.async_get()
+            entity_registry = er.async_get(hass)
             entity_entry = entity_registry.async_get(config_entry_id)
             if entity_entry:
                 entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
