@@ -118,3 +118,12 @@ class TaskReassignmentTests(unittest.IsolatedAsyncioTestCase):
         self.put_response = Response({"error": "chore has been modified by another user, please refresh and try again"})
         with self.assertRaisesRegex(ValueError, "modified by another user"):
             await self.client.async_assign_task(5, None)
+
+    async def test_server_prefixed_edit_denial_is_reported_on_both_endpoints(self):
+        # Donetick 0.1.80 prefixes CanEdit errors on the editor and assignee endpoints.
+        for assigned_to in (None, 2):
+            with self.subTest(assigned_to=assigned_to):
+                self.put_response = Response({"error": "You cannot edit this chore: "
+                                              "chore has been modified by another user, please refresh and try again"})
+                with self.assertRaisesRegex(ValueError, "reassignment \\(403\\): chore has been modified"):
+                    await self.client.async_assign_task(5, assigned_to)
