@@ -14,3 +14,7 @@ CONF_REFRESH_INTERVAL = "refresh_interval"
 DEFAULT_REFRESH_INTERVAL = 900 # seconds - 15 minutes
 
 API_TIMEOUT = 10  # seconds
+
+# Chore history statuses, as defined by the Donetick server (ChoreHistoryStatus)
+HISTORY_COMPLETED = 1
+HISTORY_PENDING_APPROVAL = 3
