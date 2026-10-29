@@ -33,13 +33,18 @@ Points preserve an explicit zero; tasks without a point value expose `null`.
 - `donetick.update_task` - Update existing tasks
 - `donetick.delete_task` - Delete tasks
 - `donetick.complete_task` - Mark tasks complete with user attribution
+- `donetick.delete_history` - Delete one history entry of a task, e.g. to undo a completion
 - `donetick.complete_assigned_task` - Complete a task as its current assignee, or as the API token owner for tasks assigned to Anyone
 - `donetick.postpone_task` - Move a task to its next scheduled occurrence without recording a completion
 
 The bundled task card uses the last two for its completion control and its **Skip
 occurrence** action; both resolve the task on the server before acting.
 
+To undo a completion, call `donetick.complete_task` with `response_variable`. The response holds `history_id` (the history entry the completion created), `due_date` (the due date before the completion) and `next_due_date`. Pass `task_id` and `history_id` to `donetick.delete_history`, then restore `due_date` with `donetick.update_task` (with `force_unarchive: true` for a one-off task). A failed completion now raises an error instead of only logging it.
+
 To reactivate an archived task with `donetick.update_task`, set `force_unarchive: true`. This requires a Donetick server that supports `forceUnarchive`.
+
+When calling `donetick.create_task`, set `created_by` to a Donetick circle member's user ID to create and assign the task to that member. Omitting it uses the API token owner. Tasks created from a member's todo list also belong to that member. The optional `due_date` is sent in RFC3339 format.
 
 To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick circle member's user ID, or `null` for Anyone. Selecting a member outside the task's assignee list adds them to that list while preserving the existing members and assignment strategy. This and switching to or from Anyone use Donetick's task editor and require permission to edit the task. Donetick remains authoritative on membership and private-project restrictions.
 

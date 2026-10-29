@@ -17,3 +17,7 @@ API_TIMEOUT = 10  # seconds
 CONF_MAP_COMPLETION_USER = "map_completion_user"
 CONF_USER_MAPPING = "user_mapping"
 CONF_UNMAPPED_USER = "unmapped_user"
+
+# Chore history statuses, as defined by the Donetick server (ChoreHistoryStatus)
+HISTORY_COMPLETED = 1
+HISTORY_PENDING_APPROVAL = 3

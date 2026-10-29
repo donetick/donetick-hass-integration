@@ -224,5 +224,6 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         for extra, expected in (({},3), ({'completed_by':4},4)):
             self.calls.clear()
             await namespace['async_complete_task_service'](self.hass,
-                SimpleNamespace(data={'task_id':1,**extra}, context=SimpleNamespace(user_id='ha-user')))
+                SimpleNamespace(data={'task_id':1,**extra}, context=SimpleNamespace(user_id='ha-user'),
+                                return_response=False))
             self.assertEqual(self.calls, [('complete',1,expected),('refresh',)])

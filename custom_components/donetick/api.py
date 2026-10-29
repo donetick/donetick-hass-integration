@@ -241,10 +241,12 @@ class DonetickApiClient:
             raise
 
     async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None, project_id: int = None) -> DonetickTask:
-        """Create a new task"""
+        """Create a one-time task attributed and assigned to created_by (or the token owner)."""
         headers = self._headers()
 
-        payload = {"name": name, "frequencyType": "once", "assignStrategy": "no_assignee"}
+        # The task editor endpoint ignores createdBy and uses nextDueDate instead
+        # of dueDate. The external API supports attribution and assigns the creator.
+        payload = {"name": name}
         if description:
             payload["description"] = description
         if due_date:
@@ -256,7 +258,7 @@ class DonetickApiClient:
         _LOGGER.debug("Creating task with payload: %s", json.dumps(payload))
         try:
             async with self._session.post(
-                f"{self._base_url}/api/v1/chores/",
+                f"{self._base_url}/eapi/v1/chore",
                 headers=headers,
                 json=payload,
                 timeout=API_TIMEOUT
@@ -264,7 +266,7 @@ class DonetickApiClient:
                 response.raise_for_status()
                 data = await response.json()
                 _LOGGER.debug("New task: %s", data)
-                return await self.async_get_task_detail(data["res"])  # Fetch full task details after creation
+                return DonetickTask.from_json(data)
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error creating task in Donetick: %s", err)
@@ -282,6 +284,9 @@ class DonetickApiClient:
                 error_data = None
             if isinstance(error_data, dict):
                 reason = error_data.get("error")
+                if isinstance(reason, str):
+                    # Donetick's task editor and assignee endpoints prefix the reason.
+                    reason = reason.removeprefix("You cannot edit this chore: ")
                 if response.status == 400 and reason in (
                     "User is not assigned to chore",
                     "Chore is out of completion window",
@@ -296,6 +301,7 @@ class DonetickApiClient:
                     "updatedAt is in the future and cannot be used to edit the chore",
                     "Only the chore creator or a circle admin/manager can update this chore",
                     "Only the chore creator or a circle admin/manager can delete this chore",
+                    "You are not allowed to delete this history",
                 ):
                     raise ValueError(f"Donetick denied the {operation} (403): {reason}")
         response.raise_for_status()
@@ -404,7 +410,7 @@ class DonetickApiClient:
                 json=payload,
                 timeout=API_TIMEOUT,
             ) as response:
-                response.raise_for_status()
+                await self._raise_for_status(response, "reassignment")
         except aiohttp.ClientError as err:
             _LOGGER.error("Error assigning Donetick task %d: %s", task_id, err)
             raise
@@ -528,3 +534,27 @@ class DonetickApiClient:
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.debug("Unable to parse Donetick task history: %s", err)
             return []
+
+    async def async_get_task_history_entries(self, task_id: int) -> List[DonetickChoreHistory]:
+        """Get one task's history, most recently updated first."""
+        async with self._session.get(
+            f"{self._base_url}/api/v1/chores/{task_id}/history",
+            headers=self._headers(),
+            timeout=API_TIMEOUT
+        ) as response:
+            response.raise_for_status()
+            data = await response.json()
+            history = data.get("res", data) if isinstance(data, dict) else data
+            if not isinstance(history, list):
+                raise ValueError("Unexpected Donetick task history response format")
+            return DonetickChoreHistory.from_json_list(history)
+
+    async def async_delete_task_history(self, task_id: int, history_id: int) -> bool:
+        """Delete one history entry of a task, e.g. to undo a completion."""
+        async with self._session.delete(
+            f"{self._base_url}/api/v1/chores/{task_id}/history/{history_id}",
+            headers=self._headers(),
+            timeout=API_TIMEOUT
+        ) as response:
+            await self._raise_for_status(response, "history deletion")
+            return True

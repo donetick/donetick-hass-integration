@@ -61,3 +61,8 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
                      if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_setup_entry")
         self.assertTrue(any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                             and node.func.id == "async_setup_frontend" for node in ast.walk(setup)))
+
+    def test_hacs_minimum_supports_static_path_registration(self):
+        # StaticPathConfig and async_register_static_paths arrived in HA 2024.7.
+        minimum = json.loads((ROOT / "hacs.json").read_text())["homeassistant"]
+        self.assertGreaterEqual(tuple(int(part) for part in minimum.split(".")[:2]), (2024, 7))
