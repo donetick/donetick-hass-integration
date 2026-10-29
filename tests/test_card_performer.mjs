@@ -238,3 +238,87 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   await new Promise(resolve=>setTimeout(resolve,1050));
   page.remove();
 }
+
+// The person this device last credited is offered first, and every completion still asks.
+{
+  assert.deepEqual(performerChoices(state,state.attributes.tasks[2],1).map(m=>m.user_id),[1,2,3,4]);
+  assert.deepEqual(performerChoices(state,state.attributes.tasks[2],4).map(m=>m.user_id),[4,2,3,1]);
+  // Somebody no longer offered is simply not there to lead.
+  assert.deepEqual(performerChoices(state,state.attributes.tasks[2],99).map(m=>m.user_id),[2,3,1,4]);
+  assert.deepEqual(performerChoices({attributes:{circle_members:[...members,{user_id:5,username:'former',is_active:false}]}},
+    state.attributes.tasks[2],5).map(m=>m.user_id),[2,3,1,4]);
+
+  globalThis.localStorage=window.localStorage;localStorage.clear();
+  const pageCalls=[];let refuse=false;
+  const pageHass={...hass,callService:async(...args)=>{pageCalls.push(args);if(refuse)throw new Error('Donetick denied the completion (400)');}};
+  const page=document.createElement('donetick-user-todo-card');
+  page.setConfig(base);page.hass=pageHass;document.body.append(page);
+  const pageRoot=page.shadowRoot;
+  const open=name=>pageRoot.querySelector(`.actions [aria-label="Complete: ${name}"]`).click();
+  const offered=()=>[...pageRoot.querySelectorAll('.panel-members button')].map(button=>button.textContent);
+  open('Rotating');
+  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  pageRoot.querySelector('[aria-label="Complete as Casey"]').click();await tick();
+  assert.deepEqual(pageCalls.pop(),['donetick','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:1}]);
+  await new Promise(resolve=>setTimeout(resolve,1050));
+  open('Rotating');
+  // Opening books nothing: the remembered person leads, but has to be tapped again.
+  assert.equal(pageCalls.length,0);
+  assert.deepEqual(offered(),['Casey','Ivy','Jamie','Priya']);
+  open('Rotating');open('Shared');
+  assert.deepEqual(offered(),['Casey','Ivy','Jamie','Priya']);
+  console.log('The person this device last credited is offered first, and still has to be tapped');
+
+  // A refused completion does not move anyone forward.
+  refuse=true;
+  pageRoot.querySelector('[aria-label="Complete as Priya"]').click();await tick();await tick();
+  assert.equal(pageCalls.pop()[2].completed_by,4);
+  refuse=false;
+  open('Shared');open('Rotating');
+  assert.deepEqual(offered(),['Casey','Ivy','Jamie','Priya']);
+  console.log('A refused completion leaves the order alone');
+
+  // The dropdown starts on the same person and books only once confirmed.
+  page.setConfig({...base,complete_as_picker:'dropdown'});
+  open('Rotating');open('Rotating');
+  const select=pageRoot.querySelector('.action-panel select[data-field="performer"]');
+  assert.deepEqual([...select.options].map(option=>option.textContent),['Casey','Ivy','Jamie','Priya']);
+  assert.equal(select.value,'1');
+  assert.equal(pageCalls.length,0);
+  pageRoot.querySelector('.action-panel').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  console.log('The dropdown starts on the remembered person and still needs a confirmation');
+
+  // Remembered per Donetick account: user ids of another server mean other people.
+  page.setConfig(base);
+  page.hass={...pageHass,states:{'todo.all':{...hass.states['todo.all'],attributes:{...hass.states['todo.all'].attributes,config_entry_id:'other'}}}};
+  open('Rotating');
+  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  open('Rotating');
+  page.hass=pageHass;
+  // Without an account to file it under, nothing is remembered.
+  page.hass={...pageHass,states:{'todo.all':{...hass.states['todo.all'],attributes:{...hass.states['todo.all'].attributes,config_entry_id:undefined}}}};
+  open('Rotating');
+  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  pageRoot.querySelector('[aria-label="Complete as Jamie"]').click();await tick();
+  assert.equal(pageCalls.pop()[2].completed_by,3);
+  await new Promise(resolve=>setTimeout(resolve,1050));
+  open('Rotating');
+  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  open('Rotating');
+  page.hass=pageHass;
+  console.log('The remembered person belongs to one Donetick account');
+
+  // Blocked storage costs the ordering, never the completion.
+  const blocked={getItem(){throw new Error('blocked');},setItem(){throw new Error('blocked');}};
+  globalThis.localStorage=blocked;
+  page.setConfig(base);
+  open('Rotating');
+  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  pageRoot.querySelector('[aria-label="Complete as Jamie"]').click();await tick();
+  assert.equal(pageCalls.pop()[2].completed_by,3);
+  await tick();
+  assert.equal(pageRoot.querySelector('.action-panel'),null);
+  console.log('Blocked browser storage keeps the default order and still completes');
+  await new Promise(resolve=>setTimeout(resolve,1050));
+  page.remove();delete globalThis.localStorage;
+}

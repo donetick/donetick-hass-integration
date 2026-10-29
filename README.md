@@ -322,7 +322,10 @@ again, Escape or a tap outside closes the panel without changing anything, and c
 performer never changes who the task is assigned to.
 
 The panel offers the active circle members, with the task's current assignee first and its
-other assignees next, and no **Anyone** entry — a completion is credited to a person. It
+other assignees next, and no **Anyone** entry — a completion is credited to a person. The
+person this browser last completed a task for comes first of all, remembered per Donetick
+account: on a shared tablet that is the likeliest next answer. It only changes the order;
+every completion still asks, and the dropdown still needs its confirmation. It
 deliberately offers more people than the reassign picker, which by default narrows to the
 task's own assignees: Donetick also accepts a circle admin or manager on a public task,
 and any member of the circle on an unassigned one. Whether a completion is accepted

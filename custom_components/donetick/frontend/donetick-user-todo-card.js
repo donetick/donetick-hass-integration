@@ -162,11 +162,12 @@ export function assignableMembers(state, task, allowAnyAssignee = false) {
 // the circle on an unassigned one. Whether a completion is taken depends on the chore's
 // privacy, its assignment strategy, its project and the member's circle role, none of
 // which the entity exposes, so the card offers the active circle and lets the server
-// arbitrate. The task's own people come first, being the likeliest answer.
-export function performerChoices(state, task) {
+// arbitrate. The task's own people come first, being the likeliest answer, unless this
+// device last credited someone else: on a shared tablet that is the likeliest next person.
+export function performerChoices(state, task, lastChosen) {
   const members = (state?.attributes.circle_members || [])
     .filter(member => member.is_active !== false || member.user_id === task.assigned_to);
-  const rank = member => member.user_id === task.assigned_to ? 0
+  const rank = member => member.user_id === lastChosen ? -1 : member.user_id === task.assigned_to ? 0
     : (task.assignee_ids || []).includes(member.user_id) ? 1 : 2;
   return members.map((member, index) => ({member, index})).sort((a, b) =>
     rank(a.member) - rank(b.member) || a.index - b.index).map(entry => entry.member);
@@ -277,6 +278,22 @@ class DonetickUserTodoCard extends HTMLElement {
   offersCompleteAs() {
     return !!this._config.show_complete_as || (!!this._config.show_complete && this._config.credit_completion === 'choose');
   }
+  // Remembered per browser and Donetick account, never across them: user ids belong to
+  // one Donetick server. It only orders the offer; every completion still asks.
+  // Without an account to file it under, nothing is remembered.
+  performerKey() {
+    const entry = this._hass?.states[this._config?.entity]?.attributes.config_entry_id;
+    return entry ? `donetick-user-todo-card:last-performer:${entry}` : null;
+  }
+  lastPerformer() {
+    const key = this.performerKey(); if (!key) return undefined;
+    try { const value = Number(globalThis.localStorage?.getItem(key)); return Number.isInteger(value) && value > 0 ? value : undefined; }
+    catch { return undefined; }
+  }
+  rememberPerformer(userId) {
+    const key = this.performerKey(); if (!key) return;
+    try { globalThis.localStorage?.setItem(key, String(userId)); } catch { /* Storage may be blocked; the order just stays the default. */ }
+  }
   completeAction(task) {
     // No circle member to offer (the integration fetches the list once at setup and
     // leaves it empty when that fails) must not make the task uncompletable.
@@ -294,6 +311,8 @@ class DonetickUserTodoCard extends HTMLElement {
       if (assignedTo !== undefined) data.assigned_to = assignedTo;
       if (completedBy !== undefined) data.completed_by = completedBy;
       await this._hass.callService('donetick', dueDate || assignedTo !== undefined ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
+      // Only a completion Donetick accepted moves its person to the front.
+      if (completedBy !== undefined) this.rememberPerformer(completedBy);
       // Only this task's panel: a slow call must not close one opened meanwhile for
       // another row.
       if (this._panel?.taskId === task.task_id) this._panel = null;
@@ -318,9 +337,10 @@ class DonetickUserTodoCard extends HTMLElement {
   togglePanel(task, kind, opener) {
     if (this._panel?.taskId === task.task_id && this._panel.kind === kind) { this.closePanel(); return; }
     const value = localDateTime(task.next_due_date);
-    const choices = performerChoices(this._hass.states[this._config.entity], task);
+    const choices = performerChoices(this._hass.states[this._config.entity], task, this.lastPerformer());
+    // The dropdown starts on the first person offered; it still books only on confirm.
     this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showTime:false, assignedTo:task.assigned_to ?? null,
-      performer: choices.some(member => member.user_id === task.assigned_to) ? task.assigned_to : choices[0]?.user_id ?? null, opener};
+      performer: choices[0]?.user_id ?? null, opener};
     this.clearError();
     this.render();
     // Chips book on activation, so none of them takes the focus: a second Enter must not
@@ -660,7 +680,7 @@ class DonetickUserTodoCard extends HTMLElement {
       select.value = panel.assignedTo === null ? 'anyone' : String(panel.assignedTo);
       select.addEventListener('change', event => { panel.assignedTo = event.target.value === 'anyone' ? null : Number(event.target.value); updateSave(); }); form.append(select);
     } else if (panel.kind === 'performer') {
-      const members = performerChoices(this._hass.states[this._config.entity], task);
+      const members = performerChoices(this._hass.states[this._config.entity], task, this.lastPerformer());
       if (!members.length) { this._panel = null; form.remove(); return; }
       addText(form, 'span', 'Complete as…', 'skip-prompt performer-prompt');
       // Anyone is absent on purpose: a completion is credited to a person, and leaving it
