@@ -44,6 +44,8 @@ To undo a completion, call `donetick.complete_task` with `response_variable`. Th
 
 To reactivate an archived task with `donetick.update_task`, set `force_unarchive: true`. This requires a Donetick server that supports `forceUnarchive`.
 
+When calling `donetick.create_task`, set `created_by` to a Donetick circle member's user ID to create and assign the task to that member. Omitting it uses the API token owner. Tasks created from a member's todo list also belong to that member. The optional `due_date` is sent in RFC3339 format.
+
 To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick circle member's user ID, or `null` for Anyone. Selecting a member outside the task's assignee list adds them to that list while preserving the existing members and assignment strategy. This and switching to or from Anyone use Donetick's task editor and require permission to edit the task. Donetick remains authoritative on membership and private-project restrictions.
 
 ## Installation

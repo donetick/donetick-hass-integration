@@ -241,10 +241,12 @@ class DonetickApiClient:
             raise
 
     async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None, project_id: int = None) -> DonetickTask:
-        """Create a new task"""
+        """Create a one-time task attributed and assigned to created_by (or the token owner)."""
         headers = self._headers()
 
-        payload = {"name": name, "frequencyType": "once", "assignStrategy": "no_assignee"}
+        # The task editor endpoint ignores createdBy and uses nextDueDate instead
+        # of dueDate. The external API supports attribution and assigns the creator.
+        payload = {"name": name}
         if description:
             payload["description"] = description
         if due_date:
@@ -256,7 +258,7 @@ class DonetickApiClient:
         _LOGGER.debug("Creating task with payload: %s", json.dumps(payload))
         try:
             async with self._session.post(
-                f"{self._base_url}/api/v1/chores/",
+                f"{self._base_url}/eapi/v1/chore",
                 headers=headers,
                 json=payload,
                 timeout=API_TIMEOUT
@@ -264,7 +266,7 @@ class DonetickApiClient:
                 response.raise_for_status()
                 data = await response.json()
                 _LOGGER.debug("New task: %s", data)
-                return await self.async_get_task_detail(data["res"])  # Fetch full task details after creation
+                return DonetickTask.from_json(data)
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error creating task in Donetick: %s", err)
