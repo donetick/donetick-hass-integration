@@ -50,7 +50,7 @@ create_task:
         text:
     created_by:
       name: Created By User ID
-      description: The Donetick user ID who created the task (optional)
+      description: The Donetick circle member who creates and is assigned the task (optional; defaults to the API token owner)
       required: false
       selector:
         number:
