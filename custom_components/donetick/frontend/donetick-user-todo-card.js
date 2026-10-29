@@ -245,10 +245,13 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.sort_by && !['due_date','priority','name'].includes(config.sort_by)) throw new Error('Choose a valid sort order');
     if (config.due_display && !['date','relative','both'].includes(config.due_display)) throw new Error('Choose a valid due date display');
     if (config.row_spacing !== undefined && !['auto','compact','comfortable'].includes(config.row_spacing)) throw new Error('Choose valid task spacing');
+    if (config.credit_completion !== undefined && !['assignee','choose'].includes(config.credit_completion)) throw new Error('Choose a valid completion credit');
+    if (config.complete_as_picker !== undefined && !['chips','dropdown'].includes(config.complete_as_picker)) throw new Error('Choose a valid Complete as picker');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
     this._config = {task_view:'both', completed_days:1, completed_filter:'all', completed_limit:0, row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
-    if (this._panel && this._panel.kind !== 'details' && !this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign',performer:'show_complete_as'}[this._panel.kind]]) this._panel = null;
+      button_content: 'icon', complete_control: 'checkbox', credit_completion: 'assignee', complete_as_picker: 'chips', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
+    if (this._panel && this._panel.kind !== 'details' && !(this._panel.kind === 'performer' ? this.offersCompleteAs()
+      : this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]])) this._panel = null;
     this._configInputSignature = signature;
     this.render();
   }
@@ -268,6 +271,18 @@ class DonetickUserTodoCard extends HTMLElement {
   }
   filteredTasks(state) {
     return userTasks(state, this._config?.user_id, this._config?.display_filters ?? this._config?.display_filter, new Date(), this._config?.upcoming_days, this._config?.sort_by, this._hass?.locale?.language, this._config?.include_overdue, this._config?.labels, this._config?.label_match, this._config?.include_anyone);
+  }
+  // The Complete as panel has two ways in: its own row action, and the completion
+  // control itself when credit_completion asks who did the work.
+  offersCompleteAs() {
+    return !!this._config.show_complete_as || (!!this._config.show_complete && this._config.credit_completion === 'choose');
+  }
+  completeAction(task) {
+    // No circle member to offer (the integration fetches the list once at setup and
+    // leaves it empty when that fails) must not make the task uncompletable.
+    const choices = performerChoices(this._hass.states[this._config.entity], task);
+    if (this._config.credit_completion === 'choose' && choices.length) this.togglePanel(task, 'performer', 'control');
+    else this.act(task, true);
   }
   async act(task, complete, dueDate, assignedTo, completedBy) {
     if (this._pending.has(task.task_id)) return;
@@ -295,17 +310,22 @@ class DonetickUserTodoCard extends HTMLElement {
   closePanel() {
     const taskId = this._panel?.taskId;
     const kind = this._panel?.kind;
+    const opener = this._panel?.opener;
     this._panel = null; this.clearError(); this.render();
-    this.shadowRoot.querySelector(`[data-action="${kind}"][data-task-id="${taskId}"]`)?.focus();
+    // Complete as has two ways in; focus goes back to the one that opened it.
+    this.shadowRoot.querySelector(`[data-action="${kind}"][data-task-id="${taskId}"]${opener ? `[data-opener="${opener}"]` : ''}`)?.focus();
   }
-  togglePanel(task, kind) {
+  togglePanel(task, kind, opener) {
     if (this._panel?.taskId === task.task_id && this._panel.kind === kind) { this.closePanel(); return; }
     const value = localDateTime(task.next_due_date);
     const choices = performerChoices(this._hass.states[this._config.entity], task);
     this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showTime:false, assignedTo:task.assigned_to ?? null,
-      performer: choices.some(member => member.user_id === task.assigned_to) ? task.assigned_to : choices[0]?.user_id ?? null};
+      performer: choices.some(member => member.user_id === task.assigned_to) ? task.assigned_to : choices[0]?.user_id ?? null, opener};
     this.clearError();
     this.render();
+    // Chips book on activation, so none of them takes the focus: a second Enter must not
+    // complete the task for whoever happens to come first.
+    if (kind === 'performer' && this._config.complete_as_picker !== 'dropdown') { this.shadowRoot.querySelector('.action-panel')?.focus(); return; }
     this.shadowRoot.querySelector('.action-panel input, .action-panel select, .action-panel ha-form, .action-panel button')?.focus();
   }
   render() {
@@ -362,6 +382,10 @@ class DonetickUserTodoCard extends HTMLElement {
       .action-panel select option { background:var(--secondary-background-color); color:var(--primary-text-color); }
       .action-panel select option:hover, .action-panel select option:checked { background:Highlight; color:HighlightText; }
       .action-panel button { flex-shrink:0; border-color:transparent; background:transparent; color:var(--primary-color); }
+      .action-panel .performer-prompt { flex:0 1 auto; }
+      .action-panel:focus { outline:none; }
+      .panel-members { display:flex; flex-wrap:wrap; align-items:center; gap:6px; flex-basis:100%; }
+      ha-card .action-panel .panel-members button { min-height:36px; padding:4px 12px; border:1px solid var(--primary-color); border-radius:18px; background:transparent; color:var(--primary-color); font-size:13px; overflow-wrap:anywhere; }
       .action-panel .error { flex-basis:100%; margin:0; font-size:12px; } .skip-prompt { flex:1; font-size:13px; color:var(--secondary-text-color); }
       button[aria-pressed="true"], button[aria-expanded="true"] { background:var(--secondary-background-color); }
     </style><ha-card></ha-card>`;
@@ -384,6 +408,8 @@ class DonetickUserTodoCard extends HTMLElement {
     for (const task of tasks) {
       const row = document.createElement('div'); row.className = 'row'; card.append(row);
       const completed = this._completed.has(task.task_id);
+      const choosing = this._config.credit_completion === 'choose';
+      const performerOpen = this._panel?.taskId === task.task_id && this._panel.kind === 'performer';
       if (completed) row.classList.add('completed');
       if (this._config.show_complete && this._config.complete_control === 'checkbox') {
         const target = document.createElement('label'); target.className = 'complete-checkbox'; row.append(target);
@@ -391,7 +417,10 @@ class DonetickUserTodoCard extends HTMLElement {
         checkbox.disabled = this._pending.has(task.task_id) || completed; checkbox.checked = this._pending.get(task.task_id) === true || completed;
         checkbox.setAttribute('aria-label', `Complete: ${task.name}`);
         checkbox.title = `Complete: ${task.name}`;
-        checkbox.addEventListener('change', () => this.act(task, true)); target.append(checkbox);
+        // No aria-expanded here: unlike the button, role checkbox does not support it.
+        if (choosing) { checkbox.dataset.action = 'performer'; checkbox.dataset.taskId = task.task_id; checkbox.dataset.opener = 'control'; }
+        checkbox.addEventListener('change', () => this.completeAction(task));
+        target.append(checkbox);
       }
       const hasDescription = !!descriptionText(task.description);
       const text = document.createElement(hasDescription ? 'button' : 'div'); text.className = 'task'; row.append(text);
@@ -472,7 +501,8 @@ class DonetickUserTodoCard extends HTMLElement {
         button.title = `${label}: ${task.name}`;
         button.setAttribute('aria-label', button.title);
         if (!complete) { button.dataset.action = 'skip'; button.dataset.taskId = task.task_id; button.setAttribute('aria-expanded', String(this._panel?.taskId === task.task_id && this._panel.kind === 'skip')); }
-        button.addEventListener('click', () => complete ? this.act(task, true) : this.togglePanel(task, 'skip'));
+        if (complete && choosing) { button.dataset.action = 'performer'; button.dataset.taskId = task.task_id; button.dataset.opener = 'control'; button.setAttribute('aria-expanded', String(performerOpen)); }
+        button.addEventListener('click', () => complete ? this.completeAction(task) : this.togglePanel(task, 'skip'));
       }
       if (this._config.show_due_date) {
       const changeDate = document.createElement('button'); changeDate.type = 'button';
@@ -502,9 +532,9 @@ class DonetickUserTodoCard extends HTMLElement {
         if (color) completeAs.style.setProperty(this._config.button_style === 'filled' ? 'background-color' : 'color', color);
         completeAs.disabled = this._pending.has(task.task_id) || completed;
         completeAs.title = `${label}: ${task.name}`; completeAs.setAttribute('aria-label', completeAs.title);
-        completeAs.dataset.action = 'performer'; completeAs.dataset.taskId = task.task_id;
-        completeAs.setAttribute('aria-expanded', String(this._panel?.taskId === task.task_id && this._panel.kind === 'performer'));
-        completeAs.addEventListener('click', () => this.togglePanel(task, 'performer')); actions.append(completeAs);
+        completeAs.dataset.action = 'performer'; completeAs.dataset.taskId = task.task_id; completeAs.dataset.opener = 'row';
+        completeAs.setAttribute('aria-expanded', String(performerOpen));
+        completeAs.addEventListener('click', () => this.togglePanel(task, 'performer', 'row')); actions.append(completeAs);
       }
       if (this._config.show_reassign) {
         const reassign = document.createElement('button'); reassign.type = 'button';
@@ -632,6 +662,24 @@ class DonetickUserTodoCard extends HTMLElement {
     } else if (panel.kind === 'performer') {
       const members = performerChoices(this._hass.states[this._config.entity], task);
       if (!members.length) { this._panel = null; form.remove(); return; }
+      addText(form, 'span', 'Complete as…', 'skip-prompt performer-prompt');
+      // Anyone is absent on purpose: a completion is credited to a person, and leaving it
+      // to the token owner is what the plain completion control already does.
+      if (this._config.complete_as_picker !== 'dropdown') {
+        form.tabIndex = -1;
+        const picker = document.createElement('div'); picker.className = 'panel-members'; form.append(picker);
+        for (const member of members) {
+          const name = member.display_name || member.username || `User ${member.user_id}`;
+          const choice = document.createElement('button'); choice.type = 'button'; choice.disabled = busy;
+          // The full name, not initials: two members can share initials, and a tablet
+          // never shows a tooltip.
+          choice.textContent = name; choice.title = `Complete as ${name}`;
+          choice.setAttribute('aria-label', choice.title); choice.dataset.field = `performer-${member.user_id}`;
+          // One tap books it: picking the person is the confirmation.
+          choice.addEventListener('click', () => this.act(task, true, undefined, undefined, member.user_id));
+          picker.append(choice);
+        }
+      } else {
       const select = document.createElement('select'); select.required = true; select.disabled = busy;
       select.style.colorScheme = this._hass.themes?.darkMode ? 'dark' : 'light';
       select.dataset.field = 'performer'; select.setAttribute('aria-label', 'Completed by');
@@ -640,11 +688,11 @@ class DonetickUserTodoCard extends HTMLElement {
         option.textContent = member.display_name || member.username || `User ${member.user_id}`;
         select.append(option);
       }
-      // Anyone is absent on purpose: a completion is credited to a person, and leaving it
-      // to the token owner is what the plain completion control already does.
       select.value = String(panel.performer);
       select.addEventListener('change', event => { panel.performer = Number(event.target.value); updateSave(); }); form.append(select);
+      }
     } else addText(form,'span','Move to the next scheduled date?', 'skip-prompt');
+    if (panel.kind !== 'performer' || this._config.complete_as_picker === 'dropdown') {
     save = document.createElement('button'); save.type = 'submit'; save.className = 'save-action';
     const saveIcon = document.createElement('ha-icon');
     saveIcon.setAttribute('icon', panel.kind === 'skip' ? 'mdi:skip-next-outline' : panel.kind === 'performer' ? 'mdi:check' : 'mdi:content-save-outline');
@@ -652,6 +700,7 @@ class DonetickUserTodoCard extends HTMLElement {
     save.setAttribute('aria-label', panel.kind === 'date' ? 'Save due date' : panel.kind === 'assign' ? 'Save assignee' : panel.kind === 'performer' ? 'Confirm completion' : 'Confirm skip');
     save.title = save.getAttribute('aria-label');
     controls.append(save); updateSave();
+    }
     form.append(controls);
     if (this._error && this._errorTask?.task_id === task.task_id) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
@@ -659,6 +708,8 @@ class DonetickUserTodoCard extends HTMLElement {
       event.preventDefault(); if (busy || !form.reportValidity() || form.querySelector('ha-form')?.reportValidity?.() === false) return;
       if (panel.kind === 'skip') { this.act(task,false); return; }
       if (panel.kind === 'performer') {
+        // Chips have no preselection to confirm: only tapping a person books.
+        if (this._config.complete_as_picker !== 'dropdown') return;
         if (!performerChoices(this._hass.states[this._config.entity], task).some(member => member.user_id === panel.performer)) { this._error = 'Choose someone from the circle'; this._errorTask = task; this.render(); return; }
         this.act(task, true, undefined, undefined, panel.performer); return;
       }
@@ -678,6 +729,7 @@ const EDITOR_DEFAULTS = {
   task_view:'both',
   completed_days:1, completed_filter:'all', completed_limit:0,
   row_spacing:'auto',
+  credit_completion:'assignee', complete_as_picker:'chips',
   display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
   due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
@@ -705,12 +757,12 @@ const EDITOR_HELP = {
   show_labels:'Show small label chips below each task’s due date. Hidden by default; long names wrap within the task column.',
   use_label_colors:'Use each label’s Donetick background color and matching readable text. Labels without a valid color keep the neutral style.',
   entity:'Choose All Tasks to make tasks for every circle user available.',
-  user_id:'Show one user’s tasks or all users. By default, completion credits the current assignee, or the API token owner for Anyone tasks. Optional HA user mapping in the integration settings can override this.',
+  user_id:'Show one user’s tasks or all users. Unless Credit completion to asks, completion credits the current assignee by default, or the API token owner for Anyone tasks. Optional HA user mapping in the integration settings can override this.',
   include_anyone:'Show Anyone tasks alongside the selected user’s tasks, using the same date filters and sorting.',
   show_assignee:'Show the assigned name beside the due date. Available when the list can contain multiple users.',
   allow_any_assignee:'Off by default. Selecting someone outside a task’s eligible assignees adds them to that list. They may receive future assignments under the existing rotation strategy. Requires permission to edit the task.',
   show_reassign:'Show a user-switch action on each row. Changes are saved only after confirmation.',
-  show_complete_as:'Show an action that completes a task for someone else: pick who did the work from the circle, then confirm. Donetick decides whom it accepts and refuses anyone else. Off by default; the plain completion control keeps crediting as before.',
+  show_complete_as:'Show an action that completes a task for someone else, picked from the circle. Donetick decides whom it accepts and refuses anyone else. Off by default; the plain completion control keeps crediting as before.',
   show_complete:'Show the completion checkbox or button. Turn off for a display-only task list.',
   show_postpone:'Show Skip occurrence for tasks with a recurring schedule.',
   show_due_date:'Show the action to choose a due date manually, including for one-off tasks.',
@@ -726,6 +778,11 @@ const EDITOR_HELP = {
   button_content:'Icons save space. Labels explain actions, but may make narrow cards wider.',
   button_shape:'Changes action buttons; the completion checkbox stays the same.'
 };
+Object.assign(EDITOR_LABELS, {credit_completion:'Credit completion to', complete_as_picker:'Complete as picker'});
+Object.assign(EDITOR_HELP, {
+  credit_completion:'The task assignee is credited by default. Ask who completed it makes the completion control open Complete as, with the task’s own people first; Donetick decides who it accepts and refuses anyone else.',
+  complete_as_picker:'Chips complete the task with one tap on a person. A dropdown scales better to a large circle and books after a confirmation.'
+});
 EDITOR_LABELS.task_view = 'Task view';
 Object.assign(EDITOR_LABELS, {completed_days:'History period (days)',completed_filter:'Completed tasks to include',completed_limit:'Maximum completed entries'});
 export function actionColor(value) {
@@ -899,6 +956,9 @@ class DonetickUserTodoEditor extends HTMLElement {
         select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),
         select('row_spacing',[['auto','Auto — extra space for labels'],['compact','Compact'],['comfortable','Comfortable']]),
         ...(this._config.show_complete !== false ? [select('complete_control',[['checkbox','Checkbox on the left'],['button','Button on the right']])] : []),
+        ...(this._config.show_complete !== false ? [select('credit_completion',[['assignee','The task assignee'],['choose','Ask who completed it']])] : []),
+        ...(this._config.show_complete_as || (this._config.show_complete !== false && this._config.credit_completion === 'choose')
+          ? [select('complete_as_picker',[['chips','Chips — one tap completes'],['dropdown','Dropdown — choose, then confirm']])] : []),
         select('button_content',[['icon','Icons only'],['icon_and_label','Icons and labels'],['label','Labels only']]),
         select('button_style',[['text','Flat — HA style'],['outlined','Outlined'],['filled','Filled']]),
         select('button_size',[['compact','Compact — 44 px'],['normal','Standard — 48 px'],['large','Large — 52 px']]),

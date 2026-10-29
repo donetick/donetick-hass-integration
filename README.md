@@ -308,23 +308,29 @@ title. Completion-specific action customization appears when completion uses a b
 The HA dashboard editor's live preview reflects each change. Existing YAML options remain
 supported, including custom CSS colors and variables such as `var(--success-color)`.
 
-**Complete as** is an extra row action, off by default, for recording that somebody other
-than the assignee did the work. Tapping it opens the same inline panel the other row
-actions use: pick who completed the task from a dropdown, then confirm. The plain
-completion control is unchanged and still credits the assignee, or the mapped user when
-HA user mapping (below) is enabled. Choosing a performer never changes who the task is
-assigned to.
+**Complete as** records that somebody other than the assignee did the work. It has two
+ways in, both off by default: `show_complete_as: true` adds a row action beside Reassign,
+and **Credit completion to** set to *Ask who completed it* (`credit_completion: choose`)
+makes the completion control itself, checkbox or button, ask instead of crediting the
+assignee, or the mapped user when HA user mapping (below) is enabled. The default,
+`credit_completion: assignee`, keeps the one-tap completion. Either way the same inline
+panel opens below the task. With **Complete as picker** on *Chips*
+(the default, `complete_as_picker: chips`) it lists the circle by full name, and one tap
+on a person completes the task for them. *Dropdown* (`complete_as_picker: dropdown`)
+scales better to a large circle: choose the person, then confirm. Tapping the control
+again, Escape or a tap outside closes the panel without changing anything, and choosing a
+performer never changes who the task is assigned to.
 
-The dropdown offers the active circle members, with the task's current assignee first and
-its other assignees next, and no **Anyone** entry — a completion is credited to a person.
-It deliberately offers more people than the reassign picker, which by default narrows to
-the task's own assignees: Donetick also accepts a circle admin or manager on a public
-task, and any member of the circle on an unassigned one. Whether a completion is accepted
+The panel offers the active circle members, with the task's current assignee first and its
+other assignees next, and no **Anyone** entry — a completion is credited to a person. It
+deliberately offers more people than the reassign picker, which by default narrows to the
+task's own assignees: Donetick also accepts a circle admin or manager on a public task,
+and any member of the circle on an unassigned one. Whether a completion is accepted
 depends on the task's privacy, its assignment strategy, its project and the member's
 circle role, none of which the card can see, so it lets the server decide and leaves the
-refusal on the row. The action is hidden when the circle list is empty. YAML supports
-`show_complete_as: true`, with `complete_as_icon`, `complete_as_label` and
-`complete_as_color` alongside the other per-action options.
+refusal on the row. Without a circle list the row action is hidden and the completion
+control completes the task as usual. The row action takes `complete_as_icon`,
+`complete_as_label` and `complete_as_color` alongside the other per-action options.
 
 ### Optional HA user mapping
 

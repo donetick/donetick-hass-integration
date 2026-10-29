@@ -32,7 +32,8 @@ const mount=(config={},{circle=members,list=tasks,refuse=false}={})=>{
     callService:async(...args)=>{calls.push(args);if(refuse)throw new Error(
       'Donetick task action failed: Donetick denied the completion (400): User is not assigned to chore');}};
   const card=document.createElement('donetick-user-todo-card');
-  card.setConfig({entity:'todo.all',user_id:'all',show_complete_as:true,...config});
+  // The dropdown picker; the chips are covered by test_card_performer.mjs.
+  card.setConfig({entity:'todo.all',user_id:'all',show_complete_as:true,complete_as_picker:'dropdown',...config});
   card.hass=hass;document.body.append(card);previous=card;
   const root=card.shadowRoot;
   return {card,root,calls,
@@ -155,4 +156,25 @@ console.log('The active circle is offered, the task\'s own people first');
   assert.equal(page.panel(),null);
   assert.equal(page.action('Shared'),null);
   console.log('Escape closes it, and so does turning the action off');
+}
+
+// Focus: chips take none on opening, so a second Enter books nobody, and closing returns
+// it to whichever way in opened the panel. Earlier completions' redraw timers must have
+// run first: happy-dom cannot resolve focus while a removed card still renders.
+await new Promise(resolve=>setTimeout(resolve,1050));
+{
+  const page=mount({credit_completion:'choose',complete_control:'button',complete_as_picker:'chips'});
+  const control=()=>page.root.querySelector('[aria-label="Complete: Shared"]');
+  const escape=()=>page.root.querySelector('.action-panel').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  page.action('Shared').click();
+  assert.ok(page.root.querySelector('.panel-members'));
+  assert.equal(page.root.activeElement,page.root.querySelector('.action-panel'));
+  escape();
+  assert.equal(page.root.activeElement,page.action('Shared'));
+  control().click();
+  assert.ok(page.root.querySelector('.panel-members'));
+  escape();
+  assert.equal(page.root.activeElement,control());
+  assert.equal(page.calls.length,0);
+  console.log('Chips take no focus, and closing returns it to the way in that opened them');
 }
