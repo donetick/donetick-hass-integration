@@ -189,6 +189,7 @@ Tap it to choose **Anyone** or a user, then confirm with the save icon; tap agai
 The picker includes Anyone even in a single-user circle. By default, user choices
 are active members already in the task's eligible assignee list. Tasks without an
 eligible list, including Anyone tasks, offer all active circle members.
+The current assignee stays listed even after being deactivated.
 Enable **Allow assigning any circle member** under **Available actions**
 (`allow_any_assignee: true`) to also offer members outside an existing eligible list.
 This option is off by default. Selecting a new member adds them to the eligible list,

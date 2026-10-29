@@ -154,8 +154,10 @@ export function actionData(state, task) {
   const data = {task_id: task.task_id, config_entry_id: state.attributes.config_entry_id};
   return data;
 }
+// The current assignee stays listed even if they have since been deactivated,
+// so the picker shows who has the task instead of falling back to Anyone.
 export function assignableMembers(state, task, allowAnyAssignee = false) {
-  return (state?.attributes.circle_members || []).filter(member => member.is_active !== false && (allowAnyAssignee === true || !task.assignee_ids?.length || task.assignee_ids.includes(member.user_id)));
+  return (state?.attributes.circle_members || []).filter(member => (member.is_active !== false || member.user_id === task.assigned_to) && (allowAnyAssignee === true || !task.assignee_ids?.length || task.assignee_ids.includes(member.user_id)));
 }
 // Only the task's own people: Donetick refuses to credit anyone else ("User is not
 // assigned to chore"). It would also take a circle admin or manager on a public chore,
