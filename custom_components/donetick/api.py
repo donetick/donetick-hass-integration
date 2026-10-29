@@ -455,6 +455,10 @@ class DonetickApiClient:
             elif task.get("assignStrategy") == "no_assignee" or not assignees:
                 payload["assignStrategy"] = "keep_last_assigned"
                 payload["assignees"] = [{"userId": assigned_to}]
+            elif len(assignees) == 1:
+                # A single-person list is replaced, keeping its strategy. Adding
+                # the new member would turn it into a rotation of two.
+                payload["assignees"] = [{"userId": assigned_to}]
             else:
                 # The dedicated endpoint only accepts existing assignees. Add
                 # the selected member without discarding the rotation's users.

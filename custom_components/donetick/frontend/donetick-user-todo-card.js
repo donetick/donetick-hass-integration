@@ -781,7 +781,7 @@ const EDITOR_HELP = {
   user_id:'Show one user’s tasks or all users. Unless Credit completion to asks, completion credits the current assignee by default, or the API token owner for Anyone tasks. Optional HA user mapping in the integration settings can override this.',
   include_anyone:'Show Anyone tasks alongside the selected user’s tasks, using the same date filters and sorting.',
   show_assignee:'Show the assigned name beside the due date. Available when the list can contain multiple users.',
-  allow_any_assignee:'Off by default. Selecting someone outside a task’s eligible assignees adds them to that list. They may receive future assignments under the existing rotation strategy. Requires permission to edit the task.',
+  allow_any_assignee:'Off by default. Selecting someone outside a task’s eligible assignees adds them to that list, or replaces the only person on it. Added members may receive future assignments under the existing rotation strategy. Requires permission to edit the task.',
   show_reassign:'Show a user-switch action on each row. Changes are saved only after confirmation.',
   show_complete_as:'Show an action that completes a task for someone else among its assignees, or anyone in the circle when nobody is assigned. Off by default; the plain completion control keeps crediting as before.',
   show_complete:'Show the completion checkbox or button. Turn off for a display-only task list.',
