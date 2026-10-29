@@ -258,31 +258,36 @@ class DonetickUserTodoCard extends HTMLElement {
   async act(task, complete, dueDate, assignedTo) {
     if (this._pending.has(task.task_id)) return;
     const state = this._hass.states[this._config.entity];
-    this._pending.set(task.task_id, complete); this._error = ''; this.render();
+    this._pending.set(task.task_id, complete); this.clearError(); this.render();
     try {
       const data = actionData(state, task);
       if (dueDate) data.due_date = dueDate;
       if (assignedTo !== undefined) data.assigned_to = assignedTo;
       await this._hass.callService('donetick', dueDate || assignedTo !== undefined ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
-      this._panel = null;
+      // Only this task's panel: a slow call must not close one opened meanwhile for
+      // another row.
+      if (this._panel?.taskId === task.task_id) this._panel = null;
       if (complete) {
         this._completed.set(task.task_id, task);
         setTimeout(() => { this._completed.delete(task.task_id); this.render(); }, 1000);
       }
-    } catch (err) { this._error = err.message || String(err); }
+    } catch (err) { this._error = err.message || String(err); this._errorTask = task; }
     finally { this._pending.delete(task.task_id); this.render(); }
   }
+  clearError() { this._error = ''; this._errorTask = null; }
+  // Only the panel of the task the message is about can show it.
+  errorIsInPanel() { return !!this._errorTask && this._panel?.taskId === this._errorTask.task_id && this._panel.kind !== 'details'; }
   closePanel() {
     const taskId = this._panel?.taskId;
     const kind = this._panel?.kind;
-    this._panel = null; this._error = ''; this.render();
+    this._panel = null; this.clearError(); this.render();
     this.shadowRoot.querySelector(`[data-action="${kind}"][data-task-id="${taskId}"]`)?.focus();
   }
   togglePanel(task, kind) {
     if (this._panel?.taskId === task.task_id && this._panel.kind === kind) { this.closePanel(); return; }
     const value = localDateTime(task.next_due_date);
     this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showTime:false, assignedTo:task.assigned_to ?? null};
-    this._error = '';
+    this.clearError();
     this.render();
     this.shadowRoot.querySelector('.action-panel input, .action-panel select, .action-panel ha-form, .action-panel button')?.focus();
   }
@@ -350,7 +355,10 @@ class DonetickUserTodoCard extends HTMLElement {
     card.dataset.spacing = this._config.row_spacing;
     const addText = (parent, tag, text, cls) => { const el = document.createElement(tag); el.textContent = text; if(cls) el.className = cls; parent.append(el); return el; };
     addText(card, 'h2', this._config.title || (userId === 'all' ? 'All users — Tasks' : `${member?.display_name || 'User ' + userId} — Tasks`));
-    if (this._error && !this._panel) addText(card, 'p', this._error, 'error');
+    // A message shows inside its own task's panel; anywhere else it would be read as
+    // belonging to the wrong row, so it moves up here and says which task it is about.
+    if (this._error && !this.errorIsInPanel()) addText(card, 'p', this._errorTask
+      ? `${this._errorTask.name}: ${this._error}` : this._error, 'error').setAttribute('role', 'alert');
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
     const tasks = this._config.task_view === 'completed' ? [] : this.filteredTasks(state);
     for (const task of this._completed.values()) if (this._config.task_view !== 'completed' && !tasks.some(item => item.task_id === task.task_id) && this.filteredTasks({attributes:{tasks:[task]}}).length) tasks.push(task);
@@ -595,18 +603,18 @@ class DonetickUserTodoCard extends HTMLElement {
     save.title = save.getAttribute('aria-label');
     controls.append(save); updateSave();
     form.append(controls);
-    if (this._error) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
+    if (this._error && this._errorTask?.task_id === task.task_id) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
     form.addEventListener('submit',event => {
       event.preventDefault(); if (busy || !form.reportValidity() || form.querySelector('ha-form')?.reportValidity?.() === false) return;
       if (panel.kind === 'skip') { this.act(task,false); return; }
       if (panel.kind === 'assign') {
-        if (panel.assignedTo !== null && !assignableMembers(this._hass.states[this._config.entity], task, this._config.allow_any_assignee).some(member => member.user_id === panel.assignedTo)) { this._error = 'Choose an eligible assignee'; this.render(); return; }
+        if (panel.assignedTo !== null && !assignableMembers(this._hass.states[this._config.entity], task, this._config.allow_any_assignee).some(member => member.user_id === panel.assignedTo)) { this._error = 'Choose an eligible assignee'; this._errorTask = task; this.render(); return; }
         if (!changed()) return;
         this.act(task, false, undefined, panel.assignedTo); return;
       }
       const date = draftDate();
-      if (!date) { this._error='Choose a valid date and time'; this.render(); return; }
+      if (!date) { this._error='Choose a valid date and time'; this._errorTask = task; this.render(); return; }
       if (!changed()) return;
       this.act(task,false,date.toISOString());
     });

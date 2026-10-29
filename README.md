@@ -295,7 +295,10 @@ Overdue labels use the theme's warning color. Local 23:59 end-of-day placeholder
 hidden from the label and tooltip. The full date is available in a tooltip.
 Tasks sort by due date, with undated tasks last. Completion
 briefly shows a checked, struck-through row. Successful actions update the list without
-extra confirmation text; failures remain visible.
+extra confirmation text; failures remain visible. A failure is shown in the panel of the
+task it belongs to, or above the list naming that task when its panel has since been
+closed or another row's panel is open. An action that succeeds closes its own row's
+panel and leaves any other open.
 The card editor uses native Home Assistant form controls: entity and user selectors,
 searchable icon pickers, theme color choices, and helper text explaining each setting.
 Choose a **Starting style** (HA todo, icons with labels, outlined or filled buttons), then
