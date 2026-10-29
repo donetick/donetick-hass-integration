@@ -16,21 +16,21 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse((COMPONENT / "__init__.py").read_text(encoding="utf-8"))
         functions = [node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                      and node.name in ("_get_config_entry", "async_complete_task_service")]
+        registry = SimpleNamespace(async_get=lambda entity_id: SimpleNamespace(
+            config_entry_id="upstream" if entity_id == "todo.upstream" else "dev"))
         namespace = {"DOMAIN": DOMAIN, "ConfigEntry": object, "HomeAssistant": object,
-                     "ServiceCall": object, "_LOGGER": logging.getLogger(__name__)}
+                     "ServiceCall": object, "_LOGGER": logging.getLogger(__name__),
+                     "er": SimpleNamespace(async_get=lambda hass: registry)}
         exec(compile(ast.Module(body=functions, type_ignores=[]), "routing", "exec"), namespace)
         self.resolve = namespace["_get_config_entry"]
         self.complete = namespace["async_complete_task_service"]
         self.dev = SimpleNamespace(entry_id="dev", domain=DOMAIN)
         self.upstream = SimpleNamespace(entry_id="upstream", domain="other_integration")
         entries = {entry.entry_id: entry for entry in (self.dev, self.upstream)}
-        registry = SimpleNamespace(async_get=lambda entity_id: SimpleNamespace(
-            config_entry_id="upstream" if entity_id == "todo.upstream" else "dev"))
         self.hass = SimpleNamespace(
             data={DOMAIN: {"dev": {}}, "other_integration": {"upstream": {}}},
             config_entries=SimpleNamespace(async_get_entry=entries.get,
                 async_entries=lambda domain: [e for e in entries.values() if e.domain == domain]),
-            helpers=SimpleNamespace(entity_registry=SimpleNamespace(async_get=lambda: registry)),
         )
 
     async def test_default_and_explicit_routes_use_integration(self):
@@ -47,6 +47,25 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_unloaded_entry_is_rejected(self):
         self.hass.data[DOMAIN].clear()
         self.assertIsNone(await self.resolve(self.hass, "dev"))
+
+    def test_the_registry_helper_the_routing_uses_is_imported(self):
+        # setUp supplies er itself, so only the module's imports show it is really there.
+        tree = ast.parse((COMPONENT / "__init__.py").read_text(encoding="utf-8"))
+        imported = {(node.module, alias.name, alias.asname) for node in tree.body
+                    if isinstance(node, ast.ImportFrom) for alias in node.names}
+        self.assertIn(("homeassistant.helpers", "entity_registry", "er"), imported)
+
+    def test_the_options_listener_is_removed_when_the_entry_unloads(self):
+        # A listener left behind by a reload would reload the entry once more per later change.
+        tree = ast.parse((COMPONENT / "__init__.py").read_text(encoding="utf-8"))
+        setup = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
+                     and node.name == "async_setup_entry")
+        calls = [node for node in ast.walk(setup) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Attribute)]
+        listeners = [call for call in calls if call.func.attr == "add_update_listener"]
+        self.assertEqual(len(listeners), 1)
+        unloads = [call for call in calls if call.func.attr == "async_on_unload"]
+        self.assertTrue(any(listeners[0] in call.args for call in unloads))
 
     def test_component_identity_and_python_syntax(self):
         manifest = json.loads((COMPONENT / "manifest.json").read_text(encoding="utf-8"))

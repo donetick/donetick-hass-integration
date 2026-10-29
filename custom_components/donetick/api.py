@@ -284,6 +284,9 @@ class DonetickApiClient:
                 error_data = None
             if isinstance(error_data, dict):
                 reason = error_data.get("error")
+                if isinstance(reason, str):
+                    # Donetick's task editor and assignee endpoints prefix the reason.
+                    reason = reason.removeprefix("You cannot edit this chore: ")
                 if response.status == 400 and reason in (
                     "User is not assigned to chore",
                     "Chore is out of completion window",
@@ -407,7 +410,7 @@ class DonetickApiClient:
                 json=payload,
                 timeout=API_TIMEOUT,
             ) as response:
-                response.raise_for_status()
+                await self._raise_for_status(response, "reassignment")
         except aiohttp.ClientError as err:
             _LOGGER.error("Error assigning Donetick task %d: %s", task_id, err)
             raise
