@@ -320,14 +320,20 @@ card.setConfig({entity:'todo.all'});assert.equal(root.querySelectorAll('.row').l
 card.setConfig({entity:'todo.all',user_id:2});assert.equal(root.querySelectorAll('.row').length,1);
 delete hass.states['todo.all'].attributes.donetick_user_id;
 // Every action can be hidden independently, for either completion style.
-for (const complete_control of ['checkbox','button']) {
+for (const complete_control of ['checkbox','initials','button']) {
   for (let mask=0;mask<16;mask++) {
     const visibility = Object.fromEntries(['show_complete','show_postpone','show_due_date','show_reassign'].map((key,index)=>[key,!!(mask & (1<<index))]));
     card.setConfig({entity:'todo.all',user_id:'all',complete_control,...visibility});
     for (const [key,label] of [['show_complete','Complete'],['show_postpone','Skip occurrence'],['show_due_date','Change due date'],['show_reassign','Reassign']]) {
       assert.equal(!!root.querySelector(`[aria-label="${label}: Weekly"]`),visibility[key],`${key} in ${complete_control} mode`);
     }
-    if (!mask) { assert.equal(root.querySelectorAll('.actions,.complete-checkbox').length,0); }
+    // The control itself must match the mode, not just carry the right accessible name.
+    const rows = root.querySelectorAll('.row').length;
+    for (const [selector,expected] of [['.complete-checkbox',complete_control==='checkbox'],
+      ['.complete-initials',complete_control==='initials'],['.actions [aria-label^="Complete: "]',complete_control==='button']]) {
+      assert.equal(root.querySelectorAll(selector).length,visibility.show_complete && expected ? rows : 0,`${selector} in ${complete_control} mode`);
+    }
+    if (!mask) { assert.equal(root.querySelectorAll('.actions,.complete-checkbox,.complete-initials').length,0); }
   }
 }
 card.setConfig({entity:'todo.all',user_id:'all'});click('Change due date: Weekly');
