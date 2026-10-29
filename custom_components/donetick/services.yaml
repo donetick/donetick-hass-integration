@@ -164,7 +164,7 @@ delete_task:
 
 complete_assigned_task:
   name: Complete as assigned user
-  description: Complete a task as its current Donetick assignee, or as the API token owner for tasks assigned to Anyone.
+  description: Complete a task using an explicit performer, optional HA user mapping, or its current assignee. Without an override, Anyone tasks credit the API token owner.
   fields:
     task_id:
       required: true
@@ -173,10 +173,10 @@ complete_assigned_task:
           min: 1
           mode: box
     completed_by:
-      name: Completed By User ID
+      name: Completed by Donetick user
       description: >-
-        Credit the completion to this Donetick user instead of the task's
-        current assignee. Donetick applies its own completion rules, which
+        Credit the completion to this Donetick user, overriding optional HA
+        user mapping and the current assignee. Donetick applies its own completion rules, which
         depend on the task's privacy, its assignment and its project, and
         rejects anyone it does not accept; the action then fails, carrying
         Donetick's own reason where it gives one.

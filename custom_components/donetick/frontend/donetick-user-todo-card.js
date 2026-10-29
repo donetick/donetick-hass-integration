@@ -642,7 +642,7 @@ const EDITOR_HELP = {
   show_labels:'Show small label chips below each task’s due date. Hidden by default; long names wrap within the task column.',
   use_label_colors:'Use each label’s Donetick background color and matching readable text. Labels without a valid color keep the neutral style.',
   entity:'Choose All Tasks to make tasks for every circle user available.',
-  user_id:'Show one user’s tasks or all users. Completion is credited to each task’s current assignee, or the API token owner for Anyone tasks.',
+  user_id:'Show one user’s tasks or all users. By default, completion credits the current assignee, or the API token owner for Anyone tasks. Optional HA user mapping in the integration settings can override this.',
   include_anyone:'Show Anyone tasks alongside the selected user’s tasks, using the same date filters and sorting.',
   show_assignee:'Show the assigned name beside the due date. Available when the list can contain multiple users.',
   allow_any_assignee:'Off by default. Selecting someone outside a task’s eligible assignees adds them to that list. They may receive future assignments under the existing rotation strategy. Requires permission to edit the task.',

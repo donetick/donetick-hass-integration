@@ -14,6 +14,9 @@ CONF_REFRESH_INTERVAL = "refresh_interval"
 DEFAULT_REFRESH_INTERVAL = 900 # seconds - 15 minutes
 
 API_TIMEOUT = 10  # seconds
+CONF_MAP_COMPLETION_USER = "map_completion_user"
+CONF_USER_MAPPING = "user_mapping"
+CONF_UNMAPPED_USER = "unmapped_user"
 
 # Chore history statuses, as defined by the Donetick server (ChoreHistoryStatus)
 HISTORY_COMPLETED = 1

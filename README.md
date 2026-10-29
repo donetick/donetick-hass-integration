@@ -250,7 +250,7 @@ daylight-saving changes. Date-only deadlines remain due for their whole day.
 The full date is available in the tooltip in every mode. YAML supports
 `due_display: date`, `due_display: relative`, or `due_display: both`.
 
-Complete fetches the current task from Donetick and attributes completion to its actual
+By default, Complete fetches the current task from Donetick and attributes completion to its actual
 assigned user, even if someone else clicks the button. Tasks assigned to **Anyone** are
 completed as the Donetick user who owns the integration's API token. This also applies
 to completion from native Home Assistant to-do lists. `donetick.complete_assigned_task`
@@ -304,3 +304,35 @@ reset action icon, label and color overrides while preserving the list, user, fi
 title. Completion-specific action customization appears when completion uses a button.
 The HA dashboard editor's live preview reflects each change. Existing YAML options remain
 supported, including custom CSS colors and variables such as `var(--success-color)`.
+
+
+### Optional HA user mapping
+
+Open **Settings > Devices & services > Donetick > Configure > User mapping and
+completion credit**. Each HA user has their own Donetick dropdown. Review or change
+all links on this screen and save them together. Choose **Not mapped** to remove a
+link. Mapping is
+configured per Donetick integration and is disabled by default. On first opening
+the mapping screen, unique matching HA local login usernames and Donetick usernames
+are suggested, ignoring case and surrounding spaces. Review the displayed pairs and
+check **Apply suggested username matches shown above** to confirm them before saving;
+leave unchecked to skip them.
+display names and external authentication identities are not matched. Existing links
+are preserved, and saving initializes the defaults once, so removed links stay removed.
+
+When enabled, completion in the bundled card, native HA to-do lists, and
+`donetick.complete_task` uses the authenticated HA caller's mapped Donetick user.
+An explicit `completed_by` overrides mapping, including on
+`donetick.complete_assigned_task`. Donetick still enforces permissions, and the
+integration does not edit the task's eligible assignee list. Donetick's normal
+completion scheduling and assignment strategy still apply.
+
+For unmapped users or actions without user context, choose **Credit the assignee (Anyone tasks: API token owner)** (default) or **Require a mapping or explicit performer**.
+Existing behavior credits the task assignee for the card/native lists, or the API
+token owner for Anyone tasks and the raw `complete_task` action. Automations
+without a user context should provide `completed_by` when mapping is required.
+User mapping does not change task visibility or reassignment.
+
+A shared tablet with one HA login cannot identify the person touching the screen.
+Use explicit performer selection for that case. This feature does not link logins,
+provide SSO, or change completion inside Donetick's own web interface.

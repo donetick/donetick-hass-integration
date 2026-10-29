@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
+from mapping_test_helpers import load_completion_user
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = ROOT / "custom_components" / "donetick"
@@ -23,6 +24,7 @@ class CompletionUndoTests(unittest.IsolatedAsyncioTestCase):
         namespace = {"DOMAIN": DOMAIN, "ConfigEntry": object, "HomeAssistant": object,
                      "ServiceCall": object, "_LOGGER": logging.getLogger(__name__),
                      "HomeAssistantError": RuntimeError,
+                     "completion_user": load_completion_user(),
                      "HISTORY_COMPLETED": constants["HISTORY_COMPLETED"],
                      "HISTORY_PENDING_APPROVAL": constants["HISTORY_PENDING_APPROVAL"]}
         exec(compile(ast.Module(body=functions, type_ignores=[]), "undo", "exec"), namespace)
@@ -40,7 +42,7 @@ class CompletionUndoTests(unittest.IsolatedAsyncioTestCase):
             async_delete_task_history=AsyncMock(return_value=True),
         )
         self.coordinator = SimpleNamespace(async_request_refresh=AsyncMock())
-        entry = SimpleNamespace(entry_id="dev", domain=DOMAIN)
+        entry = self.entry = SimpleNamespace(entry_id="dev", domain=DOMAIN, data={})
         self.hass = SimpleNamespace(
             data={DOMAIN: {"dev": {"client": self.client, "coordinator": self.coordinator}}},
             config_entries=SimpleNamespace(async_get_entry={"dev": entry}.get,
@@ -62,6 +64,24 @@ class CompletionUndoTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_complete_without_response_skips_history_lookup(self):
         self.assertIsNone(await self.complete(self.hass, self.call({"task_id": 7}, False)))
+        self.client.async_get_task_history_entries.assert_not_awaited()
+
+    async def test_mapping_and_explicit_performer_preserve_undo_response(self):
+        self.entry.data = {"map_completion_user": True, "user_mapping": {"ha-user": 3}}
+        for extra, expected in (({}, 3), ({"completed_by": 4}, 4)):
+            with self.subTest(explicit=extra):
+                call = self.call({"task_id": 7, **extra})
+                call.context = SimpleNamespace(user_id="ha-user")
+                response = await self.complete(self.hass, call)
+                self.client.async_complete_task.assert_awaited_with(7, expected)
+                self.assertEqual(response["history_id"], 12)
+                self.assertEqual(response["due_date"], "2026-10-27T18:00:00+00:00")
+
+    async def test_required_mapping_refuses_completion_before_writing_history(self):
+        self.entry.data = {"map_completion_user": True, "unmapped_user": "require_mapping"}
+        with self.assertRaisesRegex(ValueError, "No Donetick user is mapped"):
+            await self.complete(self.hass, self.call({"task_id": 7}))
+        self.client.async_complete_task.assert_not_awaited()
         self.client.async_get_task_history_entries.assert_not_awaited()
 
     async def test_complete_failure_is_raised_not_swallowed(self):

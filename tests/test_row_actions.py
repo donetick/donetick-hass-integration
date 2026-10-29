@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from typing import Any, List, Optional
+from mapping_test_helpers import load_completion_user
 
 ROOT = Path(__file__).resolve().parents[1] / 'custom_components/donetick'
 
@@ -38,8 +39,9 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         self.task = SimpleNamespace(id=1, is_active=True, assigned_to=2,
                                     frequency_type="weekly", next_due_date=datetime(2026, 10, 24, 16, tzinfo=timezone.utc))
         self.calls = []
+        self.entry = SimpleNamespace(entry_id='entry', data={})
         async def resolve(hass, entry_id):
-            return SimpleNamespace(entry_id='entry')
+            return self.entry
         async def tasks():
             return [self.task]
         async def complete(task_id, completed_by):
@@ -51,7 +53,7 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         async def refresh():
             self.calls.append(('refresh',))
         namespace = dict(HomeAssistant=object, ServiceCall=object, HomeAssistantError=ValueError,
-                         DOMAIN='donetick', _get_config_entry=resolve)
+                         DOMAIN='donetick', _get_config_entry=resolve, completion_user=load_completion_user())
         exec(compile(ast.Module(body=[action], type_ignores=[]), str(source), 'exec'), namespace)
         self.action = namespace['async_task_row_action']
         self.hass = SimpleNamespace(data={'donetick': {'entry': {
@@ -148,12 +150,12 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse((ROOT / 'todo.py').read_text(encoding='utf-8'))
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DonetickTodoListBase')
         method = next(n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == '_get_completion_user_id')
-        namespace = {}
+        namespace = {"completion_user": load_completion_user()}
         exec(compile(ast.Module(body=[method], type_ignores=[]), 'completion', 'exec'), namespace)
         async def tasks():
             return [self.task]
         # A stale per-user list and a different HA caller cannot override the current assignee.
-        owner = SimpleNamespace(_member=SimpleNamespace(user_id=1))
+        owner = SimpleNamespace(_member=SimpleNamespace(user_id=1), _config_entry=SimpleNamespace(data={}))
         result = await namespace['_get_completion_user_id'](owner, SimpleNamespace(async_get_tasks=tasks),
                                                             SimpleNamespace(uid='1--old-date'), SimpleNamespace(user_id='caller'))
         self.assertEqual(result, 2)
@@ -171,3 +173,57 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
                     await namespace['_get_completion_user_id'](owner, SimpleNamespace(async_get_tasks=tasks),
                                                                SimpleNamespace(uid='1--old-date'))
                 setattr(self.task, attribute, original)
+
+    async def test_mapped_caller_overrides_assignee_without_changing_task(self):
+        self.entry.data = {'map_completion_user':True, 'user_mapping':{'ha-user':3}}
+        await self.action(self.hass, SimpleNamespace(data={'task_id':1}, context=SimpleNamespace(user_id='ha-user')), complete=True)
+        self.assertEqual(self.calls, [('complete',1,3), ('refresh',)])
+        self.assertEqual(self.task.assigned_to, 2)
+
+    async def test_explicit_performer_overrides_mapping(self):
+        self.entry.data = {'map_completion_user':True, 'user_mapping':{'ha-user':3}}
+        await self.action(self.hass, SimpleNamespace(data={'task_id':1,'completed_by':4}, context=SimpleNamespace(user_id='ha-user')), complete=True)
+        self.assertEqual(self.calls, [('complete',1,4), ('refresh',)])
+
+    async def test_required_mapping_blocks_unattributed_completion_and_refreshes(self):
+        self.entry.data = {'map_completion_user':True, 'unmapped_user':'require_mapping'}
+        with self.assertRaisesRegex(ValueError, 'No Donetick user is mapped'):
+            await self.run_action(True)
+        self.assertEqual(self.calls, [('refresh',)])
+
+    async def test_mapping_requirement_does_not_affect_postponement(self):
+        self.entry.data = {'map_completion_user':True, 'unmapped_user':'require_mapping'}
+        await self.run_action(False)
+        self.assertEqual(self.calls, [('reschedule',1), ('refresh',)])
+
+    async def test_native_list_credits_mapped_caller(self):
+        tree = ast.parse((ROOT / 'todo.py').read_text(encoding='utf-8'))
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DonetickTodoListBase')
+        method = next(n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == '_get_completion_user_id')
+        namespace = {'completion_user':load_completion_user()}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), 'completion', 'exec'), namespace)
+        self.entry.data = {'map_completion_user':True, 'user_mapping':{'ha-user':3}}
+        owner = SimpleNamespace(_config_entry=self.entry)
+        async def tasks():
+            return [self.task]
+        result = await namespace['_get_completion_user_id'](owner, SimpleNamespace(async_get_tasks=tasks),
+            SimpleNamespace(uid='1'), SimpleNamespace(user_id='ha-user'))
+        self.assertEqual(result, 3)
+        self.assertEqual(self.task.assigned_to, 2)
+
+    async def test_raw_completion_action_respects_mapping_and_explicit_override(self):
+        tree = ast.parse((ROOT / '__init__.py').read_text(encoding='utf-8'))
+        method = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'async_complete_task_service')
+        async def resolve(hass, entry_id):
+            return self.entry
+        namespace = {'completion_user':load_completion_user(), '_get_config_entry':resolve,
+                     'HomeAssistant':object, 'ServiceCall':object, 'DOMAIN':'donetick',
+                     '_LOGGER':logging.getLogger(__name__)}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), 'completion', 'exec'), namespace)
+        self.entry.data = {'map_completion_user':True, 'user_mapping':{'ha-user':3}}
+        for extra, expected in (({},3), ({'completed_by':4},4)):
+            self.calls.clear()
+            await namespace['async_complete_task_service'](self.hass,
+                SimpleNamespace(data={'task_id':1,**extra}, context=SimpleNamespace(user_id='ha-user'),
+                                return_response=False))
+            self.assertEqual(self.calls, [('complete',1,expected),('refresh',)])

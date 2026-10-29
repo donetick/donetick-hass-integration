@@ -13,6 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import (DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL,
                     HISTORY_COMPLETED, HISTORY_PENDING_APPROVAL)
 from .api import DonetickApiClient
+from .user_mapping import completion_user
 from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
 
@@ -213,6 +214,8 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
         return
+
+    completed_by = completion_user(entry, getattr(call, "context", None), explicit=completed_by)
 
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
@@ -430,10 +433,11 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
         if task is None:
             raise HomeAssistantError("Task is no longer active or visible; refresh the list")
         if complete:
-            # Without completed_by the current assignee is credited; None leaves
-            # attribution to Donetick's authenticated API token owner.
-            await client.async_complete_task(
-                task.id, completed_by=call.data.get("completed_by", task.assigned_to))
+            # Explicit performer and HA user mapping take priority over the assignee.
+            # None leaves attribution to Donetick's authenticated API token owner.
+            await client.async_complete_task(task.id, completed_by=completion_user(
+                entry, getattr(call, "context", None), default=task.assigned_to,
+                explicit=call.data.get("completed_by")))
         else:
             if task.frequency_type in ("once", "no_repeat", "trigger", "always"):
                 raise HomeAssistantError("This task has no next scheduled occurrence")
