@@ -308,6 +308,23 @@ title. Completion-specific action customization appears when completion uses a b
 The HA dashboard editor's live preview reflects each change. Existing YAML options remain
 supported, including custom CSS colors and variables such as `var(--success-color)`.
 
+**Complete as** is an extra row action, off by default, for recording that somebody other
+than the assignee did the work. Tapping it opens the same inline panel the other row
+actions use: pick who completed the task from a dropdown, then confirm. The plain
+completion control is unchanged and still credits the assignee, or the mapped user when
+HA user mapping (below) is enabled. Choosing a performer never changes who the task is
+assigned to.
+
+The dropdown offers the active circle members, with the task's current assignee first and
+its other assignees next, and no **Anyone** entry — a completion is credited to a person.
+It deliberately offers more people than the reassign picker, which by default narrows to
+the task's own assignees: Donetick also accepts a circle admin or manager on a public
+task, and any member of the circle on an unassigned one. Whether a completion is accepted
+depends on the task's privacy, its assignment strategy, its project and the member's
+circle role, none of which the card can see, so it lets the server decide and leaves the
+refusal on the row. The action is hidden when the circle list is empty. YAML supports
+`show_complete_as: true`, with `complete_as_icon`, `complete_as_label` and
+`complete_as_color` alongside the other per-action options.
 
 ### Optional HA user mapping
 

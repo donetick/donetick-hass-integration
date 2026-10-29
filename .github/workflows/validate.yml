@@ -41,6 +41,12 @@ jobs:
           TZ: Europe/Brussels
           DOM_TEST_MODULE: ${{ runner.temp }}/donetick-card-tests/node_modules/happy-dom/lib/index.js
       - run: node --experimental-default-type=module tests/test_row_errors.mjs
+        timeout-minutes: 2
+        env:
+          TZ: Europe/Brussels
+          DOM_TEST_MODULE: ${{ runner.temp }}/donetick-card-tests/node_modules/happy-dom/lib/index.js
+      - run: node --experimental-default-type=module tests/test_card_complete_as.mjs
+        timeout-minutes: 2
         env:
           TZ: Europe/Brussels
           DOM_TEST_MODULE: ${{ runner.temp }}/donetick-card-tests/node_modules/happy-dom/lib/index.js
