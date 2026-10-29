@@ -221,9 +221,24 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
                      '_LOGGER':logging.getLogger(__name__)}
         exec(compile(ast.Module(body=[method], type_ignores=[]), 'completion', 'exec'), namespace)
         self.entry.data = {'map_completion_user':True, 'user_mapping':{'ha-user':3}}
-        for extra, expected in (({},3), ({'completed_by':4},4)):
+        for extra, expected in (({},3), ({'completed_by':4},4), ({'completed_by_ha_user':'ha-user'},3)):
             self.calls.clear()
             await namespace['async_complete_task_service'](self.hass,
                 SimpleNamespace(data={'task_id':1,**extra}, context=SimpleNamespace(user_id='ha-user'),
                                 return_response=False))
             self.assertEqual(self.calls, [('complete',1,expected),('refresh',)])
+
+    async def test_selected_account_credits_user_without_caller_context(self):
+        self.entry.data = {'user_mapping': {'selected-user': 4}}
+        await self.action(self.hass, SimpleNamespace(data={
+            'task_id': 1, 'completed_by_ha_user': 'selected-user'}), complete=True)
+        self.assertEqual(self.calls, [('complete', 1, 4), ('refresh',)])
+
+    async def test_unmapped_selection_and_conflicts_never_complete_task(self):
+        self.entry.data = {'user_mapping': {'selected-user': 4}}
+        for extra in ({'completed_by_ha_user': 'missing'},
+                      {'completed_by_ha_user': 'selected-user', 'completed_by': 4}):
+            self.calls.clear()
+            with self.assertRaises(ValueError):
+                await self.action(self.hass, SimpleNamespace(data={'task_id': 1, **extra}), complete=True)
+            self.assertEqual(self.calls, [('refresh',)])

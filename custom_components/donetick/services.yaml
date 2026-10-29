@@ -2,10 +2,31 @@ complete_task:
   name: Complete Task
   description: Complete a Donetick task with optional user attribution
   fields:
+    completed_by_username:
+      name: Completed by Donetick username
+      description: Choose a current circle member by username. Use only one performer field (username, HA user or numeric ID).
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    completed_by_ha_user:
+      name: Completed by HA user
+      description: Credit the selected HA account's mapped Donetick user in this integration, even when automatic caller mapping is disabled. Do not combine with Completed By User ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     task_id:
       name: Task ID
       description: The ID of the task to complete
-      required: true
+      required: false
       selector:
         number:
           min: 1
@@ -67,10 +88,17 @@ update_task:
   name: Update Task
   description: Update an existing Donetick task. Archived tasks remain archived unless Force Unarchive is enabled.
   fields:
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     task_id:
       name: Task ID
       description: The ID of the task to update
-      required: true
+      required: false
       selector:
         number:
           min: 1
@@ -101,6 +129,13 @@ update_task:
       default: false
       selector:
         boolean:
+    assigned_to_username:
+      name: Assignee username
+      description: Reassign to a current circle member by Donetick username. Use either this field or Assignee User ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     assigned_to:
       name: Assignee User ID
       description: Assign to an eligible Donetick user ID, or use null in YAML for Anyone. Switching to or from Anyone requires task edit permission.
@@ -120,10 +155,17 @@ skip_task:
   name: Skip Task
   description: Skip a recurring task, advancing to the next scheduled occurrence without recording a completion
   fields:
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     task_id:
       name: Task ID
       description: The ID of the task to skip
-      required: true
+      required: false
       selector:
         number:
           min: 1
@@ -147,10 +189,17 @@ delete_task:
   name: Delete Task
   description: Delete a Donetick task
   fields:
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     task_id:
       name: Task ID
       description: The ID of the task to delete
-      required: true
+      required: false
       selector:
         number:
           min: 1
@@ -166,8 +215,29 @@ complete_assigned_task:
   name: Complete as assigned user
   description: Complete a task using an explicit performer, optional HA user mapping, or its current assignee. Without an override, Anyone tasks credit the API token owner.
   fields:
+    completed_by_username:
+      name: Completed by Donetick username
+      description: Choose a current circle member by username. Use only one performer field (username, HA user or numeric ID).
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    completed_by_ha_user:
+      name: Completed by HA user
+      description: Credit the selected HA account's mapped Donetick user in this integration, even when automatic caller mapping is disabled. Do not combine with Completed by Donetick user.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     task_id:
-      required: true
+      required: false
       selector:
         number:
           min: 1
@@ -192,8 +262,15 @@ postpone_task:
   name: Reschedule task
   description: Use Donetick's scheduler to skip to the next occurrence without completing the task.
   fields:
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     task_id:
-      required: true
+      required: false
       selector:
         number:
           min: 1
@@ -206,10 +283,17 @@ delete_history:
   name: Delete History Entry
   description: Delete one history entry of a Donetick task, e.g. to undo a completion. Use with the history_id returned by complete_task; restore the previous due date with update_task.
   fields:
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
     task_id:
       name: Task ID
       description: The ID of the task the history entry belongs to
-      required: true
+      required: false
       selector:
         number:
           min: 1

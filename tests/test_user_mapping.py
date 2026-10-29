@@ -15,6 +15,22 @@ class UserMappingTests(unittest.TestCase):
         self.assertEqual(self.resolve(self.entry, self.context, default=2), 2)
         self.assertIsNone(self.resolve(self.entry, self.context))
 
+    def test_selected_account_works_without_caller_or_automatic_mapping(self):
+        self.entry.data["map_completion_user"] = False
+        self.assertEqual(self.resolve(self.entry, None, default=2, ha_user="ha-a"), 3)
+        other = SimpleNamespace(data={"user_mapping": {"ha-a": 7}})
+        self.assertEqual(self.resolve(other, None, ha_user="ha-a"), 7)
+
+    def test_selected_account_never_falls_back_to_caller_or_assignee(self):
+        for value in (None, True, 0, -1, "3"):
+            self.entry.data["user_mapping"]["selected"] = value
+            with self.assertRaisesRegex(ValueError, "selected HA user has no Donetick mapping"):
+                self.resolve(self.entry, self.context, default=2, ha_user="selected")
+
+    def test_conflicting_performers_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "not both"):
+            self.resolve(self.entry, self.context, explicit=3, ha_user="ha-a")
+
     def test_mapping_uses_ids_and_is_scoped_to_the_integration(self):
         self.assertEqual(self.resolve(self.entry, self.context, default=2), 3)
         other = SimpleNamespace(data={"map_completion_user":True,"user_mapping":{"ha-a":7}})
