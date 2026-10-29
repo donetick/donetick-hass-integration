@@ -444,7 +444,7 @@ class DonetickApiClient:
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise ValueError("Unable to fetch the current task for reassignment")
 
-        assignees = task.get("assignees") or []
+        assignees = [assignee for assignee in task.get("assignees") or [] if isinstance(assignee, dict)]
         already_eligible = any(assignee.get("userId") == assigned_to for assignee in assignees)
         if assigned_to is None or task.get("assignStrategy") == "no_assignee" or not already_eligible:
             payload = dict(task)
