@@ -9,6 +9,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import API_TIMEOUT
 from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
+from .recurrence import build_recurrence_payload
 _LOGGER = logging.getLogger(__name__)
 
 class DonetickApiClient:
@@ -351,6 +352,48 @@ class DonetickApiClient:
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick update task response: %s", err)
             raise
+
+    async def _async_get_editor_task(self, task_id: int) -> dict:
+        """Fetch the complete editor model, rather than the timing-only details."""
+        async with self._session.get(
+            f"{self._base_url}/api/v1/chores/{task_id}",
+            headers=self._headers(), timeout=API_TIMEOUT,
+        ) as response:
+            await self._raise_for_status(response, "recurrence update")
+            data = await response.json()
+        task = data.get("res", data) if isinstance(data, dict) else None
+        if not isinstance(task, dict) or task.get("id") != task_id:
+            raise ValueError("Unable to fetch the current task for recurrence editing")
+        return task
+
+    async def async_update_task_recurrence(self, task_id: int, recurrence: dict, default_timezone: str,
+                                         name=None, description=None, due_date=None, force_unarchive=False) -> DonetickTask:
+        """Use the task editor, retaining its current values and concurrency token."""
+        task = await self._async_get_editor_task(task_id)
+        payload = build_recurrence_payload(task, recurrence, default_timezone, name=name,
+                                           description=description, due_date=due_date,
+                                           force_unarchive=force_unarchive)
+        async with self._session.put(
+            f"{self._base_url}/api/v1/chores/",
+            headers=self._headers(), json=payload, timeout=API_TIMEOUT,
+        ) as response:
+            await self._raise_for_status(response, "recurrence update")
+        updated_data = await self._async_get_editor_task(task_id)
+        updated = DonetickTask.from_json(updated_data)
+        expected_metadata = {key: value for key, value in (payload["frequencyMetadata"] or {}).items()
+                             if value not in (None, "", [])}
+        actual_metadata = {key: value for key, value in (updated.frequency_metadata or {}).items()
+                           if value not in (None, "", [])}
+        if (updated.frequency_type != payload["frequencyType"]
+                or updated_data.get("frequency") != payload["frequency"]
+                or updated.is_rolling != payload["isRolling"]
+                or actual_metadata != expected_metadata):
+            raise ValueError("Donetick did not apply the requested repeat schedule; refresh the task")
+        if due_date and updated.next_due_date != datetime.fromisoformat(payload["nextDueDate"].replace("Z", "+00:00")):
+            raise ValueError("Donetick did not apply the requested first due date")
+        if force_unarchive and not updated.is_active:
+            raise ValueError("Donetick did not reactivate the task")
+        return updated
 
     async def async_assign_task(self, task_id: int, assigned_to: int | None) -> None:
         """Assign a task to a user, or to Anyone when assigned_to is None."""

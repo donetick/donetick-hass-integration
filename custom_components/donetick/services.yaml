@@ -122,6 +122,120 @@ update_task:
       required: false
       selector:
         text:
+    repeat_schedule:
+      name: Repeat schedule
+      description: Leave fields unchecked to keep the current schedule. A repeating task needs a first Due Date. Changing the repeat time affects future custom occurrences; Due Date controls the current occurrence.
+      collapsed: true
+      fields:
+        frequency_type:
+          name: Repeats
+          description: Match Donetick's repeat pattern. Custom patterns use the related controls below. Thing triggers must already be configured in Donetick.
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - {value: once, label: One-time task}
+                - {value: daily, label: Daily}
+                - {value: weekly, label: Weekly}
+                - {value: monthly, label: Monthly}
+                - {value: yearly, label: Yearly}
+                - {value: adaptive, label: Adaptive}
+                - {value: interval, label: "Custom: every X units"}
+                - {value: days_of_the_week, label: "Custom: days of the week"}
+                - {value: day_of_the_month, label: "Custom: day of selected months"}
+                - {value: always, label: Always available}
+                - {value: trigger, label: "Triggered by a Thing (existing trigger)"}
+        frequency:
+          name: Repeat every
+          description: For custom intervals, repeat every this many units (for example 3 days).
+          selector:
+            number:
+              min: 1
+              max: 1000
+              mode: box
+        interval_unit:
+          name: Interval unit
+          description: For custom intervals only.
+          selector:
+            select:
+              options: [hours, days, weeks, months, years]
+              mode: dropdown
+        weekdays:
+          name: Days of the week
+          description: For the custom days-of-the-week pattern, choose one or more weekdays.
+          selector:
+            select:
+              multiple: true
+              options:
+                - {value: monday, label: Monday}
+                - {value: tuesday, label: Tuesday}
+                - {value: wednesday, label: Wednesday}
+                - {value: thursday, label: Thursday}
+                - {value: friday, label: Friday}
+                - {value: saturday, label: Saturday}
+                - {value: sunday, label: Sunday}
+        week_pattern:
+          name: Weekday pattern
+          description: Repeat every week, or choose the nth occurrence of each selected weekday within a month.
+          selector:
+            select:
+              options:
+                - {value: every_week, label: Every week}
+                - {value: week_of_month, label: Nth weekday of the month}
+              mode: dropdown
+        occurrences:
+          name: Weekday occurrences
+          description: For the nth-weekday pattern, choose first, second, third, fourth, or last. Last uses -1 in YAML, matching Donetick.
+          selector:
+            select:
+              multiple: true
+              options:
+                - {value: "1", label: First}
+                - {value: "2", label: Second}
+                - {value: "3", label: Third}
+                - {value: "4", label: Fourth}
+                - {value: "-1", label: Last}
+        months:
+          name: Months of the year
+          description: For the custom day-of-selected-months pattern, choose one or more months.
+          selector:
+            select:
+              multiple: true
+              options:
+                - {value: january, label: January}
+                - {value: february, label: February}
+                - {value: march, label: March}
+                - {value: april, label: April}
+                - {value: may, label: May}
+                - {value: june, label: June}
+                - {value: july, label: July}
+                - {value: august, label: August}
+                - {value: september, label: September}
+                - {value: october, label: October}
+                - {value: november, label: November}
+                - {value: december, label: December}
+        day_of_month:
+          name: Day of the month
+          description: For the custom day-of-selected-months pattern, repeat on this date (1–31).
+          selector:
+            number:
+              min: 1
+              max: 31
+              mode: box
+        schedule_time:
+          name: Custom repeat time
+          description: Time of day in Donetick's default timezone (UTC) for custom intervals, weekdays, or selected months. Use Due Date to change the time of the current occurrence or a standard daily, weekly, monthly, or yearly schedule.
+          selector:
+            time:
+        schedule_from:
+          name: Reschedule from
+          description: Schedule the next occurrence from the previous due date or from when the task is completed, matching Donetick's scheduling preferences.
+          selector:
+            select:
+              options:
+                - {value: due_date, label: Due date}
+                - {value: completion, label: Completion date}
+              mode: dropdown
     force_unarchive:
       name: Force Unarchive
       description: Reactivate this task if it is archived (optional; defaults to false)

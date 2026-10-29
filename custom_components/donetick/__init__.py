@@ -17,6 +17,7 @@ from .user_mapping import completion_user
 from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
 from .action_selectors import async_setup_action_selectors, async_refresh_action_selectors, async_prepare_action_call
+from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -58,6 +59,16 @@ UPDATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("assigned_to_username"): cv.string,
     vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
     vol.Optional("config_entry_id"): cv.string,
+    vol.Optional("frequency_type"): vol.In(FREQUENCY_TYPES),
+    vol.Optional("frequency"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1000)),
+    vol.Optional("interval_unit"): vol.In(("hours", "days", "weeks", "months", "years")),
+    vol.Optional("weekdays"): vol.All(cv.ensure_list, [vol.In(WEEKDAYS)]),
+    vol.Optional("week_pattern"): vol.In(("every_week", "week_of_month", "week_of_quarter")),
+    vol.Optional("occurrences"): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.In((*range(1, 14), -1)))]),
+    vol.Optional("months"): vol.All(cv.ensure_list, [vol.In(MONTHS)]),
+    vol.Optional("day_of_month"): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+    vol.Optional("schedule_time"): cv.string,
+    vol.Optional("schedule_from"): vol.In(("due_date", "completion")),
 })
 
 DELETE_TASK_SCHEMA = vol.Schema({
@@ -309,8 +320,9 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     force_unarchive = call.data.get("force_unarchive", False)
     assigned_to = call.data.get("assigned_to")
     config_entry_id = call.data.get("config_entry_id")
+    recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
 
-    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive:
+    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive and not recurrence:
         raise HomeAssistantError("Provide at least one task field to update")
     
     # Find the config entry to use
@@ -325,7 +337,11 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
 
     try:
         result = None
-        if force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
+        if recurrence:
+            result = await client.async_update_task_recurrence(
+                task_id, recurrence, hass.config.time_zone, name=name, description=description,
+                due_date=due_date, force_unarchive=force_unarchive)
+        elif force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
             result = await client.async_update_task(task_id, name, description, due_date, force_unarchive)
         if "assigned_to" in call.data:
             await client.async_assign_task(task_id, assigned_to)
