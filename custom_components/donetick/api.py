@@ -296,6 +296,7 @@ class DonetickApiClient:
                     "updatedAt is in the future and cannot be used to edit the chore",
                     "Only the chore creator or a circle admin/manager can update this chore",
                     "Only the chore creator or a circle admin/manager can delete this chore",
+                    "You are not allowed to delete this history",
                 ):
                     raise ValueError(f"Donetick denied the {operation} (403): {reason}")
         response.raise_for_status()
@@ -528,3 +529,27 @@ class DonetickApiClient:
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.debug("Unable to parse Donetick task history: %s", err)
             return []
+
+    async def async_get_task_history_entries(self, task_id: int) -> List[DonetickChoreHistory]:
+        """Get one task's history, most recently updated first."""
+        async with self._session.get(
+            f"{self._base_url}/api/v1/chores/{task_id}/history",
+            headers=self._headers(),
+            timeout=API_TIMEOUT
+        ) as response:
+            response.raise_for_status()
+            data = await response.json()
+            history = data.get("res", data) if isinstance(data, dict) else data
+            if not isinstance(history, list):
+                raise ValueError("Unexpected Donetick task history response format")
+            return DonetickChoreHistory.from_json_list(history)
+
+    async def async_delete_task_history(self, task_id: int, history_id: int) -> bool:
+        """Delete one history entry of a task, e.g. to undo a completion."""
+        async with self._session.delete(
+            f"{self._base_url}/api/v1/chores/{task_id}/history/{history_id}",
+            headers=self._headers(),
+            timeout=API_TIMEOUT
+        ) as response:
+            await self._raise_for_status(response, "history deletion")
+            return True

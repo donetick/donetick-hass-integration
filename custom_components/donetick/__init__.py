@@ -2,14 +2,15 @@
 import logging
 from datetime import timedelta
 import voluptuous as vol
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.exceptions import HomeAssistantError
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
+from .const import (DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL,
+                    HISTORY_COMPLETED, HISTORY_PENDING_APPROVAL)
 from .api import DonetickApiClient
 from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
@@ -25,6 +26,7 @@ SERVICE_DELETE_TASK = "delete_task"
 SERVICE_SKIP_TASK = "skip_task"
 SERVICE_COMPLETE_ASSIGNED_TASK = "complete_assigned_task"
 SERVICE_POSTPONE_TASK = "postpone_task"
+SERVICE_DELETE_HISTORY = "delete_history"
 
 COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Required("task_id"): vol.Coerce(int),
@@ -52,6 +54,12 @@ UPDATE_TASK_SCHEMA = vol.Schema({
 
 DELETE_TASK_SCHEMA = vol.Schema({
     vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("config_entry_id"): cv.string,
+})
+
+DELETE_HISTORY_SCHEMA = vol.Schema({
+    vol.Required("task_id"): vol.Coerce(int),
+    vol.Required("history_id"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -115,8 +123,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     
     # Register services before setting up platforms
-    async def complete_task_handler(call: ServiceCall) -> None:
-        await async_complete_task_service(hass, call)
+    async def complete_task_handler(call: ServiceCall) -> ServiceResponse:
+        return await async_complete_task_service(hass, call)
     
     async def create_task_handler(call: ServiceCall) -> None:
         await async_create_task_service(hass, call)
@@ -130,11 +138,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def skip_task_handler(call: ServiceCall) -> None:
         await async_skip_task_service(hass, call)
 
+    async def delete_history_handler(call: ServiceCall) -> None:
+        await async_delete_history_service(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_COMPLETE_TASK,
         complete_task_handler,
         schema=COMPLETE_TASK_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(
         DOMAIN,
@@ -160,6 +172,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         skip_task_handler,
         schema=SKIP_TASK_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_HISTORY,
+        delete_history_handler,
+        schema=DELETE_HISTORY_SCHEMA,
+    )
     _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
                   DOMAIN, SERVICE_COMPLETE_TASK, DOMAIN, SERVICE_CREATE_TASK,
                   DOMAIN, SERVICE_UPDATE_TASK, DOMAIN, SERVICE_DELETE_TASK,
@@ -181,8 +199,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     return True
 
-async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Handle the complete_task service call."""
+async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) -> dict | None:
+    """Handle the complete_task service call.
+
+    When a response is requested, it names the history entry the completion created
+    and the due date it had, so a caller can undo it with delete_history and update_task.
+    """
     task_id = call.data["task_id"]
     completed_by = call.data.get("completed_by")
     config_entry_id = call.data.get("config_entry_id")
@@ -203,6 +225,26 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
 
     except Exception as e:
         _LOGGER.error("Failed to complete task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to complete Donetick task {task_id}: {e}") from e
+
+    if not call.return_response:
+        return None
+    response = {
+        "task_id": task_id,
+        "next_due_date": result.next_due_date.isoformat() if result.next_due_date else None,
+    }
+    try:
+        # The completion endpoint returns the task, not the history entry it wrote.
+        history = await client.async_get_task_history_entries(task_id)
+    except Exception as e:
+        # The completion itself succeeded; only the undo details are missing.
+        _LOGGER.warning("Task %d completed, but its history entry could not be read: %s", task_id, e)
+        return response
+    entry = next((h for h in history if h.status in (HISTORY_COMPLETED, HISTORY_PENDING_APPROVAL)), None)
+    if entry is not None:
+        response["history_id"] = entry.id
+        response["due_date"] = entry.due_date.isoformat() if entry.due_date else None
+    return response
 
 async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the create_task service call."""
@@ -321,6 +363,25 @@ async def async_skip_task_service(hass: HomeAssistant, call: ServiceCall) -> Non
     except Exception as e:
         _LOGGER.error("Failed to skip task %d: %s", task_id, e)
 
+async def async_delete_history_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the delete_history service call (e.g. undo a completion)."""
+    task_id = call.data["task_id"]
+    history_id = call.data["history_id"]
+
+    entry = await _get_config_entry(hass, call.data.get("config_entry_id"))
+    if not entry:
+        raise HomeAssistantError("No matching Donetick integration found for delete_history")
+
+    config = hass.data[DOMAIN][entry.entry_id]
+    try:
+        await config["client"].async_delete_task_history(task_id, history_id)
+        _LOGGER.info("History entry %d of task %d deleted", history_id, task_id)
+        await config["coordinator"].async_request_refresh()
+
+    except Exception as e:
+        _LOGGER.error("Failed to delete history entry %d of task %d: %s", history_id, task_id, e)
+        raise HomeAssistantError(f"Failed to delete Donetick history entry {history_id}: {e}") from e
+
 async def _get_config_entry(hass: HomeAssistant, config_entry_id: str = None) -> ConfigEntry:
     """Get the config entry to use for the service call."""
     entry = None
@@ -393,7 +454,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Remove services if this is the last config entry
         if not hass.data[DOMAIN]:
-            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK]:
+            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK, SERVICE_DELETE_HISTORY]:
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)
             _LOGGER.debug("Removed services: %s.%s, %s.%s, %s.%s, %s.%s", 

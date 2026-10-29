@@ -201,3 +201,30 @@ postpone_task:
     config_entry_id:
       selector:
         text:
+
+delete_history:
+  name: Delete History Entry
+  description: Delete one history entry of a Donetick task, e.g. to undo a completion. Use with the history_id returned by complete_task; restore the previous due date with update_task.
+  fields:
+    task_id:
+      name: Task ID
+      description: The ID of the task the history entry belongs to
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    history_id:
+      name: History Entry ID
+      description: The ID of the history entry to delete
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      name: Config Entry ID
+      description: The specific Donetick integration to use (optional, uses first if not specified)
+      required: false
+      selector:
+        text:
