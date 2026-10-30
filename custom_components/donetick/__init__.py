@@ -16,6 +16,8 @@ from .api import DonetickApiClient
 from .user_mapping import completion_user
 from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
+from .action_selectors import async_setup_action_selectors, async_refresh_action_selectors, async_prepare_action_call
+from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -31,8 +33,11 @@ SERVICE_POSTPONE_TASK = "postpone_task"
 SERVICE_DELETE_HISTORY = "delete_history"
 
 COMPLETE_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.Coerce(int),
     vol.Optional("completed_by"): vol.Coerce(int),
+    vol.Optional("completed_by_ha_user"): cv.string,
+    vol.Optional("completed_by_username"): cv.string,
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -45,40 +50,58 @@ CREATE_TASK_SCHEMA = vol.Schema({
 })
 
 UPDATE_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.Coerce(int),
     vol.Optional("name"): cv.string,
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
     vol.Optional("force_unarchive", default=False): cv.boolean,
+    vol.Optional("assigned_to_username"): cv.string,
     vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
     vol.Optional("config_entry_id"): cv.string,
+    vol.Optional("frequency_type"): vol.In(FREQUENCY_TYPES),
+    vol.Optional("frequency"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1000)),
+    vol.Optional("interval_unit"): vol.In(("hours", "days", "weeks", "months", "years")),
+    vol.Optional("weekdays"): vol.All(cv.ensure_list, [vol.In(WEEKDAYS)]),
+    vol.Optional("week_pattern"): vol.In(("every_week", "week_of_month", "week_of_quarter")),
+    vol.Optional("occurrences"): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.In((*range(1, 14), -1)))]),
+    vol.Optional("months"): vol.All(cv.ensure_list, [vol.In(MONTHS)]),
+    vol.Optional("day_of_month"): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+    vol.Optional("schedule_time"): cv.string,
+    vol.Optional("schedule_from"): vol.In(("due_date", "completion")),
 })
 
 DELETE_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
 DELETE_HISTORY_SCHEMA = vol.Schema({
-    vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.Coerce(int),
     vol.Required("history_id"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
 SKIP_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.Coerce(int),
     vol.Optional("completed_by"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
 ASSIGNED_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("config_entry_id"): cv.string,
 })
 POSTPONE_TASK_SCHEMA = ASSIGNED_TASK_SCHEMA
 # Only completion can be credited to someone else; postponing records no performer.
 COMPLETE_ASSIGNED_SCHEMA = ASSIGNED_TASK_SCHEMA.extend({
     vol.Optional("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("completed_by_ha_user"): cv.string,
+    vol.Optional("completed_by_username"): cv.string,
 })
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -97,6 +120,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_update_tasks():
         tasks = await client.async_get_tasks()
         coordinator.completed_tasks = await async_completed_occurrences(client, tasks)
+        if config := hass.data[DOMAIN].get(entry.entry_id):
+            try:
+                config["circle_members"] = await client.async_get_circle_members()
+            except Exception as err:
+                _LOGGER.warning("Could not refresh Donetick action usernames: %s", err)
         return tasks
 
     coordinator = DataUpdateCoordinator(
@@ -125,6 +153,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     
     # Register services before setting up platforms
+    def with_selectors(handler):
+        async def selected_handler(call):
+            return await handler(await async_prepare_action_call(hass, call, _get_config_entry))
+        return selected_handler
+
     async def complete_task_handler(call: ServiceCall) -> ServiceResponse:
         return await async_complete_task_service(hass, call)
     
@@ -146,38 +179,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(
         DOMAIN,
         SERVICE_COMPLETE_TASK,
-        complete_task_handler,
+        with_selectors(complete_task_handler),
         schema=COMPLETE_TASK_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_CREATE_TASK,
-        create_task_handler,
+        with_selectors(create_task_handler),
         schema=CREATE_TASK_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_UPDATE_TASK,
-        update_task_handler,
+        with_selectors(update_task_handler),
         schema=UPDATE_TASK_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_DELETE_TASK,
-        delete_task_handler,
+        with_selectors(delete_task_handler),
         schema=DELETE_TASK_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_SKIP_TASK,
-        skip_task_handler,
+        with_selectors(skip_task_handler),
         schema=SKIP_TASK_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_DELETE_HISTORY,
-        delete_history_handler,
+        with_selectors(delete_history_handler),
         schema=DELETE_HISTORY_SCHEMA,
     )
     _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
@@ -192,9 +225,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_task_row_action(hass, call, complete=False)
 
     hass.services.async_register(DOMAIN, SERVICE_COMPLETE_ASSIGNED_TASK,
-                                 complete_assigned_handler, schema=COMPLETE_ASSIGNED_SCHEMA)
+                                 with_selectors(complete_assigned_handler), schema=COMPLETE_ASSIGNED_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_POSTPONE_TASK,
-                                 postpone_handler, schema=POSTPONE_TASK_SCHEMA)
+                                 with_selectors(postpone_handler), schema=POSTPONE_TASK_SCHEMA)
+    await async_setup_action_selectors(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -215,7 +249,8 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
     if not entry:
         return
 
-    completed_by = completion_user(entry, getattr(call, "context", None), explicit=completed_by)
+    completed_by = completion_user(entry, getattr(call, "context", None), explicit=completed_by,
+                                   ha_user=call.data.get("completed_by_ha_user"))
 
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
@@ -285,8 +320,9 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     force_unarchive = call.data.get("force_unarchive", False)
     assigned_to = call.data.get("assigned_to")
     config_entry_id = call.data.get("config_entry_id")
+    recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
 
-    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive:
+    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive and not recurrence:
         raise HomeAssistantError("Provide at least one task field to update")
     
     # Find the config entry to use
@@ -301,7 +337,11 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
 
     try:
         result = None
-        if force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
+        if recurrence:
+            result = await client.async_update_task_recurrence(
+                task_id, recurrence, hass.config.time_zone, name=name, description=description,
+                due_date=due_date, force_unarchive=force_unarchive)
+        elif force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
             result = await client.async_update_task(task_id, name, description, due_date, force_unarchive)
         if "assigned_to" in call.data:
             await client.async_assign_task(task_id, assigned_to)
@@ -437,7 +477,7 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
             # None leaves attribution to Donetick's authenticated API token owner.
             await client.async_complete_task(task.id, completed_by=completion_user(
                 entry, getattr(call, "context", None), default=task.assigned_to,
-                explicit=call.data.get("completed_by")))
+                explicit=call.data.get("completed_by"), ha_user=call.data.get("completed_by_ha_user")))
         else:
             if task.frequency_type in ("once", "no_repeat", "trigger", "always"):
                 raise HomeAssistantError("This task has no next scheduled occurrence")
@@ -456,6 +496,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+        if hass.data[DOMAIN]:
+            await async_refresh_action_selectors(hass)
         
         # Remove services if this is the last config entry
         if not hass.data[DOMAIN]:

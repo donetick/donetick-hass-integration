@@ -168,6 +168,7 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
 
         namespace = {"HomeAssistant": object, "ServiceCall": object, "DOMAIN": "donetick",
                      "_get_config_entry": resolve, "HomeAssistantError": ValueError,
+                     "RECURRENCE_FIELDS": ("frequency_type", "frequency"),
                      "_LOGGER": logging.getLogger(__name__)}
         exec(compile(ast.Module(body=[handler], type_ignores=[]), str(source), "exec"), namespace)
         hass = SimpleNamespace(data={"donetick": {"dev": {

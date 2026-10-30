@@ -25,6 +25,7 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
         exec(compile(tree, str(source), "exec"), namespace)
         self.setup_frontend = namespace["async_setup_frontend"]
         self.card_file = namespace["CARD_FILE"]
+        self.action_file = namespace["ACTION_FILE"]
 
         async def executor(fn):
             await asyncio.sleep(0)
@@ -37,10 +38,13 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(self.setup_frontend(self.hass), self.setup_frontend(self.hass))
         await self.setup_frontend(self.hass)
         self.hass.http.async_register_static_paths.assert_awaited_once_with([
-            ("/donetick/donetick-user-todo-card.js", str(self.card_file), False)])
+            ("/donetick/donetick-user-todo-card.js", str(self.card_file), False),
+            ("/donetick/donetick-action-editor.js", str(self.action_file), False)])
         version = sha256(self.card_file.read_bytes()).hexdigest()[:12]
-        self.add_url.assert_called_once_with(
-            self.hass, f"/donetick/donetick-user-todo-card.js?v={version}")
+        action_version = sha256(self.action_file.read_bytes()).hexdigest()[:12]
+        self.assertEqual(self.add_url.call_args_list, [
+            ((self.hass, f"/donetick/donetick-user-todo-card.js?v={version}"),),
+            ((self.hass, f"/donetick/donetick-action-editor.js?v={action_version}"),)])
 
     async def test_registration_failure_can_retry(self):
         self.hass.http.async_register_static_paths.side_effect = RuntimeError("Not ready")
@@ -49,7 +53,7 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
         self.add_url.assert_not_called()
         self.hass.http.async_register_static_paths.side_effect = None
         await self.setup_frontend(self.hass)
-        self.add_url.assert_called_once()
+        self.assertEqual(self.add_url.call_count, 2)
 
     async def test_hacs_package_contains_card_and_setup_dependency(self):
         manifest = json.loads((ROOT / "custom_components/donetick/manifest.json").read_text())

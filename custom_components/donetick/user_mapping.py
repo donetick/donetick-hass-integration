@@ -4,11 +4,20 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import CONF_MAP_COMPLETION_USER, CONF_USER_MAPPING, CONF_UNMAPPED_USER
 
 
-def completion_user(entry, context, default=None, explicit=None):
+def completion_user(entry, context, default=None, explicit=None, ha_user=None):
     """Keep legacy defaults unless mapping is enabled; never infer from names."""
+    if explicit is not None and ha_user is not None:
+        raise HomeAssistantError("Choose either completed_by or completed_by_ha_user, not both")
+    data = getattr(entry, "data", {})
+    if ha_user is not None:
+        member_id = data.get(CONF_USER_MAPPING, {}).get(ha_user)
+        if type(member_id) is not int or member_id <= 0:
+            raise HomeAssistantError(
+                "The selected HA user has no Donetick mapping for this integration. "
+                "Configure User mapping or provide completed_by instead.")
+        return member_id
     if explicit is not None:
         return explicit
-    data = getattr(entry, "data", {})
     if not data.get(CONF_MAP_COMPLETION_USER, False):
         return default
     user_id = getattr(context, "user_id", None)

@@ -336,3 +336,116 @@ User mapping does not change task visibility or reassignment.
 A shared tablet with one HA login cannot identify the person touching the screen.
 Use explicit performer selection for that case. This feature does not link logins,
 provide SSO, or change completion inside Donetick's own web interface.
+
+### Choose a performer in actions
+
+In **Developer tools > Actions**, or the script and automation action editor,
+choose **Donetick: Complete Task** or **Complete as assigned user**. The optional
+**Completed by HA user** dropdown lists active HA accounts. The selected account
+is resolved through the chosen Donetick integration's user mappings, even when
+automatic caller mapping is disabled. This also works for automations without
+a logged-in caller. Configure the account's link under **User mapping and
+completion credit** first; an unmapped selection fails without completing the task.
+
+Use one performer field: `completed_by_ha_user`, `completed_by_username`, or numeric
+`completed_by`. Combining them is an error. Omitting all retains the existing
+caller mapping and fallback behavior.
+Existing numeric IDs and templates remain supported. With multiple Donetick
+integrations, set `config_entry_id` to select the mapping to use.
+
+```yaml
+action: donetick.complete_assigned_task
+data:
+  task_id: 42
+  completed_by_ha_user: "HA_USER_ID"
+  config_entry_id: "DONETICK_CONFIG_ENTRY_ID"
+```
+
+The HA-user dropdown saves the HA account ID, so renaming that account does not
+change completion attribution.
+
+### Pick a task or Donetick username
+
+Task actions also offer an optional **Task** dropdown. Search by task name, ID,
+assignee, or project ID. Labels identify the integration to distinguish duplicate
+names. Choose either **Task** or the existing **Task ID** field; numeric IDs and
+templates keep working. The picker lists active tasks; use a direct ID to edit
+an archived task or manage its history.
+
+Completion actions offer **Completed by Donetick username**, and **Update Task**
+offers **Assignee username**. These resolve the current active circle member to
+a Donetick user ID before acting. A missing, inactive, or ambiguous username fails
+without changing the task. Use only one assignee field: username or numeric
+`assigned_to`. Numeric `assigned_to: null` still means Anyone.
+
+Picker values include their integration, so choosing a task or username also
+selects its Donetick integration. If you additionally set `config_entry_id`, all
+selections must belong to that integration. HA action descriptions are shared
+across integrations, so the dropdown shows labeled choices from all loaded
+integrations and rejects combinations across them.
+
+```yaml
+action: donetick.update_task
+data:
+  task: "DONETICK_CONFIG_ENTRY_ID/42"
+  assigned_to_username: "DONETICK_CONFIG_ENTRY_ID/alice"
+```
+
+For handwritten YAML, username fields also accept a plain username together
+with `config_entry_id`. Task choices refresh after integration data updates;
+username choices refresh with circle membership. Username-based actions follow
+the username, so update them if that Donetick login is renamed, or keep numeric
+user IDs for a stable identity.
+
+### Edit a task's repeat schedule
+
+In **Update Task**, expand **Repeat schedule**. Its options follow Donetick's
+task editor: one-time, daily, weekly, monthly, yearly, adaptive, custom interval,
+selected weekdays, and a day of selected months. **Reschedule from** selects the
+previous due date or completion date as the basis for the next occurrence.
+
+The native action editor shows controls for the selected **Repeats** pattern.
+**Repeat every** and **Interval unit** appear for custom intervals; weekday and
+month controls appear for their own patterns. **Weekday occurrences** appears
+when choosing the nth-weekday pattern. Switching patterns in the UI clears
+incompatible fields from the action. Existing values loaded from YAML remain
+visible for review, and templated patterns show all controls because their
+pattern is only known when the action runs.
+
+For custom intervals, set **Repeat every** and **Interval unit**. For selected
+weekdays, choose **Days of the week** and either **Every week** or **Nth weekday
+of the month**, then select first/second/third/fourth/last occurrences. For a day
+of selected months, choose **Months of the year** and **Day of the month**.
+**Custom repeat time** applies to these three custom patterns and uses Donetick's
+default timezone (currently UTC). Home Assistant does not set a schedule timezone.
+Partial edits preserve timezone metadata already stored by Donetick; explicitly
+changing the repeat time returns it to the server default.
+
+Unchecked fields keep their current values. When changing pattern, incompatible
+old pattern details are cleared, and the new pattern's required fields must be
+provided. New intervals default to every 1 day. Repeating tasks need a first
+**Due Date**; setting recurrence does not move an existing first due date.
+Changing the custom repeat time affects future occurrences. Use **Due Date** to
+move the current occurrence or adjust the time of a standard daily/weekly/monthly/
+yearly schedule. Date-only values in a recurrence edit mean local end of day.
+
+```yaml
+action: donetick.update_task
+data:
+  task_id: 42
+  frequency_type: days_of_the_week
+  weekdays: [monday, friday]
+  week_pattern: week_of_month
+  occurrences: ["1", "-1"]
+  schedule_time: "09:00:00"
+  schedule_from: due_date
+  due_date: "2026-11-02T09:00:00+01:00"
+```
+
+Repeat edits use Donetick's task editor permissions and preserve assignment,
+labels, subtasks, reminders, projects, points, approval rules, and completion
+actions. Donetick controls scheduling and plan restrictions. Always-available
+tasks and existing Thing-trigger schedules are also supported; configure new
+Thing triggers in Donetick. Switching to a Thing-trigger or always-available
+schedule disables reminders, as required by Donetick. Switching away from a
+Thing-trigger schedule removes that trigger association.

@@ -68,7 +68,8 @@ class CompletionUndoTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_mapping_and_explicit_performer_preserve_undo_response(self):
         self.entry.data = {"map_completion_user": True, "user_mapping": {"ha-user": 3}}
-        for extra, expected in (({}, 3), ({"completed_by": 4}, 4)):
+        for extra, expected in (({}, 3), ({"completed_by": 4}, 4),
+                                ({"completed_by_ha_user": "ha-user"}, 3)):
             with self.subTest(explicit=extra):
                 call = self.call({"task_id": 7, **extra})
                 call.context = SimpleNamespace(user_id="ha-user")
