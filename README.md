@@ -295,7 +295,10 @@ Overdue labels use the theme's warning color. Local 23:59 end-of-day placeholder
 hidden from the label and tooltip. The full date is available in a tooltip.
 Tasks sort by due date, with undated tasks last. Completion
 briefly shows a checked, struck-through row. Successful actions update the list without
-extra confirmation text; failures remain visible.
+extra confirmation text; failures remain visible. A failure is shown in the panel of the
+task it belongs to, or above the list naming that task when its panel has since been
+closed or another row's panel is open. An action that succeeds closes its own row's
+panel and leaves any other open.
 The card editor uses native Home Assistant form controls: entity and user selectors,
 searchable icon pickers, theme color choices, and helper text explaining each setting.
 Choose a **Starting style** (HA todo, icons with labels, outlined or filled buttons), then
@@ -305,6 +308,31 @@ title. Completion-specific action customization appears when completion uses a b
 The HA dashboard editor's live preview reflects each change. Existing YAML options remain
 supported, including custom CSS colors and variables such as `var(--success-color)`.
 
+**Complete as** records that somebody other than the assignee did the work. It has two
+ways in, both off by default: `show_complete_as: true` adds a row action beside Reassign,
+and **Credit completion to** set to *Ask who completed it* (`credit_completion: choose`)
+makes the completion control itself, checkbox or button, ask instead of crediting the
+assignee, or the mapped user when HA user mapping (below) is enabled. The default,
+`credit_completion: assignee`, keeps the one-tap completion. Either way the same inline
+panel opens below the task. With **Complete as picker** on *Chips*
+(the default, `complete_as_picker: chips`) it lists the people on offer by full name, and one tap
+on a person completes the task for them. *Dropdown* (`complete_as_picker: dropdown`)
+scales better to a long list: choose the person, then confirm. Tapping the control
+again, Escape or a tap outside closes the panel without changing anything, and choosing a
+performer never changes who the task is assigned to.
+
+The panel offers the task's own people, its current assignee first and its other
+assignees next, and no **Anyone** entry — a completion is credited to a person. Donetick
+refuses to credit anyone else. It would also accept a circle admin or manager on a public
+task, but the card cannot see circle roles, so they are not offered. A task with nobody
+assigned offers the active circle members, whom Donetick accepts on a public task. The
+person this browser last completed a task for comes first of all, remembered per Donetick
+account: on a shared tablet that is the likeliest next answer. It only changes the order;
+every completion still asks, and the dropdown still needs its confirmation. Donetick can
+still refuse a completion, for example on a private task with nobody assigned or one in a
+restricted project; the refusal is shown on the row. Without anyone to offer the row action is hidden and the
+completion control completes the task as usual. The row action takes `complete_as_icon`,
+`complete_as_label` and `complete_as_color` alongside the other per-action options.
 
 ### Optional HA user mapping
 

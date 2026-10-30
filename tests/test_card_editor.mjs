@@ -79,6 +79,16 @@ update({allow_any_assignee:false});assert.equal(latest.allow_any_assignee,false)
 assert.equal(latest.button_style,undefined); // Editing a user must not persist every displayed default.
 update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');
 assert.equal(latest.sort_by,'priority');
+assert.equal(form.data.credit_completion,'assignee');
+assert.deepEqual(editorFields().find(field=>field.name==='credit_completion').selector.select.options.map(option=>option.value),['assignee','choose']);
+// The picker style only shows once something opens Complete as.
+const pickerField=()=>editorFields().find(field=>field.name==='complete_as_picker');
+assert.equal(pickerField(),undefined);
+update({credit_completion:'choose'});assert.equal(latest.credit_completion,'choose');
+assert.equal(form.data.complete_as_picker,'chips');
+assert.deepEqual(pickerField().selector.select.options.map(option=>option.value),['chips','dropdown']);
+update({complete_as_picker:'dropdown'});assert.equal(latest.complete_as_picker,'dropdown');
+update({credit_completion:'assignee'});assert.equal(pickerField(),undefined);
 update({complete_control:'button'});assert.equal(form.data.appearance_preset,'custom');assert.ok(actions().find(group=>group.name==='complete'));
 update({postpone_color:'red',postpone_icon:'mdi:skip-next'});assert.equal(latest.postpone_color,'red');
 update({appearance_preset:'todo'});assert.equal(latest.complete_control,'checkbox');assert.equal(latest.postpone_color,undefined);assert.equal(latest.postpone_icon,undefined);assert.equal(latest.title,'My tasks');
@@ -86,14 +96,34 @@ update({entity:'todo.other'});assert.equal(latest.user_id,3);assert.equal(form.d
 assert.equal(editor.shadowRoot.querySelector('ha-form'),form); // Keep the native form mounted across changes.
 const visibleActions=editorFields().find(field=>field.name==='actions_options');
 assert.equal(visibleActions.expanded,false);
-assert.deepEqual(visibleActions.schema.filter(field=>field.name.startsWith('show_')).map(field=>field.name),['show_complete','show_postpone','show_due_date','show_reassign']);
+assert.deepEqual(visibleActions.schema.filter(field=>field.name.startsWith('show_')).map(field=>field.name),['show_complete','show_complete_as','show_postpone','show_due_date','show_reassign']);
 update({show_complete:false,show_postpone:false,show_due_date:false,show_reassign:false});
 assert.equal(actions().length,0);
 assert.equal(editorFields().find(field=>field.name==='appearance').schema.some(field=>field.name==='complete_control'),false);
+assert.equal(editorFields().find(field=>field.name==='appearance').schema.some(field=>field.name==='credit_completion'),false);
 update({appearance_preset:'filled'});
 assert.equal(latest.show_complete,false);assert.equal(latest.show_postpone,false);assert.equal(latest.show_due_date,false);assert.equal(latest.show_reassign,false);
 update({show_complete:true,complete_control:'button',show_due_date:true});
 assert.deepEqual(actions().map(group=>group.name),['complete','due_date']);
+// Complete as is off by default and brings its own icon/label/color group when enabled.
+assert.equal(latest.show_complete_as,undefined);
+assert.equal(actions().some(group=>group.name==='complete_as'),false);
+update({show_complete_as:true});
+assert.equal(latest.show_complete_as,true);
+assert.ok(pickerField()); // The row action opens the same picker.
+assert.ok(actions().find(group=>group.name==='complete_as'));
+assert.deepEqual(actions().find(group=>group.name==='complete_as').schema.map(field=>field.name),
+  ['complete_as_icon','complete_as_label','complete_as_color']);
+// Its overrides behave like every other action's: they make the style custom, an emptied
+// label stays empty, and a preset resets them.
+update({appearance_preset:'todo'});assert.equal(form.data.appearance_preset,'todo');
+update({complete_as_color:'red'});assert.equal(latest.complete_as_color,'red');assert.equal(form.data.appearance_preset,'custom');
+update({complete_as_label:''});assert.equal(latest.complete_as_label,null);
+update({appearance_preset:'todo'});assert.equal(latest.complete_as_color,undefined);assert.equal(latest.complete_as_label,undefined);
+assert.equal(latest.show_complete_as,true);
+update({show_complete_as:false});
+assert.equal(actions().some(group=>group.name==='complete_as'),false);
+assert.equal(pickerField(),undefined);
 assert.equal(actionColor('primary'),'var(--primary-color)');assert.equal(actionColor('red'),'var(--red-color, red)');
 assert.equal(actionColor('#abc'),'#abc');assert.equal(actionColor('var(--success-color)'),'var(--success-color)');
 console.log('Native editor loading, grouped selectors, presets, config preservation and theme colors passed');
