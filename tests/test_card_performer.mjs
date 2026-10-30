@@ -12,7 +12,7 @@ const members=[{user_id:1,display_name:'Casey'},{user_id:2,display_name:'Ivy'},{
 const hass={locale:{language:'en'},states:{'todo.all':{state:'3',attributes:{config_entry_id:'entry',circle_members:members,tasks:[
   {task_id:1,assigned_to:null,assignee_ids:[],name:'Shared',can_postpone:false},
   {task_id:2,assigned_to:1,assignee_ids:[1],name:'Mine',can_postpone:false},
-  {task_id:3,assigned_to:2,assignee_ids:[2,3],name:'Rotating',can_postpone:false}
+  {task_id:3,assigned_to:2,assignee_ids:[1,2,3,4],name:'Rotating',can_postpone:false}
 ]}}},callService:async(...args)=>{calls.push(args);if(fail)throw new Error('Donetick task action failed: Donetick denied the completion (400): User is not assigned to chore');}};
 const card=document.createElement('donetick-user-todo-card');
 const base={entity:'todo.all',user_id:'all',complete_control:'button',credit_completion:'choose'};
@@ -21,16 +21,17 @@ const root=card.shadowRoot;
 const controls=()=>[...root.querySelectorAll('.actions [aria-label^="Complete: "]')];
 const choices=()=>[...root.querySelectorAll('.panel-members button')];
 
-// Everyone is offered; the task's own people come first and the server arbitrates.
+// Only the task's own people are offered, the assignee first: Donetick refuses anyone
+// else. A task with nobody assigned offers the whole circle.
 const state=hass.states['todo.all'];
 assert.deepEqual(performerChoices(state,state.attributes.tasks[0]).map(m=>m.user_id),[1,2,3,4]);
-assert.deepEqual(performerChoices(state,state.attributes.tasks[1]).map(m=>m.user_id),[1,2,3,4]);
-assert.deepEqual(performerChoices(state,state.attributes.tasks[2]).map(m=>m.user_id),[2,3,1,4]);
-// An assignee who has left the circle cannot be offered, but nobody else disappears.
-assert.deepEqual(performerChoices(state,{task_id:9,assigned_to:7,assignee_ids:[]}).map(m=>m.user_id),[1,2,3,4]);
+assert.deepEqual(performerChoices(state,state.attributes.tasks[1]).map(m=>m.user_id),[1]);
+assert.deepEqual(performerChoices(state,state.attributes.tasks[2]).map(m=>m.user_id),[2,1,3,4]);
+// An assignee who has left the circle cannot be offered, and nobody stands in for them.
+assert.deepEqual(performerChoices(state,{task_id:9,assigned_to:7,assignee_ids:[]}).map(m=>m.user_id),[]);
 assert.deepEqual(performerChoices({attributes:{circle_members:[]}},{task_id:9}),[]);
 assert.deepEqual(performerChoices(undefined,{task_id:9}),[]);
-console.log('Every circle member is offered, the task\'s own people first');
+console.log('The task\'s own people are offered, the whole circle only when nobody is assigned');
 
 // Tapping asks instead of completing.
 assert.equal(root.querySelector('.action-panel'),null);
@@ -57,13 +58,12 @@ assert.equal(root.querySelectorAll('.completed .actions [aria-label^="Complete: 
 await new Promise(resolve=>setTimeout(resolve,1050));
 console.log('Picking a member credits the completion to them and closes the panel');
 
-// An assigned task leads with its own people, the server decides; failures stay visible.
+// An assigned task offers only its own people; a refusal still stays visible.
 controls()[1].click();
-// The assignee leads, everyone else stays reachable behind them.
-assert.deepEqual(choices().map(button=>button.textContent),['Casey','Ivy','Jamie','Priya']);
-// The ranking reaches the panel: this task's own people come before the circle's order.
+assert.deepEqual(choices().map(button=>button.textContent),['Casey']);
+// The ranking reaches the panel: the assignee comes before the circle's order.
 controls()[1].click();controls()[2].click();
-assert.deepEqual(choices().map(button=>button.textContent),['Ivy','Jamie','Casey','Priya']);
+assert.deepEqual(choices().map(button=>button.textContent),['Ivy','Casey','Jamie','Priya']);
 assert.equal(choices()[0].getAttribute('aria-label'),'Complete as Ivy');
 controls()[2].click();controls()[1].click();
 fail=true;choices()[0].click();await tick();
@@ -146,7 +146,7 @@ const cardError=()=>[...slowRoot.querySelectorAll('ha-card > .error')].map(error
 slowControls()[0].click();
 slowRoot.querySelector('.panel-members button').click();
 // Everyone stays put while the booking is in flight, so a mistap cannot double-book.
-assert.deepEqual([...slowRoot.querySelectorAll('.panel-members button')].map(button=>button.disabled),[true,true,true,true]);
+assert.deepEqual([...slowRoot.querySelectorAll('.panel-members button')].map(button=>button.disabled),[true]);
 slowControls()[1].click();
 assert.equal(slowRoot.querySelector('.action-panel').getAttribute('aria-label'),'Complete as: Laundry');
 refuse();await tick();await tick();
@@ -206,7 +206,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   assert.equal(pageCalls.length,0);
   assert.equal(pageRoot.querySelector('.panel-members'),null);
   const select=pageRoot.querySelector('.action-panel select[data-field="performer"]');
-  assert.deepEqual([...select.options].map(option=>option.textContent),['Ivy','Jamie','Casey','Priya']);
+  assert.deepEqual([...select.options].map(option=>option.textContent),['Ivy','Casey','Jamie','Priya']);
   assert.equal(select.value,'2');
   assert.equal(pageRoot.querySelector('.action-panel .save-action').getAttribute('aria-label'),'Confirm completion');
   select.value='3';select.dispatchEvent(new window.Event('change'));
@@ -242,11 +242,11 @@ await new Promise(resolve=>setTimeout(resolve,1050));
 // The person this device last credited is offered first, and every completion still asks.
 {
   assert.deepEqual(performerChoices(state,state.attributes.tasks[2],1).map(m=>m.user_id),[1,2,3,4]);
-  assert.deepEqual(performerChoices(state,state.attributes.tasks[2],4).map(m=>m.user_id),[4,2,3,1]);
+  assert.deepEqual(performerChoices(state,state.attributes.tasks[2],4).map(m=>m.user_id),[4,2,1,3]);
   // Somebody no longer offered is simply not there to lead.
-  assert.deepEqual(performerChoices(state,state.attributes.tasks[2],99).map(m=>m.user_id),[2,3,1,4]);
+  assert.deepEqual(performerChoices(state,state.attributes.tasks[2],99).map(m=>m.user_id),[2,1,3,4]);
   assert.deepEqual(performerChoices({attributes:{circle_members:[...members,{user_id:5,username:'former',is_active:false}]}},
-    state.attributes.tasks[2],5).map(m=>m.user_id),[2,3,1,4]);
+    state.attributes.tasks[2],5).map(m=>m.user_id),[2,1,3,4]);
 
   globalThis.localStorage=window.localStorage;localStorage.clear();
   const pageCalls=[];let refuse=false;
@@ -257,7 +257,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   const open=name=>pageRoot.querySelector(`.actions [aria-label="Complete: ${name}"]`).click();
   const offered=()=>[...pageRoot.querySelectorAll('.panel-members button')].map(button=>button.textContent);
   open('Rotating');
-  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  assert.deepEqual(offered(),['Ivy','Casey','Jamie','Priya']);
   pageRoot.querySelector('[aria-label="Complete as Casey"]').click();await tick();
   assert.deepEqual(pageCalls.pop(),['donetick','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:1}]);
   await new Promise(resolve=>setTimeout(resolve,1050));
@@ -292,18 +292,18 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   page.setConfig(base);
   page.hass={...pageHass,states:{'todo.all':{...hass.states['todo.all'],attributes:{...hass.states['todo.all'].attributes,config_entry_id:'other'}}}};
   open('Rotating');
-  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  assert.deepEqual(offered(),['Ivy','Casey','Jamie','Priya']);
   open('Rotating');
   page.hass=pageHass;
   // Without an account to file it under, nothing is remembered.
   page.hass={...pageHass,states:{'todo.all':{...hass.states['todo.all'],attributes:{...hass.states['todo.all'].attributes,config_entry_id:undefined}}}};
   open('Rotating');
-  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  assert.deepEqual(offered(),['Ivy','Casey','Jamie','Priya']);
   pageRoot.querySelector('[aria-label="Complete as Jamie"]').click();await tick();
   assert.equal(pageCalls.pop()[2].completed_by,3);
   await new Promise(resolve=>setTimeout(resolve,1050));
   open('Rotating');
-  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  assert.deepEqual(offered(),['Ivy','Casey','Jamie','Priya']);
   open('Rotating');
   page.hass=pageHass;
   console.log('The remembered person belongs to one Donetick account');
@@ -313,7 +313,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   globalThis.localStorage=blocked;
   page.setConfig(base);
   open('Rotating');
-  assert.deepEqual(offered(),['Ivy','Jamie','Casey','Priya']);
+  assert.deepEqual(offered(),['Ivy','Casey','Jamie','Priya']);
   pageRoot.querySelector('[aria-label="Complete as Jamie"]').click();await tick();
   assert.equal(pageCalls.pop()[2].completed_by,3);
   await tick();

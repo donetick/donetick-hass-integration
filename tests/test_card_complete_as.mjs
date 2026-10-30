@@ -47,16 +47,22 @@ const mount=(config={},{circle=members,list=tasks,refuse=false}={})=>{
     submit:()=>root.querySelector('.action-panel').dispatchEvent(new window.Event('submit',{cancelable:true}))};
 };
 
-// Who is offered: the active circle, the task's own people first, and no Anyone entry.
+// Who is offered: the task's own people, the assignee first, and no Anyone entry; a
+// task with nobody assigned offers the active circle. Donetick refuses anyone else.
 const state={attributes:{circle_members:members}};
 assert.deepEqual(performerChoices(state,tasks[0]).map(member=>member.user_id),[1,2,3]);
-assert.deepEqual(performerChoices(state,tasks[1]).map(member=>member.user_id),[1,2,3]);
-assert.deepEqual(performerChoices(state,tasks[2]).map(member=>member.user_id),[2,3,1]);
+assert.deepEqual(performerChoices(state,tasks[1]).map(member=>member.user_id),[1]);
+assert.deepEqual(performerChoices(state,tasks[2]).map(member=>member.user_id),[2,3]);
+assert.deepEqual(performerChoices(state,{task_id:9,assigned_to:3,assignee_ids:[1,2,3]}).map(member=>member.user_id),[3,1,2]);
 // An assignee who is no longer active stays offered: the plain control credits them anyway.
-assert.deepEqual(performerChoices(state,{task_id:9,assigned_to:4,assignee_ids:[]}).map(member=>member.user_id),[4,1,2,3]);
+assert.deepEqual(performerChoices(state,{task_id:9,assigned_to:4,assignee_ids:[]}).map(member=>member.user_id),[4]);
+// An eligible assignee who is no longer active is not: only the current assignee is credited.
+assert.deepEqual(performerChoices(state,{task_id:9,assigned_to:1,assignee_ids:[1,4]}).map(member=>member.user_id),[1]);
+// An assignee who has left the circle leaves nobody to offer, not the whole circle.
+assert.deepEqual(performerChoices(state,{task_id:9,assigned_to:7,assignee_ids:[7]}),[]);
 assert.deepEqual(performerChoices({attributes:{circle_members:[]}},{task_id:9}),[]);
 assert.deepEqual(performerChoices(undefined,{task_id:9}),[]);
-console.log('The active circle is offered, the task\'s own people first');
+console.log('The task\'s own people are offered, the whole circle only when nobody is assigned');
 
 // Without a circle list there is nobody to offer, so the action stays away.
 {
@@ -107,21 +113,29 @@ console.log('The active circle is offered, the task\'s own people first');
 {
   const page=mount();
   page.action('Rotating').click();
-  assert.deepEqual([...page.select().options].map(option=>option.textContent),['Ivy','Jamie','Casey']);
+  assert.deepEqual([...page.select().options].map(option=>option.textContent),['Ivy','Jamie']);
   assert.equal(page.select().value,'2');
   page.submit();
   assert.deepEqual(page.calls.pop(),['donetick','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:2}]);
   console.log('The assignee is preselected, so an unchanged confirm books the same credit');
 }
 
+// Nobody Donetick would refuse is on offer: a task with one assignee offers just them.
+{
+  const page=mount();
+  page.action('Mine').click();
+  assert.deepEqual([...page.select().options].map(option=>option.textContent),['Casey']);
+  console.log('A task\'s dropdown holds only its own people');
+}
+
 // A refusal keeps the panel open with the server's own sentence and the pick intact.
 {
   const page=mount({},{refuse:true});
-  page.action('Mine').click();
+  page.action('Rotating').click();
   page.choose(3);
   page.submit();
   await tick();await tick();
-  assert.equal(page.panel(),'Complete as: Mine');
+  assert.equal(page.panel(),'Complete as: Rotating');
   assert.match(page.error(),/denied the completion \(400\): User is not assigned to chore/);
   assert.equal(page.select().value,'3');
   console.log('A refusal keeps the panel open with the server error');

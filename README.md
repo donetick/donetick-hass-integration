@@ -315,24 +315,23 @@ makes the completion control itself, checkbox or button, ask instead of creditin
 assignee, or the mapped user when HA user mapping (below) is enabled. The default,
 `credit_completion: assignee`, keeps the one-tap completion. Either way the same inline
 panel opens below the task. With **Complete as picker** on *Chips*
-(the default, `complete_as_picker: chips`) it lists the circle by full name, and one tap
+(the default, `complete_as_picker: chips`) it lists the people on offer by full name, and one tap
 on a person completes the task for them. *Dropdown* (`complete_as_picker: dropdown`)
-scales better to a large circle: choose the person, then confirm. Tapping the control
+scales better to a long list: choose the person, then confirm. Tapping the control
 again, Escape or a tap outside closes the panel without changing anything, and choosing a
 performer never changes who the task is assigned to.
 
-The panel offers the active circle members, with the task's current assignee first and its
-other assignees next, and no **Anyone** entry — a completion is credited to a person. The
+The panel offers the task's own people, its current assignee first and its other
+assignees next, and no **Anyone** entry — a completion is credited to a person. Donetick
+refuses to credit anyone else. It would also accept a circle admin or manager on a public
+task, but the card cannot see circle roles, so they are not offered. A task with nobody
+assigned offers the active circle members, whom Donetick accepts on a public task. The
 person this browser last completed a task for comes first of all, remembered per Donetick
 account: on a shared tablet that is the likeliest next answer. It only changes the order;
-every completion still asks, and the dropdown still needs its confirmation. It
-deliberately offers more people than the reassign picker, which by default narrows to the
-task's own assignees: Donetick also accepts a circle admin or manager on a public task,
-and any member of the circle on an unassigned one. Whether a completion is accepted
-depends on the task's privacy, its assignment strategy, its project and the member's
-circle role, none of which the card can see, so it lets the server decide and leaves the
-refusal on the row. Without a circle list the row action is hidden and the completion
-control completes the task as usual. The row action takes `complete_as_icon`,
+every completion still asks, and the dropdown still needs its confirmation. Donetick can
+still refuse a completion, for example on a private task with nobody assigned or one in a
+restricted project; the refusal is shown on the row. Without anyone to offer the row action is hidden and the
+completion control completes the task as usual. The row action takes `complete_as_icon`,
 `complete_as_label` and `complete_as_color` alongside the other per-action options.
 
 ### Optional HA user mapping

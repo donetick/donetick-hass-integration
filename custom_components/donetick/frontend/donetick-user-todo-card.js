@@ -157,18 +157,19 @@ export function actionData(state, task) {
 export function assignableMembers(state, task, allowAnyAssignee = false) {
   return (state?.attributes.circle_members || []).filter(member => member.is_active !== false && (allowAnyAssignee === true || !task.assignee_ids?.length || task.assignee_ids.includes(member.user_id)));
 }
-// Deliberately not assignableMembers: that narrows to the task's own assignees by default, while
-// Donetick also accepts others — a circle admin on any public chore, and every member of
-// the circle on an unassigned one. Whether a completion is taken depends on the chore's
-// privacy, its assignment strategy, its project and the member's circle role, none of
-// which the entity exposes, so the card offers the active circle and lets the server
-// arbitrate. The task's own people come first, being the likeliest answer, unless this
-// device last credited someone else: on a shared tablet that is the likeliest next person.
+// Only the task's own people: Donetick refuses to credit anyone else ("User is not
+// assigned to chore"). It would also take a circle admin or manager on a public chore,
+// but the entity exposes no roles, so they are not offered. A task with nobody assigned
+// offers the active circle, which Donetick accepts on a public unassigned chore. Not
+// assignableMembers: that drops an inactive assignee, whom the plain control credits
+// anyway. The assignee comes first, being the likeliest answer, unless this device last
+// credited someone else: on a shared tablet that is the likeliest next person.
 export function performerChoices(state, task, lastChosen) {
+  const own = [task.assigned_to, ...(task.assignee_ids || [])].filter(id => id != null);
   const members = (state?.attributes.circle_members || [])
-    .filter(member => member.is_active !== false || member.user_id === task.assigned_to);
-  const rank = member => member.user_id === lastChosen ? -1 : member.user_id === task.assigned_to ? 0
-    : (task.assignee_ids || []).includes(member.user_id) ? 1 : 2;
+    .filter(member => (member.is_active !== false || member.user_id === task.assigned_to)
+      && (!own.length || own.includes(member.user_id)));
+  const rank = member => member.user_id === lastChosen ? -1 : member.user_id === task.assigned_to ? 0 : 1;
   return members.map((member, index) => ({member, index})).sort((a, b) =>
     rank(a.member) - rank(b.member) || a.index - b.index).map(entry => entry.member);
 }
@@ -782,7 +783,7 @@ const EDITOR_HELP = {
   show_assignee:'Show the assigned name beside the due date. Available when the list can contain multiple users.',
   allow_any_assignee:'Off by default. Selecting someone outside a task’s eligible assignees adds them to that list. They may receive future assignments under the existing rotation strategy. Requires permission to edit the task.',
   show_reassign:'Show a user-switch action on each row. Changes are saved only after confirmation.',
-  show_complete_as:'Show an action that completes a task for someone else, picked from the circle. Donetick decides whom it accepts and refuses anyone else. Off by default; the plain completion control keeps crediting as before.',
+  show_complete_as:'Show an action that completes a task for someone else among its assignees, or anyone in the circle when nobody is assigned. Off by default; the plain completion control keeps crediting as before.',
   show_complete:'Show the completion checkbox or button. Turn off for a display-only task list.',
   show_postpone:'Show Skip occurrence for tasks with a recurring schedule.',
   show_due_date:'Show the action to choose a due date manually, including for one-off tasks.',
@@ -800,7 +801,7 @@ const EDITOR_HELP = {
 };
 Object.assign(EDITOR_LABELS, {credit_completion:'Credit completion to', complete_as_picker:'Complete as picker'});
 Object.assign(EDITOR_HELP, {
-  credit_completion:'The task assignee is credited by default. Ask who completed it makes the completion control open Complete as, with the task’s own people first; Donetick decides who it accepts and refuses anyone else.',
+  credit_completion:'The task assignee is credited by default. Ask who completed it makes the completion control open Complete as, offering the task’s assignees, or anyone in the circle when nobody is assigned.',
   complete_as_picker:'Chips complete the task with one tap on a person. A dropdown scales better to a large circle and books after a confirmation.'
 });
 EDITOR_LABELS.task_view = 'Task view';
