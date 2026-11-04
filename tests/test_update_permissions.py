@@ -1,10 +1,13 @@
 """Verify update failures retain useful authorization reasons."""
 import ast
-from datetime import datetime
+from datetime import date, datetime, time
 import logging
 from pathlib import Path
+import re
 from types import SimpleNamespace
+from typing import Optional
 import unittest
+from zoneinfo import ZoneInfo
 
 
 class HttpError(Exception):
@@ -42,10 +45,16 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         client.body = [node for node in client.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                        and node.name in ("__init__", "_headers", "_raise_for_status", "async_update_task",
                                          "async_delete_task", "async_complete_task")]
+        helper = next(node for node in tree.body
+                      if isinstance(node, ast.FunctionDef) and node.name == "normalize_due_date")
+        pattern = next(node for node in tree.body if isinstance(node, ast.Assign)
+                       and getattr(node.targets[0], "id", None) == "_DATE_ONLY_PATTERN")
         future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
-        module = ast.fix_missing_locations(ast.Module(body=[future, client], type_ignores=[]))
+        module = ast.fix_missing_locations(ast.Module(body=[future, pattern, helper, client], type_ignores=[]))
+        zone = ZoneInfo("Europe/Brussels")
         namespace = {"aiohttp": SimpleNamespace(ClientError=HttpError), "API_TIMEOUT": 10,
-                     "datetime": datetime,
+                     "datetime": datetime, "date": date, "time": time, "re": re, "Optional": Optional,
+                     "dt_util": SimpleNamespace(get_default_time_zone=lambda: zone),
                      "DonetickTask": SimpleNamespace(from_json=lambda data: SimpleNamespace(
                          next_due_date=datetime.fromisoformat(data["nextDueDate"].replace("Z", "+00:00")),
                          is_active=data["isActive"])),
@@ -132,6 +141,25 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(arguments["json"], {
             "description": "", "dueDate": "2026-10-09T12:00:00Z",
         })
+
+    async def test_a_date_alone_is_moved_to_the_end_of_that_local_day(self):
+        # Sent bare, the external API would store the current UTC time of that day.
+        requests = []
+
+        def put(url, **kwargs):
+            requests.append(kwargs["json"])
+            return Response({"nextDueDate": "2026-10-24T21:59:59Z", "isActive": True}, status=200)
+
+        client = self.client_type("https://example.invalid", "test-token", SimpleNamespace(put=put))
+        await client.async_update_task(47, due_date="2026-10-24")
+        self.assertEqual(requests, [{"dueDate": "2026-10-24T23:59:59+02:00"}])
+
+    async def test_a_date_alone_stored_at_another_time_is_reported(self):
+        session = SimpleNamespace(put=lambda *args, **kwargs: Response(
+            {"nextDueDate": "2026-10-24T13:05:00Z", "isActive": True}, status=200))
+        client = self.client_type("https://example.invalid", "test-token", session)
+        with self.assertRaisesRegex(ValueError, "did not apply the requested due date"):
+            await client.async_update_task(47, due_date="2026-10-24")
 
     async def test_delete_sends_external_api_request(self):
         requests = []

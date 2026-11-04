@@ -1,13 +1,16 @@
 """Regressions for external API task creation and creator/assignee attribution."""
 import ast
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 import json
 import logging
 from pathlib import Path
+import re
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import AsyncMock
 import unittest
+from zoneinfo import ZoneInfo
 
 from test_task_sensor_attributes import load_definitions
 from test_update_permissions import HttpError, Response
@@ -20,15 +23,23 @@ class TaskCreationTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         namespace = {"dataclass": dataclass, "datetime": datetime,
                      "_LOGGER": logging.getLogger(__name__), "json": json,
-                     "aiohttp": SimpleNamespace(ClientError=HttpError), "API_TIMEOUT": 10}
+                     "aiohttp": SimpleNamespace(ClientError=HttpError), "API_TIMEOUT": 10,
+                     "re": re, "date": date, "time": time, "Optional": Optional,
+                     "dt_util": SimpleNamespace(get_default_time_zone=lambda: ZoneInfo("Europe/Brussels"))}
         load_definitions("model.py", {"_parse_datetime", "DonetickTask"}, namespace)
         tree = ast.parse((COMPONENT / "api.py").read_text(encoding="utf-8"))
         client = next(node for node in tree.body if isinstance(node, ast.ClassDef))
         client.body = [node for node in client.body if getattr(node, "name", None)
                        in ("__init__", "_headers", "async_create_task")]
         future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
-        module = ast.fix_missing_locations(ast.Module(body=[future, client], type_ignores=[]))
+        helper = next(node for node in tree.body
+                      if isinstance(node, ast.FunctionDef) and node.name == "normalize_due_date")
+        pattern = next(node for node in tree.body if isinstance(node, ast.Assign)
+                       and getattr(node.targets[0], "id", None) == "_DATE_ONLY_PATTERN")
+        module = ast.fix_missing_locations(
+            ast.Module(body=[future, pattern, helper, client], type_ignores=[]))
         exec(compile(module, "creation", "exec"), namespace)
+        self.normalize = namespace["normalize_due_date"]
         self.requests = []
         self.response = Response({
             "id": 79, "name": "Laundry", "createdBy": 4, "assignedTo": 4,
@@ -75,7 +86,8 @@ class TaskCreationTests(unittest.IsolatedAsyncioTestCase):
         coordinator = SimpleNamespace(async_request_refresh=AsyncMock())
         resolve = AsyncMock(return_value=SimpleNamespace(entry_id="test"))
         namespace = {"HomeAssistant": object, "ServiceCall": object, "DOMAIN": "donetick",
-                     "_LOGGER": logging.getLogger(__name__), "_get_config_entry": resolve}
+                     "_LOGGER": logging.getLogger(__name__), "_get_config_entry": resolve,
+                     "normalize_due_date": self.normalize}
         load_definitions("__init__.py", {"async_create_task_service"}, namespace)
         hass = SimpleNamespace(data={"donetick": {"test": {"client": client, "coordinator": coordinator}}})
         await namespace["async_create_task_service"](hass, SimpleNamespace(data={
@@ -84,3 +96,30 @@ class TaskCreationTests(unittest.IsolatedAsyncioTestCase):
         }))
         client.async_create_task.assert_awaited_once_with("Laundry", "Wash towels", "2026-10-30T18:00:00Z", 4)
         coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_a_date_alone_is_sent_as_the_end_of_that_local_day(self):
+        # The external API would keep a bare date at the current UTC time of that day.
+        await self.client.async_create_task("Laundry", due_date="2026-07-01")
+        self.assertEqual(self.requests[-1][1]["json"]["dueDate"], "2026-07-01T23:59:59+02:00")
+
+    def test_a_date_alone_stays_due_on_that_local_day(self):
+        self.assertEqual(self.normalize("2026-07-01"), "2026-07-01T23:59:59+02:00")
+        self.assertEqual(self.normalize("2026-12-01"), "2026-12-01T23:59:59+01:00")
+
+    def test_a_time_without_an_offset_is_local(self):
+        # The external API refuses a date and time without an offset.
+        self.assertEqual(self.normalize("2026-07-01T06:30:00"), "2026-07-01T06:30:00+02:00")
+
+    def test_an_offset_is_kept(self):
+        self.assertEqual(self.normalize("2026-07-01T06:30:00Z"), "2026-07-01T06:30:00Z")
+        self.assertEqual(self.normalize("2026-07-01T08:30:00+02:00"), "2026-07-01T08:30:00+02:00")
+        self.assertEqual(self.normalize("2026-07-01 08:30:00+02:00"), "2026-07-01T08:30:00+02:00")
+
+    def test_nothing_in_nothing_out(self):
+        self.assertIsNone(self.normalize(None))
+        self.assertIsNone(self.normalize(""))
+
+    async def test_an_unusable_date_is_named_before_any_request(self):
+        with self.assertRaisesRegex(ValueError, "Invalid due date '1 July'"):
+            await self.client.async_create_task("Laundry", due_date="1 July")
+        self.assertEqual(self.requests, [])

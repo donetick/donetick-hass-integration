@@ -65,7 +65,10 @@ create_task:
           multiline: true
     due_date:
       name: Due Date
-      description: Task due date in RFC3339 format (optional, e.g., 2025-07-28T18:00:00Z)
+      description: >-
+        Task due date (optional): RFC3339 (e.g., 2025-07-28T18:00:00Z) or YYYY-MM-DD.
+        A time without an offset uses Home Assistant's time zone; a date alone means
+        the end of that day.
       required: false
       selector:
         text:

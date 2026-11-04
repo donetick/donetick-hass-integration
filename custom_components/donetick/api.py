@@ -1,16 +1,49 @@
 """API client for Donetick."""
 import logging
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 import json
+import re
 from typing import List, Optional
 import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
 
 from .const import API_TIMEOUT
 from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
 from .recurrence import build_recurrence_payload
 _LOGGER = logging.getLogger(__name__)
+
+_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def normalize_due_date(due_date: Optional[str]) -> Optional[str]:
+    """Return a due date as RFC3339 text the external API stores as meant.
+
+    The external API keeps a date on its own at the current UTC time of that
+    day, which may already have passed, and refuses a date and time without an
+    offset. A date on its own therefore means the end of that day in Home
+    Assistant's time zone, so the task stays due on the day that was picked.
+    async_update_task sends a date on its own the same way. A date and time
+    without an offset is read in the same time zone; one with an offset keeps it.
+    """
+    if not due_date:
+        return None
+    text = due_date.strip()
+    try:
+        if _DATE_ONLY_PATTERN.fullmatch(text):
+            moment = datetime.combine(date.fromisoformat(text), time(23, 59, 59))
+        else:
+            moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as err:
+        raise ValueError(f"Invalid due date {text!r}; use RFC3339 or YYYY-MM-DD") from err
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=dt_util.get_default_time_zone()).isoformat()
+    # isoformat writes UTC as +00:00; a Z the caller gave is kept as it was.
+    result = moment.isoformat()
+    if text.endswith("Z") and result.endswith("+00:00"):
+        return result[:-6] + "Z"
+    return result
 
 class DonetickApiClient:
     """API client for Donetick."""
@@ -250,6 +283,7 @@ class DonetickApiClient:
         payload = {"name": name}
         if description:
             payload["description"] = description
+        due_date = normalize_due_date(due_date)
         if due_date:
             payload["dueDate"] = due_date
         if created_by:
@@ -316,6 +350,11 @@ class DonetickApiClient:
             payload["name"] = name
         if description is not None:  # Allow empty string to clear description
             payload["description"] = description
+        if due_date and _DATE_ONLY_PATTERN.fullmatch(due_date.strip()):
+            # The external API puts a bare date at the current UTC time of that
+            # day, which may already have passed, so the task would be overdue
+            # on the day it was moved to. Send the end of the day instead.
+            due_date = normalize_due_date(due_date)
         if due_date:
             payload["dueDate"] = due_date
         if force_unarchive:
@@ -336,11 +375,7 @@ class DonetickApiClient:
                 task = DonetickTask.from_json(data)
                 if due_date:
                     requested_date = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
-                    if task.next_due_date is None or (
-                        task.next_due_date.date() != requested_date.date()
-                        if len(due_date) == 10
-                        else task.next_due_date != requested_date
-                    ):
+                    if task.next_due_date is None or task.next_due_date != requested_date:
                         raise ValueError("Donetick did not apply the requested due date")
                 if force_unarchive and not task.is_active:
                     raise ValueError("Donetick did not reactivate the task; update the Donetick server")

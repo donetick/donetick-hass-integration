@@ -242,7 +242,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             project_id = None
             if hasattr(self, '_project'):
                 project_id = self._project.id
-            _LOGGER.debug("Creating task '%s' in project %d by user %d", item.summary, project_id, created_by)
+            _LOGGER.debug("Creating task '%s' in project %s by user %s", item.summary, project_id, created_by)
 
             # Convert due date to RFC3339 format if provided
             due_date = None
