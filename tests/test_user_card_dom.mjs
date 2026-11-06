@@ -305,6 +305,16 @@ click('Reassign: Weekly');assert.equal(root.querySelector('select').value,'anyon
 assert.equal(root.querySelector('.save-action').disabled,true);
 assert.deepEqual([...root.querySelector('select').options].map(option=>option.value),['anyone','1','2','3']);
 click('Reassign: Weekly');
+// A deactivated current assignee stays listed and selected; other inactive members are not offered.
+hass.states['todo.all'].attributes.tasks[0].assigned_to=4;
+hass.states['todo.all'].attributes.tasks[0].assignee_ids=[4,1];card.hass=hass;
+click('Reassign: Weekly');assert.equal(root.querySelector('select').value,'4');
+assert.deepEqual([...root.querySelector('select').options].map(option=>option.value),['anyone','1','4']);
+assert.equal(root.querySelector('.save-action').disabled,true);
+assignee=root.querySelector('select');assignee.value='1';assignee.dispatchEvent(new window.Event('change'));
+assert.equal(root.querySelector('.save-action').disabled,false);
+click('Reassign: Weekly');
+hass.states['todo.all'].attributes.tasks[0].assignee_ids=[];
 hass.states['todo.all'].attributes.tasks[0].assigned_to=2;card.hass=hass;
 assert.match(root.querySelector('.assignee').textContent,/Melissa/);
 card.setConfig({entity:'todo.all',user_id:1});assert.equal(root.querySelectorAll('.assignee').length,0);
