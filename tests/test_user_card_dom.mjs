@@ -5,7 +5,7 @@ Object.assign(globalThis, {window, document: window.document, HTMLElement: windo
   customElements: window.customElements, CustomEvent: window.CustomEvent});
 customElements.define('ha-form',class extends HTMLElement {});
 customElements.define('home-assistant',class extends HTMLElement {});
-const {localDateTime, dueText, userTasks, isOverdue, descriptionText} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+const {localDateTime, dueText, userTasks, isOverdue, descriptionText} = await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 assert.equal(descriptionText('<p>TEST DESCRIPTION</p>'),'TEST DESCRIPTION');
 assert.equal(descriptionText('<p>First &amp; second</p><p>Next<br>line</p>'),'First & second\n\nNext\nline');
 assert.equal(descriptionText('<ul><li>One</li><li>Two</li></ul>'),'- One\n- Two');
@@ -19,7 +19,7 @@ const hass={locale:{language:'en'},states:{'todo.all':{state:'2',attributes:{con
   {task_id:2,assigned_to:1,name:'One-off',can_postpone:false},
   {task_id:3,assigned_to:2,name:'Other user',can_postpone:true}
 ]}}},callService:async(...args)=>{calls.push(args);if(fail)throw new Error('Permission denied');}};
-const card=document.createElement('donetick-user-todo-card');card.setConfig({entity:'todo.all',user_id:1});card.hass=hass;document.body.append(card);
+const card=document.createElement('donetick-dev-user-todo-card');card.setConfig({entity:'todo.all',user_id:1});card.hass=hass;document.body.append(card);
 const root=card.shadowRoot;
 const weeklyTask=hass.states['todo.all'].attributes.tasks[0];
 Object.assign(weeklyTask,{points:10,frequency_type:'interval',frequency:6,interval_type:'weeks'});
@@ -42,7 +42,7 @@ assert.equal(root.querySelector('.task-recurrence'),null);
 weeklyTask.points=1;weeklyTask.interval_type='weeks';card.hass=hass;
 assert.equal(root.querySelector('.task-points').getAttribute('aria-label'),'1 point');
 card.setConfig({entity:'todo.all',user_id:1});
-const sharedCard=document.createElement('donetick-user-todo-card');
+const sharedCard=document.createElement('donetick-dev-user-todo-card');
 const sharedHass={...hass,states:{'todo.member':{attributes:{config_entry_id:'entry',donetick_user_id:1,
   circle_members:[{user_id:1,display_name:'Torben'}],
   tasks:[{task_id:10,assigned_to:1,name:'My task',can_postpone:false}],
@@ -176,7 +176,7 @@ assert.equal(root.querySelectorAll('.row').length,1);
 assert.equal(root.querySelector('.name').textContent,'Today only');
 hass.states['todo.all'].attributes.tasks=hass.states['todo.all'].attributes.tasks.filter(task=>task.task_id===5);card.hass=hass;
 assert.equal(root.querySelector('.empty').textContent,'No tasks for Torben · Filter: Upcoming (3 days ahead)');
-const editor=document.createElement('donetick-user-todo-editor');editor.setConfig({entity:'todo.all',user_id:1});editor.hass=hass;
+const editor=document.createElement('donetick-dev-user-todo-editor');editor.setConfig({entity:'todo.all',user_id:1});editor.hass=hass;
 const nativeForm=editor.shadowRoot.querySelector('ha-form');
 assert.deepEqual(nativeForm.data.display_filters,[]);
 assert.equal(nativeForm.schema.find(field=>field.name==='filters').schema.find(field=>field.name==='display_filters').selector.select.options.length,4);
@@ -194,7 +194,7 @@ assert.equal(isOverdue('invalid',noon),false);
 click('Skip occurrence: Weekly');assert.ok(root.querySelector('form'));assert.equal(calls.length,0);
 click('Skip occurrence: Weekly');assert.equal(root.querySelector('form'),null);
 click('Skip occurrence: Weekly');submit();await tick();
-assert.deepEqual(calls.pop(),['donetick','postpone_task',{task_id:1,config_entry_id:'entry'}]);
+assert.deepEqual(calls.pop(),['donetick_dev','postpone_task',{task_id:1,config_entry_id:'entry'}]);
 assert.equal(root.querySelector('[role=status]'),null);
 click('Change due date: Weekly');
 assert.equal(root.querySelector('.save-action ha-icon').getAttribute('icon'),'mdi:content-save-outline');
@@ -220,7 +220,7 @@ click('Set time');assert.equal(dateFields().data.time,'18:00:00');
 assert.ok(dateFields().schema[0].schema[1].selector.time);
 click('Hide time');assert.equal(dateFields().schema[0].schema.length,1);
 submit();await tick();
-assert.deepEqual(calls.pop(),['donetick','update_task',{task_id:1,config_entry_id:'entry',due_date:'2026-10-24T16:00:00.000Z'}]);
+assert.deepEqual(calls.pop(),['donetick_dev','update_task',{task_id:1,config_entry_id:'entry',due_date:'2026-10-24T16:00:00.000Z'}]);
 assert.equal(root.querySelector('[role=status]'),null);
 assert.equal(root.querySelector('form'),null);
 assert.equal(localDateTime('2026-10-24T16:00:00Z'),'2026-10-24T18:00:00');
@@ -245,7 +245,7 @@ fail=false;click('Change due date: One-off');click('Skip occurrence: Weekly');
 assert.equal(root.querySelectorAll('form').length,1);assert.equal(root.querySelector('form').getAttribute('aria-label'),'Skip occurrence: Weekly');
 document.body.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true}));assert.equal(root.querySelector('form'),null);
 root.querySelector('[aria-label="Complete: Weekly"]').dispatchEvent(new window.Event('change'));await tick();
-assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);assert.ok(root.querySelector('.completed input').checked);
+assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);assert.ok(root.querySelector('.completed input').checked);
 await new Promise(resolve=>setTimeout(resolve,1050));
 card.setConfig({entity:'todo.all',user_id:1,complete_control:'button',button_content:'icon_and_label'});
 assert.equal(root.querySelectorAll('input[type=checkbox]').length,0);
@@ -279,7 +279,7 @@ fail=true;submit();await tick();
 assert.match(root.querySelector('.action-panel .error').textContent,/Permission denied/);
 assert.equal(root.querySelector('select').value,'2');calls.pop();
 fail=false;submit();await tick();
-assert.deepEqual(calls.pop(),['donetick','update_task',{task_id:1,config_entry_id:'entry',assigned_to:2}]);
+assert.deepEqual(calls.pop(),['donetick_dev','update_task',{task_id:1,config_entry_id:'entry',assigned_to:2}]);
 assert.equal(root.querySelector('form'),null);
 card.setConfig({entity:'todo.all',user_id:'all',allow_any_assignee:true});
 click('Reassign: Weekly');
@@ -287,7 +287,7 @@ assert.deepEqual([...root.querySelector('select').options].map(option=>option.va
 assignee=root.querySelector('select');assignee.value='3';assignee.dispatchEvent(new window.Event('change'));
 assert.equal(root.querySelector('.save-action').disabled,false);
 submit();await tick();
-assert.deepEqual(calls.pop(),['donetick','update_task',{task_id:1,config_entry_id:'entry',assigned_to:3}]);
+assert.deepEqual(calls.pop(),['donetick_dev','update_task',{task_id:1,config_entry_id:'entry',assigned_to:3}]);
 assert.equal(root.querySelector('form'),null);
 card.setConfig({entity:'todo.all',user_id:'all',allow_any_assignee:false});
 click('Reassign: Weekly');
@@ -296,7 +296,7 @@ assignee=root.querySelector('select');assignee.value='anyone';assignee.dispatchE
 assert.equal(root.querySelector('.save-action').disabled,false);
 card.hass=hass;assert.equal(root.querySelector('select').value,'anyone');
 submit();await tick();
-assert.deepEqual(calls.pop(),['donetick','update_task',{task_id:1,config_entry_id:'entry',assigned_to:null}]);
+assert.deepEqual(calls.pop(),['donetick_dev','update_task',{task_id:1,config_entry_id:'entry',assigned_to:null}]);
 assert.equal(root.querySelector('form'),null);
 hass.states['todo.all'].attributes.tasks[0].assigned_to=null;
 hass.states['todo.all'].attributes.tasks[0].assignee_ids=[];card.hass=hass;

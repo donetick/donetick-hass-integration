@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-SOURCE = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
+SOURCE = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/todo.py"
 LOGGER = logging.getLogger(__name__)
 
 

@@ -1,5 +1,5 @@
 """Constants for the Donetick integration."""
-DOMAIN = "donetick"
+DOMAIN = "donetick_dev"
 TODO_STORAGE_KEY = f"{DOMAIN}_items"
 
 CONF_URL = "url"

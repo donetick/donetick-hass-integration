@@ -39,7 +39,7 @@ class Response:
 
 class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/api.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/api.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         client = next(node for node in tree.body if isinstance(node, ast.ClassDef))
         client.body = [node for node in client.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -175,7 +175,7 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(arguments["headers"]["secretkey"], "test-token")
 
     async def test_assignment_and_unarchive_can_be_used_together(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/__init__.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/__init__.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         handler = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                        and node.name == "async_update_task_service")
@@ -219,7 +219,7 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(calls[0][1][-1])
 
     async def test_delete_service_reports_failures_to_ha(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/__init__.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/__init__.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         handler = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                        and node.name == "async_delete_task_service")

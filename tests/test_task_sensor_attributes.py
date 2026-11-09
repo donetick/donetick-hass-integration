@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1] / "custom_components/donetick"
+ROOT = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev"
 
 
 def load_definitions(filename, names, namespace):

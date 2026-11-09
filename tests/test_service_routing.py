@@ -12,7 +12,7 @@ from mapping_test_helpers import load_completion_user
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPONENT = ROOT / "custom_components" / "donetick"
+COMPONENT = ROOT / "custom_components" / "donetick_dev"
 DOMAIN = "donetick"
 
 
@@ -165,12 +165,12 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
     def test_component_identity_and_python_syntax(self):
         manifest = json.loads((COMPONENT / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], COMPONENT.name)
-        self.assertEqual(manifest["name"], "Donetick")
+        self.assertEqual(manifest["name"], "Donetick (Dev)")
         constants = {}
         exec((COMPONENT / "const.py").read_text(encoding="utf-8"), constants)
         self.assertEqual(constants["DOMAIN"], manifest["domain"])
-        self.assertEqual(constants["TODO_STORAGE_KEY"], "donetick_items")
-        self.assertFalse((COMPONENT.parent / ("donetick" + "_dev")).exists())
+        self.assertEqual(constants["TODO_STORAGE_KEY"], "donetick_dev_items")
+        self.assertFalse((COMPONENT.parent / "donetick").exists())
         for path in COMPONENT.rglob("*.py"):
             compile(path.read_text(encoding="utf-8"), str(path), "exec")
 

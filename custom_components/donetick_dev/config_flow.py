@@ -104,7 +104,7 @@ class DonetickConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
             
             return self.async_create_entry(
-                title="Donetick",
+                title="Donetick (Dev)",
                 data=final_data
             )
 

@@ -3,7 +3,7 @@ const {Window} = await import(process.env.DOM_TEST_MODULE || 'happy-dom');
 const window = new Window();
 Object.assign(globalThis,{window,document:window.document,HTMLElement:window.HTMLElement,customElements:window.customElements,CustomEvent:window.CustomEvent});
 customElements.define('home-assistant',class extends HTMLElement {});
-const {completedTasks} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+const {completedTasks} = await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 const today = new Date(Date.now()-60000);
 const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
 const state = {state:'1',attributes:{circle_members:[{user_id:1,display_name:'Alex'},{user_id:2,display_name:'Sam'}],tasks:[{task_id:10,name:'Daily task',assigned_to:2,next_due_date:new Date(today.getTime()+86400000).toISOString()}],completed_tasks:[
@@ -13,7 +13,7 @@ const state = {state:'1',attributes:{circle_members:[{user_id:1,display_name:'Al
 assert.equal(completedTasks(state,1).length,1);
 assert.equal(completedTasks(state,2).length,0);
 assert.equal(completedTasks({...state,attributes:{...state.attributes,donetick_user_id:1}},2).length,1);
-const card = document.createElement('donetick-user-todo-card');
+const card = document.createElement('donetick-dev-user-todo-card');
 card.setConfig({entity:'todo.all',user_id:'all'}); card.hass={states:{'todo.all':state},locale:{language:'en'}};
 const root=card.shadowRoot;
 assert.equal(root.querySelectorAll('.row').length,2);

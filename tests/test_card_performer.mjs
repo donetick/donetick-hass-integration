@@ -5,7 +5,7 @@ Object.assign(globalThis, {window, document: window.document, HTMLElement: windo
   customElements: window.customElements, CustomEvent: window.CustomEvent});
 customElements.define('ha-form',class extends HTMLElement {});
 customElements.define('home-assistant',class extends HTMLElement {});
-const {performerChoices} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+const {performerChoices} = await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 const calls=[]; let fail=false;
 const members=[{user_id:1,display_name:'Casey'},{user_id:2,display_name:'Ivy'},{user_id:3,display_name:'Jamie'},{user_id:4,display_name:'Priya'}];
@@ -14,7 +14,7 @@ const hass={locale:{language:'en'},states:{'todo.all':{state:'3',attributes:{con
   {task_id:2,assigned_to:1,assignee_ids:[1],name:'Mine',can_postpone:false},
   {task_id:3,assigned_to:2,assignee_ids:[1,2,3,4],name:'Rotating',can_postpone:false}
 ]}}},callService:async(...args)=>{calls.push(args);if(fail)throw new Error('Donetick task action failed: Donetick denied the completion (400): User is not assigned to chore');}};
-const card=document.createElement('donetick-user-todo-card');
+const card=document.createElement('donetick-dev-user-todo-card');
 const base={entity:'todo.all',user_id:'all',complete_control:'button',credit_completion:'choose'};
 card.setConfig(base);card.hass=hass;document.body.append(card);
 const root=card.shadowRoot;
@@ -51,7 +51,7 @@ console.log('The completion control opens a member row instead of booking the as
 
 // Picking a member books the completion for that member.
 choices()[1].click();
-assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:2}]);
+assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:2}]);
 await tick();
 assert.equal(root.querySelector('.action-panel'),null);
 assert.equal(root.querySelectorAll('.completed .actions [aria-label^="Complete: "]').length,1);
@@ -77,7 +77,7 @@ console.log('A rejected completion keeps the panel open with the server error');
 // The option is off by default and works with every completion control.
 card.setConfig({entity:'todo.all',user_id:'all',complete_control:'button'});
 controls()[0].click();
-assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);
+assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);
 assert.equal(root.querySelector('.action-panel'),null);
 await new Promise(resolve=>setTimeout(resolve,1050));
 assert.throws(()=>card.setConfig({...base,credit_completion:'ask'}),/valid completion credit/);
@@ -99,7 +99,7 @@ assert.equal(root.querySelector('.action-panel'),null);
 console.log('Credit selection is opt-in and available for every completion control');
 
 // An empty circle list must not make a task uncompletable.
-const bare=document.createElement('donetick-user-todo-card');
+const bare=document.createElement('donetick-dev-user-todo-card');
 const bareHass={...hass,states:{'todo.all':{state:'1',attributes:{config_entry_id:'entry',circle_members:[],
   tasks:[{task_id:9,assigned_to:null,assignee_ids:[],name:'Alone',can_postpone:false}]}}}};
 bare.setConfig({entity:'todo.all',user_id:'all',complete_control:'button',credit_completion:'choose'});
@@ -107,7 +107,7 @@ bare.hass=bareHass;document.body.append(bare);
 calls.length=0;
 bare.shadowRoot.querySelector('.actions [aria-label^="Complete: "]').click();
 assert.equal(bare.shadowRoot.querySelector('.action-panel'),null);
-assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:9,config_entry_id:'entry'}]);
+assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:9,config_entry_id:'entry'}]);
 console.log('Without a circle list the control completes instead of opening an empty panel');
 await new Promise(resolve=>setTimeout(resolve,1050));
 
@@ -138,7 +138,7 @@ const slowHass={locale:{language:'en'},states:{'todo.all':{state:'2',attributes:
   {task_id:2,assigned_to:2,assignee_ids:[2],name:'Laundry',can_postpone:false}
 ]}}},callService:(...args)=>new Promise((resolve,reject)=>{calls.push(args);accept=resolve;refuse=()=>reject(new Error(
   'Donetick task action failed: Donetick denied the completion (400): User is not assigned to chore'));})};
-const slow=document.createElement('donetick-user-todo-card');
+const slow=document.createElement('donetick-dev-user-todo-card');
 slow.setConfig(base);slow.hass=slowHass;document.body.append(slow);
 const slowRoot=slow.shadowRoot;
 const slowControls=()=>[...slowRoot.querySelectorAll('.actions [aria-label^="Complete: "]')];
@@ -165,7 +165,7 @@ slowRoot.querySelector('.panel-members button').click();
 slowControls()[1].click();
 assert.equal(slowRoot.querySelector('.action-panel').getAttribute('aria-label'),'Complete as: Laundry');
 accept();await tick();await tick();
-assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:1}]);
+assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:1}]);
 assert.equal(slowRoot.querySelector('.action-panel').getAttribute('aria-label'),'Complete as: Laundry');
 assert.equal(cardError().length,0);
 console.log('A booking that succeeds closes its own panel and leaves another row\'s open');
@@ -184,7 +184,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
 
 // Chips book on a tap only: submitting the panel some other way (Enter) books nobody.
 {
-  const page=document.createElement('donetick-user-todo-card');
+  const page=document.createElement('donetick-dev-user-todo-card');
   const pageCalls=[];
   page.setConfig(base);page.hass={...hass,callService:async(...args)=>{pageCalls.push(args);}};document.body.append(page);
   const pageRoot=page.shadowRoot;
@@ -212,7 +212,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   select.value='3';select.dispatchEvent(new window.Event('change'));
   assert.equal(pageCalls.length,0);
   pageRoot.querySelector('.action-panel').dispatchEvent(new window.Event('submit',{cancelable:true}));
-  assert.deepEqual(pageCalls.pop(),['donetick','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:3}]);
+  assert.deepEqual(pageCalls.pop(),['donetick_dev','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:3}]);
   await tick();
   assert.equal(pageRoot.querySelector('.action-panel'),null);
   console.log('The dropdown picker books the chosen person only after confirming');
@@ -232,7 +232,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   // With asking off, the control books the assignee straight away, even beside the row action.
   page.setConfig({...base,show_complete_as:true,credit_completion:'assignee'});
   pageRoot.querySelector('.actions [aria-label="Complete: Mine"]').click();
-  assert.deepEqual(pageCalls.pop(),['donetick','complete_assigned_task',{task_id:2,config_entry_id:'entry'}]);
+  assert.deepEqual(pageCalls.pop(),['donetick_dev','complete_assigned_task',{task_id:2,config_entry_id:'entry'}]);
   assert.equal(pageRoot.querySelector('.action-panel'),null);
   console.log('The row action and the completion control share one panel');
   await new Promise(resolve=>setTimeout(resolve,1050));
@@ -251,7 +251,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   globalThis.localStorage=window.localStorage;localStorage.clear();
   const pageCalls=[];let refuse=false;
   const pageHass={...hass,callService:async(...args)=>{pageCalls.push(args);if(refuse)throw new Error('Donetick denied the completion (400)');}};
-  const page=document.createElement('donetick-user-todo-card');
+  const page=document.createElement('donetick-dev-user-todo-card');
   page.setConfig(base);page.hass=pageHass;document.body.append(page);
   const pageRoot=page.shadowRoot;
   const open=name=>pageRoot.querySelector(`.actions [aria-label="Complete: ${name}"]`).click();
@@ -259,7 +259,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   open('Rotating');
   assert.deepEqual(offered(),['Ivy','Casey','Jamie','Priya']);
   pageRoot.querySelector('[aria-label="Complete as Casey"]').click();await tick();
-  assert.deepEqual(pageCalls.pop(),['donetick','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:1}]);
+  assert.deepEqual(pageCalls.pop(),['donetick_dev','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:1}]);
   await new Promise(resolve=>setTimeout(resolve,1050));
   open('Rotating');
   // Opening books nothing: the remembered person leads, but has to be tapped again.

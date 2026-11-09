@@ -8,13 +8,13 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
-spec = importlib.util.spec_from_file_location('completion_history', Path(__file__).resolve().parents[1] / 'custom_components/donetick/completion_history.py')
+spec = importlib.util.spec_from_file_location('completion_history', Path(__file__).resolve().parents[1] / 'custom_components/donetick_dev/completion_history.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 class CompletionHistoryTests(IsolatedAsyncioTestCase):
     def setUp(self):
-        source = Path(__file__).resolve().parents[1] / 'custom_components/donetick/todo.py'
+        source = Path(__file__).resolve().parents[1] / 'custom_components/donetick_dev/todo.py'
         tree = ast.parse(source.read_text(encoding='utf-8'))
         base = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'DonetickTodoListBase')
         methods = [node for node in base.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in ('_completed_tasks','todo_items','async_update_todo_item','async_delete_todo_items')]

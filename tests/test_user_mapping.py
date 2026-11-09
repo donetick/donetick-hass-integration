@@ -61,7 +61,7 @@ class MappingOptionsTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         import ast
         from pathlib import Path
-        root = Path(__file__).resolve().parents[1] / "custom_components/donetick"
+        root = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev"
         tree = ast.parse((root / "config_flow.py").read_text(encoding="utf-8"))
         cls = next(node for node in tree.body if isinstance(node, ast.ClassDef)
                    and node.name == "DonetickOptionsFlowHandler")
@@ -169,7 +169,7 @@ class UsernameConfirmationTests(unittest.TestCase):
     def setUp(self):
         import ast
         from pathlib import Path
-        root = Path(__file__).resolve().parents[1] / "custom_components/donetick"
+        root = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev"
         tree = ast.parse((root / "config_flow.py").read_text(encoding="utf-8"))
         cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "DonetickOptionsFlowHandler")
         method = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "_confirmed_mapping_defaults")

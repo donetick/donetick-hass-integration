@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class FrontendTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        source = ROOT / "custom_components/donetick/frontend.py"
+        source = ROOT / "custom_components/donetick_dev/frontend.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         tree.body = [node for node in tree.body
                      if not isinstance(node, (ast.Import, ast.ImportFrom))]
@@ -38,13 +38,13 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(self.setup_frontend(self.hass), self.setup_frontend(self.hass))
         await self.setup_frontend(self.hass)
         self.hass.http.async_register_static_paths.assert_awaited_once_with([
-            ("/donetick/donetick-user-todo-card.js", str(self.card_file), False),
-            ("/donetick/donetick-action-editor.js", str(self.action_file), False)])
+            ("/donetick_dev/donetick-user-todo-card.js", str(self.card_file), False),
+            ("/donetick_dev/donetick-action-editor.js", str(self.action_file), False)])
         version = sha256(self.card_file.read_bytes()).hexdigest()[:12]
         action_version = sha256(self.action_file.read_bytes()).hexdigest()[:12]
         self.assertEqual(self.add_url.call_args_list, [
-            ((self.hass, f"/donetick/donetick-user-todo-card.js?v={version}"),),
-            ((self.hass, f"/donetick/donetick-action-editor.js?v={action_version}"),)])
+            ((self.hass, f"/donetick_dev/donetick-user-todo-card.js?v={version}"),),
+            ((self.hass, f"/donetick_dev/donetick-action-editor.js?v={action_version}"),)])
 
     async def test_registration_failure_can_retry(self):
         self.hass.http.async_register_static_paths.side_effect = RuntimeError("Not ready")
@@ -56,11 +56,11 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.add_url.call_count, 2)
 
     async def test_hacs_package_contains_card_and_setup_dependency(self):
-        manifest = json.loads((ROOT / "custom_components/donetick/manifest.json").read_text())
+        manifest = json.loads((ROOT / "custom_components/donetick_dev/manifest.json").read_text())
         self.assertIn("frontend", manifest["dependencies"])
         self.assertTrue(self.card_file.is_file())
-        self.assertIn("donetick-user-todo-card", self.card_file.read_text(encoding="utf-8"))
-        tree = ast.parse((ROOT / "custom_components/donetick/__init__.py").read_text())
+        self.assertIn("donetick-dev-user-todo-card", self.card_file.read_text(encoding="utf-8"))
+        tree = ast.parse((ROOT / "custom_components/donetick_dev/__init__.py").read_text())
         setup = next(node for node in tree.body
                      if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_setup_entry")
         self.assertTrue(any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)

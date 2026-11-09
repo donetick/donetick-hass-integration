@@ -7,11 +7,11 @@ from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
-CARD_URL = "/donetick/donetick-user-todo-card.js"
+CARD_URL = "/donetick_dev/donetick-user-todo-card.js"
 CARD_FILE = Path(__file__).parent / "frontend" / "donetick-user-todo-card.js"
-ACTION_URL = "/donetick/donetick-action-editor.js"
+ACTION_URL = "/donetick_dev/donetick-action-editor.js"
 ACTION_FILE = Path(__file__).parent / "frontend" / "donetick-action-editor.js"
-DATA_FRONTEND = "donetick_frontend"
+DATA_FRONTEND = "donetick_dev_frontend"
 
 
 async def async_setup_frontend(hass: HomeAssistant) -> None:

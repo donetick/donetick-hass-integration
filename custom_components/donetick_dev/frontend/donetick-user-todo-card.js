@@ -205,7 +205,7 @@ function samePresentation(previous, next) {
     && previous.config === next.config && previous.localize === next.localize;
 }
 class DonetickUserTodoCard extends HTMLElement {
-  static getConfigElement() { return document.createElement('donetick-user-todo-editor'); }
+  static getConfigElement() { return document.createElement('donetick-dev-user-todo-editor'); }
   static getStubConfig(hass) {
     const entity = Object.keys(hass.states).find(id => id.startsWith('todo.') && hass.states[id].attributes.circle_members);
     return {entity, user_id: hass.states[entity]?.attributes.donetick_user_id ?? hass.states[entity]?.attributes.circle_members?.[0]?.user_id};
@@ -284,7 +284,7 @@ class DonetickUserTodoCard extends HTMLElement {
   // Without an account to file it under, nothing is remembered.
   performerKey() {
     const entry = this._hass?.states[this._config?.entity]?.attributes.config_entry_id;
-    return entry ? `donetick-user-todo-card:last-performer:${entry}` : null;
+    return entry ? `donetick-dev-user-todo-card:last-performer:${entry}` : null;
   }
   lastPerformer() {
     const key = this.performerKey(); if (!key) return undefined;
@@ -311,7 +311,7 @@ class DonetickUserTodoCard extends HTMLElement {
       if (dueDate) data.due_date = dueDate;
       if (assignedTo !== undefined) data.assigned_to = assignedTo;
       if (completedBy !== undefined) data.completed_by = completedBy;
-      await this._hass.callService('donetick', dueDate || assignedTo !== undefined ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
+      await this._hass.callService('donetick_dev', dueDate || assignedTo !== undefined ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
       // Only a completion Donetick accepted moves its person to the front.
       if (completedBy !== undefined) this.rememberPerformer(completedBy);
       // Only this task's panel: a slow call must not close one opened meanwhile for
@@ -997,7 +997,7 @@ class DonetickUserTodoEditor extends HTMLElement {
     }
   }
 }
-if (!customElements.get('donetick-user-todo-card')) customElements.define('donetick-user-todo-card', DonetickUserTodoCard);
-if (!customElements.get('donetick-user-todo-editor')) customElements.define('donetick-user-todo-editor', DonetickUserTodoEditor);
+if (!customElements.get('donetick-dev-user-todo-card')) customElements.define('donetick-dev-user-todo-card', DonetickUserTodoCard);
+if (!customElements.get('donetick-dev-user-todo-editor')) customElements.define('donetick-dev-user-todo-editor', DonetickUserTodoEditor);
 window.customCards = window.customCards || [];
-if (!window.customCards.some(card => card.type === 'donetick-user-todo-card')) window.customCards.push({type: 'donetick-user-todo-card', name: 'Donetick User Tasks', description: 'Tasks for one user with Complete and Postpone controls'});
+if (!window.customCards.some(card => card.type === 'donetick-dev-user-todo-card')) window.customCards.push({type: 'donetick-dev-user-todo-card', name: 'Donetick (Dev) User Tasks', description: 'Tasks for one user with Complete and Postpone controls'});

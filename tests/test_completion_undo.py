@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 from mapping_test_helpers import load_completion_user
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPONENT = ROOT / "custom_components" / "donetick"
+COMPONENT = ROOT / "custom_components" / "donetick_dev"
 DOMAIN = "donetick"
 
 

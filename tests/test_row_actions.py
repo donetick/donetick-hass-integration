@@ -9,7 +9,7 @@ import unittest
 from typing import Any, List, Optional
 from mapping_test_helpers import load_completion_user
 
-ROOT = Path(__file__).resolve().parents[1] / 'custom_components/donetick'
+ROOT = Path(__file__).resolve().parents[1] / 'custom_components/donetick_dev'
 
 class RowActionTests(unittest.IsolatedAsyncioTestCase):
     def test_task_assignee_candidates_are_preserved(self):

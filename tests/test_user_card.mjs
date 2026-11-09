@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 globalThis.HTMLElement = class {};
 globalThis.customElements = {define() {}, get() {}, whenDefined() { return Promise.resolve(); }};
 globalThis.window = {};
-const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit, taskLabels, dateFilters, recurrenceText} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+const {userTasks, actionData, emptyMessage, dueText, upcomingDayLimit, taskLabels, dateFilters, recurrenceText} = await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 for (const unit of ['hours','days','weeks','months','years']) {
   assert.equal(recurrenceText({frequency_type:'interval',frequency:6,interval_type:unit}),`Every 6 ${unit}`);
   assert.equal(recurrenceText({frequency_type:'interval',frequency:1,interval_type:unit}),`Every 1 ${unit.slice(0,-1)}`);

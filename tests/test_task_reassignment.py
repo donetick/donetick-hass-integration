@@ -12,7 +12,7 @@ from test_update_permissions import Response, HttpError
 
 class TaskReassignmentTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/api.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/api.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         client = next(node for node in tree.body if isinstance(node, ast.ClassDef))
         client.body = [node for node in client.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))

@@ -16,7 +16,7 @@ from test_task_sensor_attributes import load_definitions
 from test_update_permissions import HttpError, Response
 
 
-COMPONENT = Path(__file__).resolve().parents[1] / "custom_components/donetick"
+COMPONENT = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev"
 
 
 class TaskCreationTests(unittest.IsolatedAsyncioTestCase):

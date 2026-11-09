@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 class CalendarDateTests(unittest.TestCase):
     def setUp(self):
         self.local = ZoneInfo("America/New_York")
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/calendar.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/calendar.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         # Follow the existing lightweight tests: execute the actual helpers without
         # requiring an installed Home Assistant server.

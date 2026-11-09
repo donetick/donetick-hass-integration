@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 
 from test_update_permissions import HttpError, Response
 
-COMPONENT = Path(__file__).resolve().parents[1] / 'custom_components/donetick'
+COMPONENT = Path(__file__).resolve().parents[1] / 'custom_components/donetick_dev'
 RECURRENCE = runpy.run_path(str(COMPONENT / 'recurrence.py'))
 build_payload = RECURRENCE['build_recurrence_payload']
 

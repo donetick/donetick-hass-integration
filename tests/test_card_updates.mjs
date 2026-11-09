@@ -8,13 +8,13 @@ customElements.define('ha-form',class extends HTMLElement {
   set data(value){this._data=value;dataWrites++;}
   get data(){return this._data;}
 });
-await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 const task={task_id:1,assigned_to:1,name:'Daily task',labels:['original']};
 const state={state:'1',attributes:{circle_members:[{user_id:1,display_name:'Demo'}],tasks:[task]}};
 let hass={states:{'todo.demo':state},locale:{language:'en'},themes:{darkMode:false},callService:async()=>{}};
 const config={entity:'todo.demo',user_id:1};
-const card=document.createElement('donetick-user-todo-card');card.setConfig(config);card.hass=hass;
-const editor=document.createElement('donetick-user-todo-editor');editor.setConfig(config);editor.hass=hass;
+const card=document.createElement('donetick-dev-user-todo-card');card.setConfig(config);card.hass=hass;
+const editor=document.createElement('donetick-dev-user-todo-editor');editor.setConfig(config);editor.hass=hass;
 let editorRenders=0;
 const originalRender=editor.render.bind(editor);
 editor.render=()=>{editorRenders++;originalRender();};

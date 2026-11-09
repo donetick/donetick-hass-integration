@@ -9,7 +9,7 @@ import unittest
 
 class TaskFilteringTests(unittest.TestCase):
     def setUp(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/todo.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         base = next(node for node in tree.body if isinstance(node, ast.ClassDef)
                     and node.name == "DonetickTodoListBase")
@@ -54,7 +54,7 @@ class TaskFilteringTests(unittest.TestCase):
                          [matching, other, archived, unassigned]), [matching])
 
     def test_card_task_attributes_expose_labels(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/todo.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         base = next(node for node in tree.body if isinstance(node, ast.ClassDef)
                     and node.name == "DonetickTodoListBase")
@@ -81,7 +81,7 @@ class TaskFilteringTests(unittest.TestCase):
         self.assertEqual([member["is_active"] for member in members], [True,False])
 
     def test_member_attributes_expose_anyone_tasks_with_same_due_window(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/todo.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         base = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'DonetickTodoListBase')
         method = next(node for node in base.body if isinstance(node, ast.FunctionDef) and node.name == 'extra_state_attributes')
@@ -108,7 +108,7 @@ class TaskFilteringTests(unittest.TestCase):
         self.assertEqual(attributes['tasks'][0]['points'], 10)
         self.assertEqual(attributes['anyone_tasks'][0]['points'], 10)
     def test_card_task_attributes_expose_labels(self):
-        source = Path(__file__).resolve().parents[1] / "custom_components/donetick/todo.py"
+        source = Path(__file__).resolve().parents[1] / "custom_components/donetick_dev/todo.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         base = next(node for node in tree.body if isinstance(node, ast.ClassDef)
                     and node.name == "DonetickTodoListBase")

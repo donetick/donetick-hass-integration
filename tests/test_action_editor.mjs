@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {recurrenceFields, cleanPatternChange, installRecurrenceEditor} from '../custom_components/donetick/frontend/donetick-action-editor.js';
+import {recurrenceFields, cleanPatternChange, installRecurrenceEditor} from '../custom_components/donetick_dev/frontend/donetick-action-editor.js';
 
 assert.deepEqual([...recurrenceFields({})], []);
 assert.deepEqual([...recurrenceFields({frequency_type:'once'})], []);
@@ -55,7 +55,7 @@ installRecurrenceEditor(Control);
 assert.equal(Control.prototype.updated,wrapper);
 const control = document.createElement('ha-service-control');
 document.body.append(control);
-control.value = {action:'donetick.update_task',data:{frequency_type:'interval',frequency:3,interval_unit:'days'}};
+control.value = {action:'donetick_dev.update_task',data:{frequency_type:'interval',frequency:3,interval_unit:'days'}};
 control.updated();
 const row = key => [...control.shadowRoot.querySelectorAll('ha-selector')].find(item => item.key === key).parentElement;
 assert.equal(row('frequency').hidden,false);
@@ -78,32 +78,32 @@ control.value = {...received,data:{...received.data,week_pattern:'week_of_month'
 control.updated();
 assert.equal(row('occurrences').hidden,false);
 // Opening existing YAML never silently drops or conceals enabled fields.
-control.value = {action:'donetick.update_task',data:{frequency_type:'days_of_the_week',frequency:3}};
+control.value = {action:'donetick_dev.update_task',data:{frequency_type:'days_of_the_week',frequency:3}};
 control.updated();
 assert.equal(row('frequency').hidden,false);
 assert.equal(control.value.data.frequency,3);
 // Nested action-selector values are not changes to the containing action.
 const nestedData = {frequency_type:'once',frequency:3};
 row('name').querySelector('ha-selector').dispatchEvent(new CustomEvent('value-changed',{
-  bubbles:true,composed:true,detail:{value:{action:'donetick.update_task',data:nestedData}},
+  bubbles:true,composed:true,detail:{value:{action:'donetick_dev.update_task',data:nestedData}},
 }));
 assert.equal(received.data,nestedData);
 // Numeric YAML occurrences display using HA's string-valued select options,
 // while the saved YAML retains its original numeric values.
 const numericOccurrences = [1,-1];
-control.value = {action:'donetick.update_task',data:{
+control.value = {action:'donetick_dev.update_task',data:{
   frequency_type:'days_of_the_week',week_pattern:'week_of_month',occurrences:numericOccurrences,
 }};
 control.updated();
 assert.deepEqual(row('occurrences').querySelector('ha-selector').value,['1','-1']);
 assert.equal(control.value.data.occurrences,numericOccurrences);
 // Temporarily detaching and reattaching an editor cannot strand hidden rows.
-control.value = {action:'donetick.update_task',data:{frequency_type:'once'}};
+control.value = {action:'donetick_dev.update_task',data:{frequency_type:'once'}};
 control.updated();
 control.remove();
 control.updated();
 document.body.append(control);
-control.value = {action:'donetick.update_task',data:{frequency_type:'interval'}};
+control.value = {action:'donetick_dev.update_task',data:{frequency_type:'interval'}};
 control.updated();
 assert.equal(row('frequency').hidden,false);
 assert.notEqual(row('frequency').style.display,'none');
@@ -113,18 +113,18 @@ control.updated();
 for (const key of fields) assert.equal(row(key).hidden,false);
 // The YAML data editor itself is untouched.
 control.shadowRoot.append(document.createElement('ha-yaml-editor'));
-control.value = {action:'donetick.update_task',data:{frequency_type:'interval',frequency:3}};
+control.value = {action:'donetick_dev.update_task',data:{frequency_type:'interval',frequency:3}};
 control.updated();
 const yamlData = {frequency_type:'once',frequency:3};
-control.dispatchEvent(new CustomEvent('value-changed',{bubbles:true,detail:{value:{action:'donetick.update_task',data:yamlData}}}));
+control.dispatchEvent(new CustomEvent('value-changed',{bubbles:true,detail:{value:{action:'donetick_dev.update_task',data:yamlData}}}));
 assert.equal(received.data,yamlData);
 assert.ok(control.originalCalls>=6);
 // Loading the automatic startup adapter remains safe and idempotent.
 customElements.define('home-assistant',class extends HTMLElement {});
-await import('../custom_components/donetick/frontend/donetick-action-editor.js?startup');
+await import('../custom_components/donetick_dev/frontend/donetick-action-editor.js?startup');
 assert.equal(Control.prototype.updated,wrapper);
 control.shadowRoot.querySelector('ha-yaml-editor').remove();
-control.value = {action:'donetick.update_task',data:{frequency_type:'once'}};
+control.value = {action:'donetick_dev.update_task',data:{frequency_type:'once'}};
 control.dispatchEvent(new window.MouseEvent('click',{bubbles:true,composed:true}));
 assert.equal(row('frequency').hidden,true);
 console.log('Recurrence controls follow pattern selection, clear incompatible UI fields, and preserve YAML, templates, and other actions');

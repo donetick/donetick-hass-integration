@@ -8,7 +8,7 @@ Object.assign(globalThis, {window, document: window.document, HTMLElement: windo
   customElements: window.customElements, CustomEvent: window.CustomEvent});
 customElements.define('ha-form',class extends HTMLElement {});
 customElements.define('home-assistant',class extends HTMLElement {});
-await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 const settle=async()=>{await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));};
 
 const members=[{user_id:1,display_name:'Casey'},{user_id:2,display_name:'Ivy'}];
@@ -17,7 +17,7 @@ const hass={locale:{language:'en'},states:{'todo.all':{state:'2',attributes:{con
   {task_id:1,assigned_to:1,assignee_ids:[1],name:'Dishes',can_postpone:true,next_due_date:'2026-10-24T16:00:00Z',description:'Rinse first'},
   {task_id:2,assigned_to:2,assignee_ids:[2],name:'Laundry',can_postpone:true,next_due_date:'2026-10-25T16:00:00Z'}
 ]}}},callService:()=>new Promise((_,reject)=>{refuse=()=>reject(new Error('Donetick task action failed: no permission'));})};
-const card=document.createElement('donetick-user-todo-card');
+const card=document.createElement('donetick-dev-user-todo-card');
 card.setConfig({entity:'todo.all',user_id:'all'});
 card.hass=hass;document.body.append(card);
 const root=card.shadowRoot;

@@ -7,7 +7,7 @@ Object.assign(globalThis, {window, document: window.document, HTMLElement: windo
   customElements: window.customElements, CustomEvent: window.CustomEvent});
 customElements.define('ha-form',class extends HTMLElement {});
 customElements.define('home-assistant',class extends HTMLElement {});
-const {performerChoices} = await import('../custom_components/donetick/frontend/donetick-user-todo-card.js');
+const {performerChoices} = await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 // A failed assertion here can leave happy-dom spinning rather than exiting, so the CI
 // step carries a timeout: a stall turns the job red instead of idling.
@@ -31,7 +31,7 @@ const mount=(config={},{circle=members,list=tasks,refuse=false}={})=>{
     config_entry_id:'entry',circle_members:circle,tasks:list}}},
     callService:async(...args)=>{calls.push(args);if(refuse)throw new Error(
       'Donetick task action failed: Donetick denied the completion (400): User is not assigned to chore');}};
-  const card=document.createElement('donetick-user-todo-card');
+  const card=document.createElement('donetick-dev-user-todo-card');
   // The dropdown picker; the chips are covered by test_card_performer.mjs.
   card.setConfig({entity:'todo.all',user_id:'all',show_complete_as:true,complete_as_picker:'dropdown',...config});
   card.hass=hass;document.body.append(card);previous=card;
@@ -81,7 +81,7 @@ console.log('The task\'s own people are offered, the whole circle only when nobo
   assert.equal(page.action('Shared'),null);
   page.root.querySelectorAll('input[type=checkbox]')[0].dispatchEvent(new window.Event('change'));
   await tick();
-  assert.deepEqual(page.calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);
+  assert.deepEqual(page.calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);
   console.log('Off by default, and the completion control still credits the assignee');
 }
 
@@ -103,7 +103,7 @@ console.log('The task\'s own people are offered, the whole circle only when nobo
   page.choose(2);
   assert.equal(page.save().disabled,false);
   page.submit();
-  assert.deepEqual(page.calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:2}]);
+  assert.deepEqual(page.calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:2}]);
   await tick();
   assert.equal(page.panel(),null);
   console.log('Confirming credits the chosen member and closes the panel');
@@ -116,7 +116,7 @@ console.log('The task\'s own people are offered, the whole circle only when nobo
   assert.deepEqual([...page.select().options].map(option=>option.textContent),['Ivy','Jamie']);
   assert.equal(page.select().value,'2');
   page.submit();
-  assert.deepEqual(page.calls.pop(),['donetick','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:2}]);
+  assert.deepEqual(page.calls.pop(),['donetick_dev','complete_assigned_task',{task_id:3,config_entry_id:'entry',completed_by:2}]);
   console.log('The assignee is preselected, so an unchanged confirm books the same credit');
 }
 

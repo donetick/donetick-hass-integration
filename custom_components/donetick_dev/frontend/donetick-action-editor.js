@@ -5,7 +5,7 @@ const REPEATING = [...CUSTOM, 'daily', 'weekly', 'monthly', 'yearly', 'adaptive'
 const NON_REPEATING = ['once', 'no_repeat', 'always', 'trigger'];
 const FIELDS = new Set(['frequency', 'interval_unit', 'weekdays', 'week_pattern',
   'occurrences', 'months', 'day_of_month', 'schedule_time', 'schedule_from']);
-const INSTALLED = Symbol.for('donetick.action-editor.installed');
+const INSTALLED = Symbol.for('donetick_dev.action-editor.installed');
 const states = new WeakMap();
 
 export function recurrenceFields(data = {}) {
@@ -63,7 +63,7 @@ export function syncRecurrenceEditor(control) {
     control.addEventListener('value-changed', event => {
       if (event.composedPath()[0] !== control) return;
       const next = event.detail?.value;
-      if (next?.action !== 'donetick.update_task' || control.shadowRoot?.querySelector('ha-yaml-editor')) return;
+      if (next?.action !== 'donetick_dev.update_task' || control.shadowRoot?.querySelector('ha-yaml-editor')) return;
       const previous = control.value?.data || {};
       const cleaned = cleanPatternChange(previous, next.data || {});
       if (cleaned === next.data) return;
@@ -76,7 +76,7 @@ export function syncRecurrenceEditor(control) {
     }, {capture: true});
   }
   const value = control.value;
-  if (value?.action !== 'donetick.update_task' || !control.shadowRoot
+  if (value?.action !== 'donetick_dev.update_task' || !control.shadowRoot
       || control.shadowRoot.querySelector('ha-yaml-editor')) {
     restoreRows(state);
     return;
@@ -129,7 +129,7 @@ async function startup() {
   // Some HA versions register this component in a scoped registry. Discover
   // the actual instance from composed UI events instead of assuming the global
   // registry owns it. This avoids polling or observing the whole HA document.
-  const discovery = Symbol.for('donetick.action-editor.discovery');
+  const discovery = Symbol.for('donetick_dev.action-editor.discovery');
   if (typeof document !== 'undefined' && !document[discovery]) {
     document[discovery] = true;
     const discover = event => {

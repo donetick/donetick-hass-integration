@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock
 
 class ActionSelectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_account_choices_refresh_and_listeners_are_removed_on_unload(self):
-        source = Path(__file__).resolve().parents[1] / 'custom_components/donetick/action_selectors.py'
+        source = Path(__file__).resolve().parents[1] / 'custom_components/donetick_dev/action_selectors.py'
         tree = ast.parse(source.read_text())
         tree.body = [node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)]
         descriptions = {'donetick': {name: {
@@ -64,7 +64,7 @@ class ActionSelectorTests(unittest.IsolatedAsyncioTestCase):
 
 class PickerResolutionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        source = Path(__file__).resolve().parents[1] / 'custom_components/donetick/action_selectors.py'
+        source = Path(__file__).resolve().parents[1] / 'custom_components/donetick_dev/action_selectors.py'
         tree = ast.parse(source.read_text(encoding='utf-8'))
         tree.body = [node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)]
         self.namespace = {'DOMAIN': 'donetick', 'deepcopy': deepcopy, 'copy': copy,
