@@ -21,6 +21,26 @@ For interval tasks, `interval_type` is `hours`, `days`, `weeks`, `months`, or `y
 The interval type is `null` for other schedules or missing interval metadata.
 Points preserve an explicit zero; tasks without a point value expose `null`.
 
+### User points sensors
+
+Each active circle member gets a device named after them with a `Points` sensor
+(for example `sensor.sam_points`). The state is the member's Donetick points, and the
+attributes summarize their chores:
+
+| Attribute | Meaning |
+| --- | --- |
+| `points_redeemed`, `points_available` | Redeemed points, and points minus redeemed points |
+| `pending_count` | Active tasks currently assigned to the member |
+| `overdue_count`, `due_today_count` | Pending tasks past due, and pending tasks due later today |
+| `completed_today_count`, `completed_last_7_days_count` | Completions the member performed |
+| `pending_tasks` | `task_id`, `name`, `next_due_date`, `points`, `overdue`, soonest first |
+| `completed_tasks` | `task_id`, `name`, `completed_at`, newest first, last 7 days |
+| `user_id`, `display_name`, `username`, `role`, `image` | Member details |
+
+Tasks assigned to Anyone are not counted for any member. The task lists are not stored
+in the recorder history. Members who join the circle get a sensor on the next refresh;
+members who leave or are deactivated become unavailable.
+
 ### 🔧 Things Integration  
 - **Sync things**: Control Donetick "things" as Home Assistant entities
 - **Multiple Entity Types**: 

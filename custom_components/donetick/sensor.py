@@ -8,6 +8,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .thing import async_setup_entry as thing_async_setup_entry
 from .chore_sensor import async_setup_chore_sensors
+from .user_sensor import async_setup_user_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,3 +24,4 @@ async def async_setup_entry(
         _LOGGER.debug("Thing sensor setup skipped: %s", err)
 
     await async_setup_chore_sensors(hass, config_entry, async_add_entities)
+    await async_setup_user_sensors(hass, config_entry, async_add_entities)
