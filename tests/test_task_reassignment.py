@@ -92,6 +92,30 @@ class TaskReassignmentTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(payload[key], value, key)
         self.assertEqual(self.task, original)
 
+    async def test_single_person_list_is_replaced_by_the_new_member(self):
+        self.task.update(assignees=[{"userId": 1}], assignedTo=1, assignStrategy="random")
+        original = deepcopy(self.task)
+        await self.client.async_assign_task(5, 3)
+        method, url, args = self.requests[-1]
+        self.assertEqual((method, url), ("put", "https://example.invalid/api/v1/chores/"))
+        payload = args["json"]
+        self.assertEqual(payload["assignees"], [{"userId": 3}])
+        self.assertEqual(payload["assignedTo"], 3)
+        self.assertEqual(payload["assignStrategy"], "random")
+        for key, value in original.items():
+            if key not in ("assignedTo", "assignees", "labelsV2"):
+                self.assertEqual(payload[key], value, key)
+
+    async def test_malformed_assignee_entries_are_skipped(self):
+        self.task.update(assignees=[{"userId": 1}, None, "2", {"userId": 2}])
+        await self.client.async_assign_task(5, 2)
+        _, url, args = self.requests[-1]
+        self.assertEqual(url, "https://example.invalid/api/v1/chores/5/assignee")
+        await self.client.async_assign_task(5, 3)
+        _, url, args = self.requests[-1]
+        self.assertEqual(url, "https://example.invalid/api/v1/chores/")
+        self.assertEqual(args["json"]["assignees"], [{"userId": 1}, {"userId": 2}, {"userId": 3}])
+
     async def test_new_member_edit_denial_is_reported(self):
         self.put_response = Response({"error": "user does not have permission to edit this chore"})
         with self.assertRaisesRegex(ValueError, "permission to edit"):

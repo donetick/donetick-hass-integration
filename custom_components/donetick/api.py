@@ -444,7 +444,7 @@ class DonetickApiClient:
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise ValueError("Unable to fetch the current task for reassignment")
 
-        assignees = task.get("assignees") or []
+        assignees = [assignee for assignee in task.get("assignees") or [] if isinstance(assignee, dict)]
         already_eligible = any(assignee.get("userId") == assigned_to for assignee in assignees)
         if assigned_to is None or task.get("assignStrategy") == "no_assignee" or not already_eligible:
             payload = dict(task)
@@ -454,6 +454,10 @@ class DonetickApiClient:
                 payload["assignees"] = []
             elif task.get("assignStrategy") == "no_assignee" or not assignees:
                 payload["assignStrategy"] = "keep_last_assigned"
+                payload["assignees"] = [{"userId": assigned_to}]
+            elif len(assignees) == 1:
+                # A single-person list is replaced, keeping its strategy. Adding
+                # the new member would turn it into a rotation of two.
                 payload["assignees"] = [{"userId": assigned_to}]
             else:
                 # The dedicated endpoint only accepts existing assignees. Add
