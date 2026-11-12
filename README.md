@@ -69,6 +69,34 @@ Configure via **Settings** → **Devices & Services** → **Add Integration** �
   - Self-hosted: `http://your-host:2021` (or your port)
 - **API Token**: Generate from Donetick user settings
 
+### Connecting to the Home Assistant app
+
+For the [Donetick Home Assistant app](https://github.com/donetick/hassio-addons),
+use `http://<HA-host-IP>:2021`, for example `http://192.168.1.50:2021`.
+When Home Assistant and the app run on the same host, `http://localhost:2021`
+can also work. If you changed the app's exposed port under its **Network**
+settings, use that port instead of `2021`.
+
+The URL must reach Donetick from Home Assistant, rather than from your browser.
+Your Home Assistant dashboard URL, ingress URL, or DuckDNS address does not
+automatically route to Donetick. A hostname such as `homeassistant.local` only
+works if Home Assistant can resolve it and reach Donetick on the specified port.
+
+### Changing the server URL or API token
+
+Go to **Settings > Devices & services > Donetick**, open the integration entry's
+three-dot menu, and choose **Reconfigure**. Update the server URL and optionally
+enter a replacement API token; leave the token blank to keep the existing one.
+The connection is checked before saving, then the integration reloads. Existing
+entity IDs, task settings, and user mappings are retained. A failed connection
+leaves the saved configuration unchanged.
+
+Use this for an address change or token replacement on the same Donetick server
+and circle. To connect to a different server or circle, add a separate integration:
+user, task, and project IDs and existing mappings may refer to different records.
+
+### Task list settings
+
 **Optional:**
 - **Show Due In**: Days ahead to display upcoming tasks (default: 7)
 - **Create Unified List**: Enable "All Tasks" todo list (default: true)  

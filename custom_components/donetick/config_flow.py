@@ -51,6 +51,44 @@ class DonetickConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._server_data = {}
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Update connection details without replacing the config entry."""
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        assert entry is not None
+        errors = {}
+        if user_input is not None:
+            connection = {
+                CONF_URL: user_input[CONF_URL].strip().rstrip("/"),
+                CONF_TOKEN: user_input.get(CONF_TOKEN, "").strip() or entry.data[CONF_TOKEN],
+            }
+            try:
+                client = DonetickApiClient(
+                    connection[CONF_URL], connection[CONF_TOKEN],
+                    async_get_clientsession(self.hass),
+                )
+                await client.async_get_tasks()
+            except aiohttp.ClientResponseError as err:
+                errors["base"] = "invalid_auth" if err.status in (401, 403) else "cannot_connect"
+            except (aiohttp.ClientError, TimeoutError):
+                errors["base"] = "cannot_connect"
+            except Exception:  # pylint: disable=broad-except
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry, data={**entry.data, **connection}, reason="reconfigure_successful"
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({
+                vol.Required(CONF_URL, default=(user_input or entry.data)[CONF_URL]): str,
+                vol.Optional(CONF_TOKEN): str,
+            }),
+            errors=errors,
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:

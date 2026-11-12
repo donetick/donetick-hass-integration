@@ -9,6 +9,18 @@
           "token": "API Token"
         }
       },
+      "reconfigure": {
+        "title": "Update Donetick connection",
+        "description": "Change the URL or API token for the same Donetick server and circle. Existing entities, task settings and user mappings are kept. To use a different server or circle, add a separate integration.",
+        "data": {
+          "url": "Donetick URL",
+          "token": "Replacement API token"
+        },
+        "data_description": {
+          "url": "For the Home Assistant app, use http://<HA-host-IP>:2021 or your configured app port.",
+          "token": "Leave blank to keep the current API token."
+        }
+      },
       "options": {
         "title": "Organize Your Tasks",
         "description": "Choose how you'd like to organize your Donetick tasks in Home Assistant",
@@ -21,6 +33,9 @@
           "refresh_interval": "Refresh interval"
         }
       }
+    },
+    "abort": {
+      "reconfigure_successful": "Donetick connection updated successfully."
     },
     "error": {
       "cannot_connect": "Failed to connect to Donetick",
