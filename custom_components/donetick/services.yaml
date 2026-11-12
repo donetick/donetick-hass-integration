@@ -48,7 +48,7 @@ complete_task:
 
 create_task:
   name: Create Task
-  description: Create a new Donetick task. Extra assignment and points settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
+  description: Create a new Donetick task. Extra assignment, points, and reminder settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
   fields:
     name:
       name: Task Name
@@ -94,6 +94,45 @@ create_task:
           min: 0
           step: 1
           mode: box
+    reminders:
+      name: Reminders
+      description: >-
+        Add up to five reminder offsets. Edit each entry to choose its timing and offset.
+        Remove all entries to create without reminders.
+      selector:
+        object:
+          multiple: true
+          fields:
+            when:
+              label: When
+              default: "Before due date"
+              required: true
+              selector:
+                select:
+                  mode: dropdown
+                  options:
+                    - {value: "Before due date", label: Before due date}
+                    - {value: "On due date", label: On due date}
+                    - {value: "After due date", label: After due date}
+            amount:
+              label: Amount (Before/After only)
+              required: false
+              selector:
+                number:
+                  min: 1
+                  max: 10000
+                  step: 1
+                  mode: box
+            unit:
+              label: Unit (Before/After only)
+              required: false
+              selector:
+                select:
+                  mode: dropdown
+                  options:
+                    - {value: minutes, label: Minutes}
+                    - {value: hours, label: Hours}
+                    - {value: days, label: Days}
     created_by:
       name: Created By User ID
       description: The Donetick circle member who creates and is assigned the task (optional; defaults to the API token owner)
@@ -121,6 +160,45 @@ update_task:
           min: 0
           step: 1
           mode: box
+    reminders:
+      name: Reminders
+      description: >-
+        Add up to five reminder offsets. Edit each entry to choose its timing and offset.
+        Leave unset to keep existing reminders, or remove all entries to disable them.
+      selector:
+        object:
+          multiple: true
+          fields:
+            when:
+              label: When
+              default: "Before due date"
+              required: true
+              selector:
+                select:
+                  mode: dropdown
+                  options:
+                    - {value: "Before due date", label: Before due date}
+                    - {value: "On due date", label: On due date}
+                    - {value: "After due date", label: After due date}
+            amount:
+              label: Amount (Before/After only)
+              required: false
+              selector:
+                number:
+                  min: 1
+                  max: 10000
+                  step: 1
+                  mode: box
+            unit:
+              label: Unit (Before/After only)
+              required: false
+              selector:
+                select:
+                  mode: dropdown
+                  options:
+                    - {value: minutes, label: Minutes}
+                    - {value: hours, label: Hours}
+                    - {value: days, label: Days}
     task:
       name: Task
       description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.

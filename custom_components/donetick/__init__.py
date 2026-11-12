@@ -18,7 +18,7 @@ from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
 from .action_selectors import async_setup_action_selectors, async_refresh_action_selectors, async_prepare_action_call
 from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS
-from .task_properties import PROPERTY_FIELDS, apply_task_properties, validate_points
+from .task_properties import PROPERTY_FIELDS, apply_task_properties, validate_points, validate_reminders
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -46,6 +46,10 @@ TASK_PROPERTY_SCHEMA = {
     vol.Optional("points"): validate_points,
 }
 
+REMINDER_SCHEMA = {
+    vol.Optional("reminders"): validate_reminders,
+}
+
 CREATE_TASK_SCHEMA = vol.Schema({
     vol.Required("name"): cv.string,
     vol.Optional("description"): cv.string,
@@ -54,11 +58,13 @@ CREATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
     vol.Optional("assigned_to_username"): cv.string,
     **TASK_PROPERTY_SCHEMA,
+    **REMINDER_SCHEMA,
     vol.Optional("config_entry_id"): cv.string,
 })
 
 UPDATE_TASK_SCHEMA = vol.Schema({
     **TASK_PROPERTY_SCHEMA,
+    **REMINDER_SCHEMA,
     vol.Optional("task"): cv.string,
     vol.Optional("task_id"): vol.Coerce(int),
     vol.Optional("name"): cv.string,
@@ -303,6 +309,8 @@ async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     try:
         due_date = normalize_due_date(call.data.get("due_date"))
         properties = {field: call.data[field] for field in (*PROPERTY_FIELDS, "assigned_to") if field in call.data}
+        if "reminders" in call.data:
+            properties["reminders"] = call.data["reminders"]
         if properties:
             # Validate before creation, which cannot be retried safely on failure.
             apply_task_properties({"frequencyType": "once", "nextDueDate": due_date}, properties)
@@ -350,6 +358,8 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     config_entry_id = call.data.get("config_entry_id")
     recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
     properties = {field: call.data[field] for field in PROPERTY_FIELDS if field in call.data}
+    if "reminders" in call.data:
+        properties["reminders"] = call.data["reminders"]
     if properties and "assigned_to" in call.data:
         properties["assigned_to"] = assigned_to
 
