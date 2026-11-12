@@ -423,6 +423,11 @@ class DonetickApiClient:
             for key in ("points", "assignedTo"):
                 if key in payload and updated_data.get(key) != payload[key]:
                     raise ValueError(f"Donetick did not apply {key} for task {task_id}; refresh the task")
+            if "reminders" in properties:
+                expected_templates = payload.get("notificationMetadata", {}).get("templates", [])
+                actual_templates = (updated_data.get("notificationMetadata") or {}).get("templates", [])
+                if updated_data.get("notification") != bool(expected_templates) or actual_templates != expected_templates:
+                    raise ValueError(f"Donetick did not apply reminders for task {task_id}; refresh the task")
         expected_metadata = {key: value for key, value in (payload["frequencyMetadata"] or {}).items()
                              if value not in (None, "", [])}
         actual_metadata = {key: value for key, value in (updated.frequency_metadata or {}).items()

@@ -127,10 +127,13 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse((COMPONENT / "__init__.py").read_text(encoding="utf-8"))
         schema = next(node for node in tree.body if isinstance(node, ast.Assign)
                       and getattr(node.targets[0], "id", None) == "CREATE_TASK_SCHEMA")
+        reminder_validator = object()
         fields = eval(compile(ast.Expression(schema.value), "schema", "eval"),
-                      {"vol": vol, "cv": SimpleNamespace(string=str), "TASK_PROPERTY_SCHEMA": {}})
+                      {"vol": vol, "cv": SimpleNamespace(string=str), "TASK_PROPERTY_SCHEMA": {},
+                       "REMINDER_SCHEMA": {"reminders": reminder_validator}})
         created_by = fields["created_by"]
         self.assertEqual(created_by("3"), 3)
+        self.assertIs(fields["reminders"], reminder_validator)
         for value in ("0", "-2"):
             with self.assertRaises(ValueError):
                 created_by(value)

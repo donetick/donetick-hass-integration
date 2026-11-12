@@ -54,7 +54,11 @@ to keep the existing creator-as-assignee behavior. Username choices are scoped t
 their integration, as in Update Task. Do not supply both assignee fields.
 
 Both `create_task` and `update_task` accept `points`: a non-negative whole number.
-Set `0` for no reward; omit to retain the current value when updating.
+Set `0` for no reward; omit to retain the current value when updating. The repeatable
+Reminders selector supports up to five offsets. Add each with **When** (Before, On due
+date, or After), **Amount**, and **Unit** (Minutes, Hours, or Days). Reminder choices
+are summarized on one line. On update, leave Reminders unset to
+keep existing reminders, or remove all entries to disable them.
 
 For example, an automation triggered when the dishwasher finishes can create:
 
@@ -65,6 +69,10 @@ data:
   assigned_to_username: son
   due_date: "{{ (now() + timedelta(minutes=30)).isoformat() }}"
   points: 3
+  reminders:
+    - when: "Before due date"
+      amount: 30
+      unit: minutes
 ```
 
 Extra creation settings are saved through Donetick's task editor after the task is
@@ -73,7 +81,7 @@ to edit that task (for another creator, use an authorized circle admin/manager).
 If this second step fails, the action reports the created task ID and refreshes
 the list. Recover with `update_task` on that ID rather than repeating creation.
 Updates preserve unrelated task settings and use the current concurrency timestamp;
-points can be combined with the existing repeat-schedule fields.
+points and reminders can be combined with the existing repeat-schedule fields.
 Thing trigger configuration remains managed in Donetick.
 
 To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick circle member's user ID, or `null` for Anyone. Selecting a member outside the task's assignee list adds them to that list while preserving the existing members and assignment strategy; a list with a single person is replaced by the new member instead, keeping its strategy. This and switching to or from Anyone use Donetick's task editor and require permission to edit the task. Donetick remains authoritative on membership and private-project restrictions.
