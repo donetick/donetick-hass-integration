@@ -21,6 +21,15 @@ For interval tasks, `interval_type` is `hours`, `days`, `weeks`, `months`, or `y
 The interval type is `null` for other schedules or missing interval metadata.
 Points preserve an explicit zero; tasks without a point value expose `null`.
 
+### Member points controls
+
+The number platform creates a writable **Points** number entity for each active
+circle member. Its value is the member's available balance (`points` minus
+`pointsRedeemed`). Set it to a higher or lower whole number to add or remove that
+many points; the step is 1, and the balance cannot be reduced below zero. Changes
+are recorded in Donetick's points history. The connected Donetick account must be
+a circle admin, and the server must support the member points adjustment API.
+
 ### 🔧 Things Integration  
 - **Sync things**: Control Donetick "things" as Home Assistant entities
 - **Multiple Entity Types**: 
