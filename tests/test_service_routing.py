@@ -68,7 +68,7 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
                           or isinstance(node, ast.Assign)
                           and getattr(node.targets[0], "id", None) == "_DATE_ONLY_PATTERN"]
         registry = SimpleNamespace(async_get=lambda entity_id: None)
-        namespace = {"DOMAIN": DOMAIN, "ConfigEntry": object, "HomeAssistant": object,
+        namespace = {"PROPERTY_FIELDS": ("points",), "DOMAIN": DOMAIN, "ConfigEntry": object, "HomeAssistant": object,
                      "ServiceCall": object, "Optional": Optional, "_LOGGER": logging.getLogger(__name__),
                      "re": re, "date": date, "time": time, "datetime": datetime,
                      "dt_util": SimpleNamespace(
@@ -123,12 +123,12 @@ class ServiceRoutingTests(unittest.IsolatedAsyncioTestCase):
             return check
 
         vol = SimpleNamespace(Schema=lambda fields: fields, Optional=str, Required=str,
-                              Coerce=coerce, Range=value_range, All=all_of)
+                              Coerce=coerce, Range=value_range, All=all_of, Any=lambda *validators: validators)
         tree = ast.parse((COMPONENT / "__init__.py").read_text(encoding="utf-8"))
         schema = next(node for node in tree.body if isinstance(node, ast.Assign)
                       and getattr(node.targets[0], "id", None) == "CREATE_TASK_SCHEMA")
         fields = eval(compile(ast.Expression(schema.value), "schema", "eval"),
-                      {"vol": vol, "cv": SimpleNamespace(string=str)})
+                      {"vol": vol, "cv": SimpleNamespace(string=str), "TASK_PROPERTY_SCHEMA": {}})
         created_by = fields["created_by"]
         self.assertEqual(created_by("3"), 3)
         for value in ("0", "-2"):
