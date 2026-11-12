@@ -14,6 +14,7 @@ from test_update_permissions import HttpError, Response
 COMPONENT = Path(__file__).resolve().parents[1] / 'custom_components/donetick'
 RECURRENCE = runpy.run_path(str(COMPONENT / 'recurrence.py'))
 build_payload = RECURRENCE['build_recurrence_payload']
+PROPERTIES = runpy.run_path(str(COMPONENT / 'task_properties.py'))
 
 
 def task_fixture():
@@ -170,7 +171,7 @@ class RecurrenceApiTests(unittest.IsolatedAsyncioTestCase):
         client.body = [node for node in client.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                        and node.name in ('__init__', '_headers', '_raise_for_status', '_async_get_editor_task', 'async_update_task_recurrence')]
         future = ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0)
-        namespace = {'build_recurrence_payload': build_payload, 'datetime': datetime, 'API_TIMEOUT': 10,
+        namespace = {'build_recurrence_payload': build_payload, 'apply_task_properties': PROPERTIES['apply_task_properties'], 'datetime': datetime, 'API_TIMEOUT': 10,
                      'aiohttp': SimpleNamespace(ClientError=HttpError), '_LOGGER': logging.getLogger(__name__)}
         def parse(data):
             return SimpleNamespace(frequency_type=data['frequencyType'], frequency=data['frequency'] or 1,
@@ -225,13 +226,40 @@ class RecurrenceApiTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, 'did not apply'):
             await self.client.async_update_task_recurrence(5, {'frequency_type': 'daily'}, 'UTC')
 
+    async def test_points_and_assignment_share_one_editor_write(self):
+        await self.client.async_update_task_recurrence(5, {}, 'UTC', properties={
+            'points': 0, 'assigned_to': 3})
+        self.assertEqual(self.payload['points'], 0)
+        self.assertEqual(self.payload['assignedTo'], 3)
+        self.assertEqual([request[0] for request in self.requests], ['get', 'put', 'get'])
+        for key in ('frequencyType', 'frequencyMetadata', 'updatedAt', 'isPrivate',
+                    'projectId', 'subTasks', 'requireApproval', 'completionActions'):
+            self.assertEqual(self.payload[key], self.task[key])
+
+    async def test_properties_and_schedule_can_change_together(self):
+        await self.client.async_update_task_recurrence(5, {'frequency_type': 'daily'}, 'UTC',
+                                                      properties={'points': 3})
+        self.assertEqual(self.payload['frequencyType'], 'daily')
+        self.assertEqual(self.payload['points'], 3)
+
+    async def test_ignored_property_changes_are_reported(self):
+        self.ignore_update = True
+        with self.assertRaisesRegex(ValueError, 'did not apply points'):
+            await self.client.async_update_task_recurrence(5, {}, 'UTC', properties={'points': 3})
+
+
+    async def test_invalid_properties_never_write(self):
+        with self.assertRaises(ValueError):
+            await self.client.async_update_task_recurrence(5, {}, 'UTC', properties={'points': -1})
+        self.assertEqual([request[0] for request in self.requests], ['get'])
+
 
 class RecurrenceServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_service_routes_schedule_and_other_edits_to_editor_and_keeps_assignment(self):
         tree = ast.parse((COMPONENT / '__init__.py').read_text())
         handler = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                        and node.name == 'async_update_task_service')
-        namespace = {'HomeAssistant': object, 'ServiceCall': object, 'DOMAIN': 'donetick',
+        namespace = {'HomeAssistant': object, 'ServiceCall': object, 'PROPERTY_FIELDS': ('points',), 'DOMAIN': 'donetick',
                      'HomeAssistantError': ValueError, 'RECURRENCE_FIELDS': RECURRENCE['RECURRENCE_FIELDS'],
                      '_get_config_entry': AsyncMock(return_value=SimpleNamespace(entry_id='test')),
                      '_LOGGER': logging.getLogger(__name__)}

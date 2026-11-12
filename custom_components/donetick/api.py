@@ -12,6 +12,7 @@ from homeassistant.util import dt as dt_util
 from .const import API_TIMEOUT
 from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
 from .recurrence import build_recurrence_payload
+from .task_properties import apply_task_properties
 _LOGGER = logging.getLogger(__name__)
 
 _DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -402,12 +403,15 @@ class DonetickApiClient:
         return task
 
     async def async_update_task_recurrence(self, task_id: int, recurrence: dict, default_timezone: str,
-                                         name=None, description=None, due_date=None, force_unarchive=False) -> DonetickTask:
+                                         name=None, description=None, due_date=None, force_unarchive=False,
+                                         properties=None) -> DonetickTask:
         """Use the task editor, retaining its current values and concurrency token."""
         task = await self._async_get_editor_task(task_id)
         payload = build_recurrence_payload(task, recurrence, default_timezone, name=name,
                                            description=description, due_date=due_date,
                                            force_unarchive=force_unarchive)
+        if properties:
+            payload = apply_task_properties(payload, properties)
         async with self._session.put(
             f"{self._base_url}/api/v1/chores/",
             headers=self._headers(), json=payload, timeout=API_TIMEOUT,
@@ -415,6 +419,10 @@ class DonetickApiClient:
             await self._raise_for_status(response, "recurrence update")
         updated_data = await self._async_get_editor_task(task_id)
         updated = DonetickTask.from_json(updated_data)
+        if properties:
+            for key in ("points", "assignedTo"):
+                if key in payload and updated_data.get(key) != payload[key]:
+                    raise ValueError(f"Donetick did not apply {key} for task {task_id}; refresh the task")
         expected_metadata = {key: value for key, value in (payload["frequencyMetadata"] or {}).items()
                              if value not in (None, "", [])}
         actual_metadata = {key: value for key, value in (updated.frequency_metadata or {}).items()

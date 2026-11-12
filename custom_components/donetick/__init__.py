@@ -18,6 +18,7 @@ from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
 from .action_selectors import async_setup_action_selectors, async_refresh_action_selectors, async_prepare_action_call
 from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS
+from .task_properties import PROPERTY_FIELDS, apply_task_properties, validate_points
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -41,15 +42,23 @@ COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Optional("config_entry_id"): cv.string,
 })
 
+TASK_PROPERTY_SCHEMA = {
+    vol.Optional("points"): validate_points,
+}
+
 CREATE_TASK_SCHEMA = vol.Schema({
     vol.Required("name"): cv.string,
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
     vol.Optional("created_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+    vol.Optional("assigned_to_username"): cv.string,
+    **TASK_PROPERTY_SCHEMA,
     vol.Optional("config_entry_id"): cv.string,
 })
 
 UPDATE_TASK_SCHEMA = vol.Schema({
+    **TASK_PROPERTY_SCHEMA,
     vol.Optional("task"): cv.string,
     vol.Optional("task_id"): vol.Coerce(int),
     vol.Optional("name"): cv.string,
@@ -293,26 +302,42 @@ async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     config_entry_id = call.data.get("config_entry_id")
     try:
         due_date = normalize_due_date(call.data.get("due_date"))
+        properties = {field: call.data[field] for field in (*PROPERTY_FIELDS, "assigned_to") if field in call.data}
+        if properties:
+            # Validate before creation, which cannot be retried safely on failure.
+            apply_task_properties({"frequencyType": "once", "nextDueDate": due_date}, properties)
     except ValueError as err:
         raise ServiceValidationError(str(err)) from err
 
     # Find the config entry to use
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
-        return
+        raise HomeAssistantError("No matching Donetick integration found for create_task")
 
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
     client = config["client"]
     coordinator = config["coordinator"]
 
+    result = None
     try:
         result = await client.async_create_task(name, description, due_date, created_by)
+        if properties:
+            await client.async_update_task_recurrence(
+                result.id, {}, hass.config.time_zone, properties=properties)
         _LOGGER.info("Task '%s' created successfully with ID %d", name, result.id)
-        await coordinator.async_request_refresh()
 
     except Exception as e:
         _LOGGER.error("Failed to create task '%s': %s", name, e)
+        if result is not None:
+            raise HomeAssistantError(
+                f"Task {result.id} was created, but its extra settings could not be saved: {e}. "
+                "Use update_task on this ID; do not retry create_task."
+            ) from e
+        raise HomeAssistantError(f"Failed to create Donetick task: {e}") from e
+    finally:
+        if result is not None:
+            await coordinator.async_request_refresh()
 
 async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the update_task service call."""
@@ -324,8 +349,11 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     assigned_to = call.data.get("assigned_to")
     config_entry_id = call.data.get("config_entry_id")
     recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
+    properties = {field: call.data[field] for field in PROPERTY_FIELDS if field in call.data}
+    if properties and "assigned_to" in call.data:
+        properties["assigned_to"] = assigned_to
 
-    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive and not recurrence:
+    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive and not recurrence and not properties:
         raise HomeAssistantError("Provide at least one task field to update")
     
     # Find the config entry to use
@@ -340,13 +368,17 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
 
     try:
         result = None
-        if recurrence:
+        if properties:
+            result = await client.async_update_task_recurrence(
+                task_id, recurrence, hass.config.time_zone, name=name, description=description,
+                due_date=due_date, force_unarchive=force_unarchive, properties=properties)
+        elif recurrence:
             result = await client.async_update_task_recurrence(
                 task_id, recurrence, hass.config.time_zone, name=name, description=description,
                 due_date=due_date, force_unarchive=force_unarchive)
         elif force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
             result = await client.async_update_task(task_id, name, description, due_date, force_unarchive)
-        if "assigned_to" in call.data:
+        if "assigned_to" in call.data and not properties:
             await client.async_assign_task(task_id, assigned_to)
         _LOGGER.info("Task %d updated successfully", task_id)
         await coordinator.async_request_refresh()

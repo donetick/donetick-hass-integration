@@ -48,7 +48,7 @@ complete_task:
 
 create_task:
   name: Create Task
-  description: Create a new Donetick task
+  description: Create a new Donetick task. Extra assignment and points settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
   fields:
     name:
       name: Task Name
@@ -72,6 +72,28 @@ create_task:
       required: false
       selector:
         text:
+    assigned_to_username:
+      name: Assignee username
+      description: Assign independently of the creator. Omit both assignee fields to keep the creator assigned.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    assigned_to:
+      name: Assignee User ID
+      description: Assign independently of the creator, or use null in YAML for Anyone. Do not combine with Assignee username.
+      selector:
+        number:
+          min: 1
+          mode: box
+    points:
+      name: Reward points
+      description: Non-negative whole number awarded on completion, including 0.
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
     created_by:
       name: Created By User ID
       description: The Donetick circle member who creates and is assigned the task (optional; defaults to the API token owner)
@@ -91,6 +113,14 @@ update_task:
   name: Update Task
   description: Update an existing Donetick task. Archived tasks remain archived unless Force Unarchive is enabled.
   fields:
+    points:
+      name: Reward points
+      description: Leave unset to retain current points, or set 0 to remove the reward.
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
     task:
       name: Task
       description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
