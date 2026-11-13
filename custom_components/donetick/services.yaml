@@ -48,7 +48,7 @@ complete_task:
 
 create_task:
   name: Create Task
-  description: Create a new Donetick task. Extra assignment, points, and reminder settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
+  description: Create a new Donetick task. Extra assignment, points, priority, reminder, and repeat settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
   fields:
     name:
       name: Task Name
@@ -94,6 +94,18 @@ create_task:
           min: 0
           step: 1
           mode: box
+    priority:
+      name: Priority
+      description: Donetick priority, from P1 (urgent) to P4 (low). Omit or use 0 for none.
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - {value: "0", label: No priority}
+            - {value: "1", label: P1 (urgent)}
+            - {value: "2", label: P2 (high)}
+            - {value: "3", label: P3 (medium)}
+            - {value: "4", label: P4 (low)}
     reminders:
       name: Reminders
       description: >-
@@ -133,111 +145,11 @@ create_task:
                     - {value: minutes, label: Minutes}
                     - {value: hours, label: Hours}
                     - {value: days, label: Days}
-    created_by:
-      name: Created By User ID
-      description: The Donetick circle member who creates and is assigned the task (optional; defaults to the API token owner)
-      required: false
-      selector:
-        number:
-          min: 1
-          mode: box
-    config_entry_id:
-      name: Config Entry ID
-      description: The specific Donetick integration to use (optional, uses first if not specified)
-      required: false
-      selector:
-        text:
-
-update_task:
-  name: Update Task
-  description: Update an existing Donetick task. Archived tasks remain archived unless Force Unarchive is enabled.
-  fields:
-    points:
-      name: Reward points
-      description: Leave unset to retain current points, or set 0 to remove the reward.
-      selector:
-        number:
-          min: 0
-          step: 1
-          mode: box
-    reminders:
-      name: Reminders
-      description: >-
-        Add up to five reminder offsets. Edit each entry to choose its timing and offset.
-        Leave unset to keep existing reminders, or remove all entries to disable them.
-      selector:
-        object:
-          multiple: true
-          fields:
-            when:
-              label: When
-              default: "Before due date"
-              required: true
-              selector:
-                select:
-                  mode: dropdown
-                  options:
-                    - {value: "Before due date", label: Before due date}
-                    - {value: "On due date", label: On due date}
-                    - {value: "After due date", label: After due date}
-            amount:
-              label: Amount (Before/After only)
-              required: false
-              selector:
-                number:
-                  min: 1
-                  max: 10000
-                  step: 1
-                  mode: box
-            unit:
-              label: Unit (Before/After only)
-              required: false
-              selector:
-                select:
-                  mode: dropdown
-                  options:
-                    - {value: minutes, label: Minutes}
-                    - {value: hours, label: Hours}
-                    - {value: days, label: Days}
-    task:
-      name: Task
-      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
-      selector:
-        select:
-          options: []
-          mode: dropdown
-    task_id:
-      name: Task ID
-      description: The ID of the task to update
-      required: false
-      selector:
-        number:
-          min: 1
-          mode: box
-    name:
-      name: Task Name
-      description: The new name of the task (optional)
-      required: false
-      selector:
-        text:
-    description:
-      name: Description
-      description: New task description (optional, empty string to clear)
-      required: false
-      selector:
-        text:
-          multiline: true
-    due_date:
-      name: Due Date
-      description: New task due date in RFC3339 format (optional, e.g., 2025-07-28T18:00:00Z)
-      required: false
-      selector:
-        text:
     repeat_schedule:
       name: Repeat schedule
-      description: Leave fields unchecked to keep the current schedule. A repeating task needs a first Due Date. Changing the repeat time affects future custom occurrences; Due Date controls the current occurrence.
+      description: Leave fields unchecked to create a one-time task. A repeating task needs a first Due Date. The schedule is saved through Donetick's task editor after the task is created.
       collapsed: true
-      fields:
+      fields: &repeat_schedule_fields
         frequency_type:
           name: Repeats
           description: Match Donetick's repeat pattern. Custom patterns use the related controls below. Thing triggers must already be configured in Donetick.
@@ -347,6 +259,123 @@ update_task:
                 - {value: due_date, label: Due date}
                 - {value: completion, label: Completion date}
               mode: dropdown
+    created_by:
+      name: Created By User ID
+      description: The Donetick circle member who creates and is assigned the task (optional; defaults to the API token owner)
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      name: Config Entry ID
+      description: The specific Donetick integration to use (optional, uses first if not specified)
+      required: false
+      selector:
+        text:
+
+update_task:
+  name: Update Task
+  description: Update an existing Donetick task. Archived tasks remain archived unless Force Unarchive is enabled.
+  fields:
+    points:
+      name: Reward points
+      description: Leave unset to retain current points, or set 0 to remove the reward.
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
+    priority:
+      name: Priority
+      description: Leave unset to retain the current priority, or set 0 to remove it.
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - {value: "0", label: No priority}
+            - {value: "1", label: P1 (urgent)}
+            - {value: "2", label: P2 (high)}
+            - {value: "3", label: P3 (medium)}
+            - {value: "4", label: P4 (low)}
+    reminders:
+      name: Reminders
+      description: >-
+        Add up to five reminder offsets. Edit each entry to choose its timing and offset.
+        Leave unset to keep existing reminders, or remove all entries to disable them.
+      selector:
+        object:
+          multiple: true
+          fields:
+            when:
+              label: When
+              default: "Before due date"
+              required: true
+              selector:
+                select:
+                  mode: dropdown
+                  options:
+                    - {value: "Before due date", label: Before due date}
+                    - {value: "On due date", label: On due date}
+                    - {value: "After due date", label: After due date}
+            amount:
+              label: Amount (Before/After only)
+              required: false
+              selector:
+                number:
+                  min: 1
+                  max: 10000
+                  step: 1
+                  mode: box
+            unit:
+              label: Unit (Before/After only)
+              required: false
+              selector:
+                select:
+                  mode: dropdown
+                  options:
+                    - {value: minutes, label: Minutes}
+                    - {value: hours, label: Hours}
+                    - {value: days, label: Days}
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    task_id:
+      name: Task ID
+      description: The ID of the task to update
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+    name:
+      name: Task Name
+      description: The new name of the task (optional)
+      required: false
+      selector:
+        text:
+    description:
+      name: Description
+      description: New task description (optional, empty string to clear)
+      required: false
+      selector:
+        text:
+          multiline: true
+    due_date:
+      name: Due Date
+      description: New task due date in RFC3339 format (optional, e.g., 2025-07-28T18:00:00Z)
+      required: false
+      selector:
+        text:
+    repeat_schedule:
+      name: Repeat schedule
+      description: Leave fields unchecked to keep the current schedule. A repeating task needs a first Due Date. Changing the repeat time affects future custom occurrences; Due Date controls the current occurrence.
+      collapsed: true
+      fields: *repeat_schedule_fields
     force_unarchive:
       name: Force Unarchive
       description: Reactivate this task if it is archived (optional; defaults to false)

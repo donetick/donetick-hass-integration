@@ -2,7 +2,7 @@
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 
-PROPERTY_FIELDS = ("points",)
+PROPERTY_FIELDS = ("points", "priority")
 
 
 def validate_points(value):
@@ -13,6 +13,17 @@ def validate_points(value):
             raise ValueError()
     except (InvalidOperation, ValueError):
         raise ValueError("Points must be a non-negative whole number") from None
+    return int(number)
+
+
+def validate_priority(value):
+    """Accept Donetick's priority levels: 0 for none, 1 (urgent) to 4 (low)."""
+    try:
+        number = Decimal(str(value))
+        if not number.is_finite() or number != number.to_integral_value() or not 0 <= number <= 4:
+            raise ValueError()
+    except (InvalidOperation, ValueError):
+        raise ValueError("Priority must be a whole number from 0 (none) to 4 (low)") from None
     return int(number)
 
 
@@ -50,6 +61,11 @@ def apply_task_properties(task, changes):
         if type(points) is not int or points < 0:
             raise ValueError("Points must be a non-negative whole number")
         payload["points"] = points
+    if "priority" in changes:
+        priority = changes["priority"]
+        if type(priority) is not int or not 0 <= priority <= 4:
+            raise ValueError("Priority must be a whole number from 0 (none) to 4 (low)")
+        payload["priority"] = priority
     if "reminders" in changes:
         templates = changes["reminders"]
         if not isinstance(templates, list) or len(templates) > 5:
