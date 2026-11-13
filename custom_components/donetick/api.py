@@ -275,6 +275,25 @@ class DonetickApiClient:
             _LOGGER.debug("Donetick refused the completion: %s", err)
             raise
 
+    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
+        """Complete a chore through the Full API, crediting completed_by.
+
+        Unlike the external API, this endpoint lets a circle admin or manager credit
+        any circle member, not only the chore's assignees.
+        """
+        try:
+            async with self._session.post(
+                f"{self._base_url}/api/v1/chores/{chore_id}/do",
+                headers=self._headers(),
+                json={"completedBy": completed_by},
+                timeout=API_TIMEOUT,
+            ) as response:
+                # The body ({"res": <chore>}) is not needed.
+                await self._raise_for_status(response, "completion")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error completing chore in Donetick: %s", err)
+            raise
+
     async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None, project_id: int = None) -> DonetickTask:
         """Create a one-time task attributed and assigned to created_by (or the token owner)."""
         headers = self._headers()
@@ -338,6 +357,8 @@ class DonetickApiClient:
                     "Only the chore creator or a circle admin/manager can update this chore",
                     "Only the chore creator or a circle admin/manager can delete this chore",
                     "You are not allowed to delete this history",
+                    "You are not allowed to complete this action, either you are not admin or the completed by user is not in the circle",
+                    "The selected user cannot see this task",
                 ):
                     raise ValueError(f"Donetick denied the {operation} (403): {reason}")
         response.raise_for_status()

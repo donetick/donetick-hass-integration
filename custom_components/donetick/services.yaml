@@ -46,6 +46,38 @@ complete_task:
       selector:
         text:
 
+complete_chore:
+  name: Complete Chore (Full API)
+  description: >-
+    Complete a Donetick chore and credit the circle member who did it, even if
+    that member is not one of the chore's assignees. The assignees stay as they
+    are. Requires an API token that belongs to a circle admin or manager, so
+    anyone who may call this action in Home Assistant can record completions
+    for any circle member.
+  fields:
+    chore_id:
+      name: Chore ID
+      description: The ID of the chore to complete.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    completed_by:
+      name: Completed By User ID
+      description: The Donetick user ID of the circle member who completed the chore.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      name: Config Entry ID
+      description: The specific Donetick integration to use (optional, uses first if not specified)
+      required: false
+      selector:
+        text:
+
 create_task:
   name: Create Task
   description: Create a new Donetick task. Extra assignment, points, and reminder settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
