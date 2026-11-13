@@ -36,6 +36,7 @@ Points preserve an explicit zero; tasks without a point value expose `null`.
 - `donetick.delete_history` - Delete one history entry of a task, e.g. to undo a completion
 - `donetick.complete_assigned_task` - Complete a task as its current assignee, or as the API token owner for tasks assigned to Anyone
 - `donetick.postpone_task` - Move a task to its next scheduled occurrence without recording a completion
+- `donetick.complete_chore` - Complete a chore through Donetick's full API and credit any active circle member, not only its assignees; the assignees stay unchanged. Needs an API token of a circle admin or manager, so everyone who can call this action can record completions for any member
 
 The bundled task card uses the last two for its completion control and its **Skip
 occurrence** action; both resolve the task on the server before acting.

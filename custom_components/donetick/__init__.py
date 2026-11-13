@@ -32,6 +32,7 @@ SERVICE_SKIP_TASK = "skip_task"
 SERVICE_COMPLETE_ASSIGNED_TASK = "complete_assigned_task"
 SERVICE_POSTPONE_TASK = "postpone_task"
 SERVICE_DELETE_HISTORY = "delete_history"
+SERVICE_COMPLETE_CHORE = "complete_chore"
 
 COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Optional("task"): cv.string,
@@ -119,6 +120,12 @@ COMPLETE_ASSIGNED_SCHEMA = ASSIGNED_TASK_SCHEMA.extend({
     vol.Optional("completed_by_username"): cv.string,
 })
 
+COMPLETE_CHORE_SCHEMA = vol.Schema({
+    vol.Required("chore_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Required("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("config_entry_id"): cv.string,
+})
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Donetick from a config entry."""
     hass.data.setdefault(DOMAIN, {})
@@ -191,6 +198,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def delete_history_handler(call: ServiceCall) -> None:
         await async_delete_history_service(hass, call)
 
+    async def complete_chore_handler(call: ServiceCall) -> None:
+        await async_complete_chore_service(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_COMPLETE_TASK,
@@ -227,6 +237,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         SERVICE_DELETE_HISTORY,
         with_selectors(delete_history_handler),
         schema=DELETE_HISTORY_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_COMPLETE_CHORE,
+        complete_chore_handler,
+        schema=COMPLETE_CHORE_SCHEMA,
     )
     _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
                   DOMAIN, SERVICE_COMPLETE_TASK, DOMAIN, SERVICE_CREATE_TASK,
@@ -299,6 +315,52 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
         response["history_id"] = entry.id
         response["due_date"] = entry.due_date.isoformat() if entry.due_date else None
     return response
+
+async def async_complete_chore_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Complete a chore through the Full API and credit the member who did it."""
+    entry = await _get_config_entry(hass, call.data.get("config_entry_id"))
+    if not entry:
+        raise HomeAssistantError("No matching Donetick integration found for complete_chore")
+
+    config = hass.data[DOMAIN][entry.entry_id]
+    chore_id = call.data["chore_id"]
+    completed_by = call.data["completed_by"]
+    await _validate_circle_member(config, completed_by)
+
+    try:
+        await config["client"].async_complete_chore(chore_id, completed_by)
+    except Exception as e:
+        _LOGGER.error("Failed to complete chore %d: %s", chore_id, e)
+        raise HomeAssistantError(f"Failed to complete Donetick chore {chore_id}: {e}") from e
+    _LOGGER.info("Chore %d completed for user %d", chore_id, completed_by)
+
+    try:
+        await config["coordinator"].async_request_refresh()
+    except Exception as e:
+        raise HomeAssistantError(
+            f"Donetick chore {chore_id} was completed, but Home Assistant could not refresh: {e}"
+        ) from e
+
+async def _validate_circle_member(config: dict, user_id: int) -> None:
+    """Reject a user ID that is not an active member of the Donetick circle.
+
+    The cached member list is fetched again once if the ID is unknown, so members
+    who joined since the last refresh are accepted. Without a member list the check
+    is skipped and Donetick decides.
+    """
+    members = config.get("circle_members")
+    if not members or any(m.user_id == user_id and m.is_active for m in members):
+        return
+    try:
+        members = await config["client"].async_get_circle_members()
+    except Exception as e:
+        _LOGGER.warning("Could not refresh Donetick circle members to check user %d: %s", user_id, e)
+        return
+    if not members:
+        return
+    config["circle_members"] = members
+    if not any(m.user_id == user_id and m.is_active for m in members):
+        raise ServiceValidationError(f"User {user_id} is not an active Donetick circle member")
 
 async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the create_task service call."""
@@ -546,7 +608,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Remove services if this is the last config entry
         if not hass.data[DOMAIN]:
-            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK, SERVICE_DELETE_HISTORY]:
+            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK, SERVICE_DELETE_HISTORY, SERVICE_COMPLETE_CHORE]:
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)
             _LOGGER.debug("Removed services: %s.%s, %s.%s, %s.%s, %s.%s", 
