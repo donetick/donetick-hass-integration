@@ -420,7 +420,7 @@ class DonetickApiClient:
         updated_data = await self._async_get_editor_task(task_id)
         updated = DonetickTask.from_json(updated_data)
         if properties:
-            for key in ("points", "assignedTo"):
+            for key in ("points", "priority", "assignedTo"):
                 if key in payload and updated_data.get(key) != payload[key]:
                     raise ValueError(f"Donetick did not apply {key} for task {task_id}; refresh the task")
             if "reminders" in properties:

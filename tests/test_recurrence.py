@@ -248,6 +248,11 @@ class RecurrenceApiTests(unittest.IsolatedAsyncioTestCase):
             await self.client.async_update_task_recurrence(5, {}, 'UTC', properties={'points': 3})
 
 
+    async def test_ignored_priority_changes_are_reported(self):
+        self.ignore_update = True
+        with self.assertRaisesRegex(ValueError, 'did not apply priority'):
+            await self.client.async_update_task_recurrence(5, {}, 'UTC', properties={'priority': 4})
+
     async def test_invalid_properties_never_write(self):
         with self.assertRaises(ValueError):
             await self.client.async_update_task_recurrence(5, {}, 'UTC', properties={'points': -1})

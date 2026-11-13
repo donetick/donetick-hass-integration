@@ -17,8 +17,8 @@ from .user_mapping import completion_user
 from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
 from .action_selectors import async_setup_action_selectors, async_refresh_action_selectors, async_prepare_action_call
-from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS
-from .task_properties import PROPERTY_FIELDS, apply_task_properties, validate_points, validate_reminders
+from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS, build_recurrence_payload
+from .task_properties import PROPERTY_FIELDS, apply_task_properties, validate_points, validate_priority, validate_reminders
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -44,10 +44,24 @@ COMPLETE_TASK_SCHEMA = vol.Schema({
 
 TASK_PROPERTY_SCHEMA = {
     vol.Optional("points"): validate_points,
+    vol.Optional("priority"): validate_priority,
 }
 
 REMINDER_SCHEMA = {
     vol.Optional("reminders"): validate_reminders,
+}
+
+RECURRENCE_SCHEMA = {
+    vol.Optional("frequency_type"): vol.In(FREQUENCY_TYPES),
+    vol.Optional("frequency"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1000)),
+    vol.Optional("interval_unit"): vol.In(("hours", "days", "weeks", "months", "years")),
+    vol.Optional("weekdays"): vol.All(cv.ensure_list, [vol.In(WEEKDAYS)]),
+    vol.Optional("week_pattern"): vol.In(("every_week", "week_of_month", "week_of_quarter")),
+    vol.Optional("occurrences"): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.In((*range(1, 14), -1)))]),
+    vol.Optional("months"): vol.All(cv.ensure_list, [vol.In(MONTHS)]),
+    vol.Optional("day_of_month"): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+    vol.Optional("schedule_time"): cv.string,
+    vol.Optional("schedule_from"): vol.In(("due_date", "completion")),
 }
 
 CREATE_TASK_SCHEMA = vol.Schema({
@@ -59,6 +73,7 @@ CREATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("assigned_to_username"): cv.string,
     **TASK_PROPERTY_SCHEMA,
     **REMINDER_SCHEMA,
+    **RECURRENCE_SCHEMA,
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -74,16 +89,7 @@ UPDATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("assigned_to_username"): cv.string,
     vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
     vol.Optional("config_entry_id"): cv.string,
-    vol.Optional("frequency_type"): vol.In(FREQUENCY_TYPES),
-    vol.Optional("frequency"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1000)),
-    vol.Optional("interval_unit"): vol.In(("hours", "days", "weeks", "months", "years")),
-    vol.Optional("weekdays"): vol.All(cv.ensure_list, [vol.In(WEEKDAYS)]),
-    vol.Optional("week_pattern"): vol.In(("every_week", "week_of_month", "week_of_quarter")),
-    vol.Optional("occurrences"): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.In((*range(1, 14), -1)))]),
-    vol.Optional("months"): vol.All(cv.ensure_list, [vol.In(MONTHS)]),
-    vol.Optional("day_of_month"): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
-    vol.Optional("schedule_time"): cv.string,
-    vol.Optional("schedule_from"): vol.In(("due_date", "completion")),
+    **RECURRENCE_SCHEMA,
 })
 
 DELETE_TASK_SCHEMA = vol.Schema({
@@ -306,13 +312,18 @@ async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     description = call.data.get("description")
     created_by = call.data.get("created_by")
     config_entry_id = call.data.get("config_entry_id")
+    recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
     try:
         due_date = normalize_due_date(call.data.get("due_date"))
         properties = {field: call.data[field] for field in (*PROPERTY_FIELDS, "assigned_to") if field in call.data}
         if "reminders" in call.data:
             properties["reminders"] = call.data["reminders"]
+        # Validate before creation, which cannot be retried safely on failure.
+        if recurrence:
+            # The external API creates a one-time task; the editor then sets its schedule.
+            build_recurrence_payload({"frequencyType": "once", "nextDueDate": due_date, "updatedAt": "new"},
+                                     recurrence, hass.config.time_zone)
         if properties:
-            # Validate before creation, which cannot be retried safely on failure.
             apply_task_properties({"frequencyType": "once", "nextDueDate": due_date}, properties)
     except ValueError as err:
         raise ServiceValidationError(str(err)) from err
@@ -330,9 +341,9 @@ async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     result = None
     try:
         result = await client.async_create_task(name, description, due_date, created_by)
-        if properties:
+        if recurrence or properties:
             await client.async_update_task_recurrence(
-                result.id, {}, hass.config.time_zone, properties=properties)
+                result.id, recurrence, hass.config.time_zone, properties=properties)
         _LOGGER.info("Task '%s' created successfully with ID %d", name, result.id)
 
     except Exception as e:
