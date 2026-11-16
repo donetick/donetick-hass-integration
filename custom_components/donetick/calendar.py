@@ -701,12 +701,16 @@ class DonetickActivityCalendar(CoordinatorEntity, CalendarEntity):
 
         now = datetime.now(timezone.utc)
         range_start_key = _comparison_datetime(range_start)
-        range_end_key = _comparison_datetime(range_end)
         now_key = _comparison_datetime(now)
-        if range_start_key > now_key or (range_end_key - range_start_key).days > HISTORY_LOOKBACK_DAYS:
+        if range_start_key > now_key:
             return []
 
-        history_days = max((now_key - range_start_key).days + 1, 1)
+        # The history endpoint only serves 90 days. Clip the fetch window
+        # instead of discarding a longer range: a six-month view should still
+        # show the newest 90 days of activity.
+        fetch_start_key = max(
+            range_start_key, now_key - timedelta(days=HISTORY_LOOKBACK_DAYS))
+        history_days = max((now_key - fetch_start_key).days + 1, 1)
         histories = await self._client.async_get_task_history(
             min(history_days, HISTORY_LOOKBACK_DAYS),
             include_members=True,
