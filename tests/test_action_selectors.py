@@ -101,6 +101,14 @@ class PickerResolutionTests(unittest.IsolatedAsyncioTestCase):
             {'task_id': 42, 'completed_by_username': 'alice'}, 'complete_task'), self.resolve)
         self.assertEqual(prepared.data['completed_by'], 7)
 
+    async def test_complete_chore_task_picker_resolves_to_task_id(self):
+        prepared = await self.prepare(self.hass, self.call({
+            'task': '#42 · alice · Dishes · Local (one)', 'completed_by': 7}, 'complete_chore'), self.resolve)
+        self.assertEqual(prepared.data, {'task_id': 42, 'completed_by': 7, 'config_entry_id': 'one'})
+        for fields in ({'completed_by': 7}, {'task': 'one/42', 'task_id': 42, 'completed_by': 7}):
+            with self.subTest(fields=fields), self.assertRaisesRegex(ValueError, 'either Task or Task ID'):
+                await self.prepare(self.hass, self.call(fields, 'complete_chore'), self.resolve)
+
     async def test_readable_search_value_keeps_a_stable_task_reference(self):
         prepared = await self.prepare(self.hass, self.call({
             'task': '#42 · alice · Previous task name · Local (one)',

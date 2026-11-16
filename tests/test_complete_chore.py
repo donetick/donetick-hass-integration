@@ -135,7 +135,7 @@ class CompleteChoreServiceTests(unittest.IsolatedAsyncioTestCase):
         return SimpleNamespace(user_id=user_id, is_active=active)
 
     async def call(self, **data):
-        await self.service(self.hass, SimpleNamespace(data={"chore_id": 46, "completed_by": 3, **data}))
+        await self.service(self.hass, SimpleNamespace(data={"task_id": 46, "completed_by": 3, **data}))
 
     async def test_completes_for_the_member_and_refreshes(self):
         await self.call(config_entry_id="entry")
@@ -209,8 +209,12 @@ class CompleteChoreRegistrationTests(unittest.TestCase):
         for call in (node for node in ast.walk(self.tree) if isinstance(node, ast.Call)):
             if getattr(call.func, "attr", None) == "async_register" and len(call.args) >= 2:
                 schema = next((kw.value for kw in call.keywords if kw.arg == "schema"), None)
-                registered[getattr(call.args[1], "id", None)] = getattr(schema, "id", None)
-        self.assertEqual(registered.get("SERVICE_COMPLETE_CHORE"), "COMPLETE_CHORE_SCHEMA")
+                handler = call.args[2] if len(call.args) > 2 else None
+                registered[getattr(call.args[1], "id", None)] = (ast.unparse(handler) if handler else None,
+                                                                 getattr(schema, "id", None))
+        # Wrapped like update_task, so the task picker is resolved to task_id first.
+        self.assertEqual(registered.get("SERVICE_COMPLETE_CHORE"),
+                         ("with_selectors(complete_chore_handler)", "COMPLETE_CHORE_SCHEMA"))
 
     def test_service_is_removed_with_the_last_entry(self):
         unload = next(node for node in self.tree.body
@@ -218,10 +222,11 @@ class CompleteChoreRegistrationTests(unittest.TestCase):
         loop = next(node for node in ast.walk(unload) if isinstance(node, ast.For))
         self.assertIn("SERVICE_COMPLETE_CHORE", [getattr(elt, "id", None) for elt in loop.iter.elts])
 
-    def test_schema_requires_chore_and_performer(self):
+    def test_schema_takes_task_or_task_id_and_requires_performer(self):
         mapping = self.assignments["COMPLETE_CHORE_SCHEMA"].args[0]
         fields = {marker.args[0].value: marker.func.attr for marker in mapping.keys}
-        self.assertEqual(fields, {"chore_id": "Required", "completed_by": "Required",
+        # Exactly one of task and task_id is enforced by async_prepare_action_call.
+        self.assertEqual(fields, {"task": "Optional", "task_id": "Optional", "completed_by": "Required",
                                   "config_entry_id": "Optional"})
 
     def test_service_is_documented(self):
@@ -233,8 +238,11 @@ class CompleteChoreRegistrationTests(unittest.TestCase):
             elif service:
                 blocks[service].append(line.strip())
         fields = [line[:-1] for line in blocks["complete_chore"]
-                  if line.endswith(":") and line[:-1] in ("chore_id", "completed_by", "config_entry_id")]
-        self.assertEqual(fields, ["chore_id", "completed_by", "config_entry_id"])
+                  if line.endswith(":") and line[:-1] in ("task", "task_id", "completed_by", "config_entry_id")]
+        self.assertEqual(fields, ["task", "task_id", "completed_by", "config_entry_id"])
+        # An empty select is what async_refresh_action_selectors fills with active tasks.
+        task = blocks["complete_chore"][blocks["complete_chore"].index("task:"):]
+        self.assertEqual(task[3:7], ["selector:", "select:", "options: []", "mode: dropdown"])
 
 
 if __name__ == "__main__":

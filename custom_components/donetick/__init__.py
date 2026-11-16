@@ -121,7 +121,8 @@ COMPLETE_ASSIGNED_SCHEMA = ASSIGNED_TASK_SCHEMA.extend({
 })
 
 COMPLETE_CHORE_SCHEMA = vol.Schema({
-    vol.Required("chore_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Required("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("config_entry_id"): cv.string,
 })
@@ -241,7 +242,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(
         DOMAIN,
         SERVICE_COMPLETE_CHORE,
-        complete_chore_handler,
+        with_selectors(complete_chore_handler),
         schema=COMPLETE_CHORE_SCHEMA,
     )
     _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
@@ -323,7 +324,7 @@ async def async_complete_chore_service(hass: HomeAssistant, call: ServiceCall) -
         raise HomeAssistantError("No matching Donetick integration found for complete_chore")
 
     config = hass.data[DOMAIN][entry.entry_id]
-    chore_id = call.data["chore_id"]
+    chore_id = call.data["task_id"]
     completed_by = call.data["completed_by"]
     await _validate_circle_member(config, completed_by)
 

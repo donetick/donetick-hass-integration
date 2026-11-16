@@ -55,10 +55,17 @@ complete_chore:
     anyone who may call this action in Home Assistant can record completions
     for any circle member.
   fields:
-    chore_id:
-      name: Chore ID
-      description: The ID of the chore to complete.
-      required: true
+    task:
+      name: Task
+      description: Search active tasks by name, assignee, project ID or task ID. The selection includes its integration. Use either Task or Task ID.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    task_id:
+      name: Task ID
+      description: The ID of the task to complete
+      required: false
       selector:
         number:
           min: 1
