@@ -1,6 +1,6 @@
 """Calendar regression coverage for local dates and UTC day boundaries (#41)."""
 import ast
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -90,6 +90,18 @@ class CalendarDateTests(unittest.TestCase):
             datetime(2026, 5, 1, tzinfo=self.local))
         self.assertEqual([event.start for event in events],
                          [date(2026, 4, 28), date(2026, 4, 29), date(2026, 4, 30)])
+
+    def test_overdue_recurring_task_reaches_the_requested_range(self):
+        # Every occurrence before the range must still be walked. Stepping only
+        # 365 times hid an hourly chore that had been overdue for two weeks.
+        task = self.task("2026-10-01T00:00:00Z", frequency_type="interval",
+                         frequency=1, frequency_metadata={"unit": "hours"})
+        events = self.ns["_generate_occurrences"](
+            task, [], datetime(2026, 11, 15, tzinfo=UTC),
+            datetime(2026, 11, 15, 3, tzinfo=UTC))
+        self.assertEqual([event.start for event in events],
+                         [datetime(2026, 11, 15, hour, tzinfo=UTC)
+                          for hour in (0, 1, 2)])
 
     def test_all_day_range_boundaries_follow_local_midnight_and_dst(self):
         for day, next_day, hours in [(date(2026, 3, 8), date(2026, 3, 9), 23),
