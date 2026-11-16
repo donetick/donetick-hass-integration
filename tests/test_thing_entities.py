@@ -1,18 +1,58 @@
 """Thing entities are scoped to their config entry in the entity registry."""
-import sys
-import unittest
+import ast
+import logging
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Optional
+import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "donetick"
+DOMAIN = "donetick"
 
-from custom_components.donetick.model import DonetickThing
-from custom_components.donetick.thing import (
-    DonetickThingSensor,
-    DonetickThingSwitch,
-    _migrate_unique_ids,
-)
+
+class _StubEntity:
+    @property
+    def unique_id(self):
+        return self._attr_unique_id
+
+
+def _load_thing_module():
+    source = COMPONENT / "thing.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    keep_names = {
+        "_platform_for_thing",
+        "_migrate_unique_ids",
+        "DonetickThingBase",
+        "DonetickThingSensor",
+        "DonetickThingSwitch",
+    }
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in keep_names
+    ]
+    ns = {
+        "__name__": __name__,
+        "Any": Any,
+        "Optional": Optional,
+        "logging": logging,
+        "_LOGGER": logging.getLogger(__name__),
+        "DOMAIN": DOMAIN,
+        "Entity": _StubEntity,
+        "SensorEntity": type("SensorEntity", (), {}),
+        "SwitchEntity": type("SwitchEntity", (), {}),
+        "DonetickApiClient": object,
+        "DonetickThing": object,
+        "DataUpdateCoordinator": object,
+    }
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), "exec"), ns)
+    return ns
+
+
+_MOD = _load_thing_module()
+DonetickThingSensor = _MOD["DonetickThingSensor"]
+DonetickThingSwitch = _MOD["DonetickThingSwitch"]
+_migrate_unique_ids = _MOD["_migrate_unique_ids"]
 
 
 class FakeRegistry:
@@ -28,16 +68,24 @@ class FakeRegistry:
 
 
 def thing(thing_id=1, thing_type="boolean"):
-    return DonetickThing(id=thing_id, name="Washer", type=thing_type,
-                         state="false", user_id=1, circle_id=1)
+    return SimpleNamespace(
+        id=thing_id,
+        name="Washer",
+        type=thing_type,
+        state="false",
+        user_id=1,
+        circle_id=1,
+    )
 
 
 class ThingEntityIdTests(unittest.TestCase):
     def test_two_integrations_get_distinct_unique_ids(self):
         first = DonetickThingSwitch(None, thing(), None, "entry-a")
         second = DonetickThingSwitch(None, thing(), None, "entry-b")
-        self.assertEqual((first.unique_id, second.unique_id),
-                         ("entry-a_thing_1", "entry-b_thing_1"))
+        self.assertEqual(
+            (first.unique_id, second.unique_id),
+            ("entry-a_thing_1", "entry-b_thing_1"),
+        )
 
     def test_sensor_uses_the_same_entry_prefix(self):
         sensor = DonetickThingSensor(None, thing(7, "action"), None, "entry")
@@ -48,8 +96,10 @@ class ThingUniqueIdMigrationTests(unittest.TestCase):
     def test_old_entity_is_renamed_in_place(self):
         registry = FakeRegistry({("switch", "donetick_thing_1"): "switch.washer"})
         _migrate_unique_ids(registry, "entry-b", [thing()])
-        self.assertEqual(registry.updated,
-                         [("switch.washer", "entry-b_thing_1")])
+        self.assertEqual(
+            registry.updated,
+            [("switch.washer", "entry-b_thing_1")],
+        )
 
     def test_existing_scoped_entity_is_not_overwritten(self):
         registry = FakeRegistry({
