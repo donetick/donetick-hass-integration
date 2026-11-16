@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.switch import SwitchEntity
@@ -18,6 +19,31 @@ from .const import DOMAIN, CONF_URL, CONF_TOKEN
 from .model import DonetickThing
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _platform_for_thing(thing_type: str) -> str:
+    """Return the entity platform that owns a thing type."""
+    return {"boolean": "switch", "number": "number", "text": "text"}.get(thing_type, "sensor")
+
+
+def _migrate_unique_ids(registry, entry_id: str, things) -> None:
+    """Prefix existing thing unique IDs with their config entry.
+
+    Entity unique IDs are shared across config entries, so two Donetick
+    servers with a thing of the same ID used to overwrite each other.
+    Rename the existing registry row instead of orphaning it.
+    """
+    for thing in things:
+        platform = _platform_for_thing(thing.type)
+        old_unique_id = f"donetick_thing_{thing.id}"
+        new_unique_id = f"{entry_id}_thing_{thing.id}"
+        entity_id = registry.async_get_entity_id(platform, DOMAIN, old_unique_id)
+        if entity_id is None:
+            continue
+        if registry.async_get_entity_id(platform, DOMAIN, new_unique_id) is not None:
+            continue
+        registry.async_update_entity(entity_id, new_unique_id=new_unique_id)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -37,18 +63,20 @@ async def async_setup_entry(
     
     try:
         things = await client.async_get_things()
+        _migrate_unique_ids(er.async_get(hass), config_entry.entry_id, things)
         entities = []
+        entry_id = config_entry.entry_id
         
         for thing in things:
             # Only create entities for the current platform
             if platform == "switch" and thing.type == "boolean":
-                entities.append(DonetickThingSwitch(client, thing, coordinator))
+                entities.append(DonetickThingSwitch(client, thing, coordinator, entry_id))
             elif platform == "number" and thing.type == "number":
-                entities.append(DonetickThingNumber(client, thing, coordinator))
+                entities.append(DonetickThingNumber(client, thing, coordinator, entry_id))
             elif platform == "text" and thing.type == "text":
-                entities.append(DonetickThingText(client, thing, coordinator))
+                entities.append(DonetickThingText(client, thing, coordinator, entry_id))
             elif platform == "sensor" and thing.type not in ["boolean", "number", "text"]:
-                entities.append(DonetickThingSensor(client, thing, coordinator))
+                entities.append(DonetickThingSensor(client, thing, coordinator, entry_id))
         
         if entities:
             async_add_entities(entities, True)
@@ -59,12 +87,13 @@ async def async_setup_entry(
 class DonetickThingBase(Entity):
     """Base class for Donetick thing entities."""
     
-    def __init__(self, client: DonetickApiClient, thing: DonetickThing, coordinator: DataUpdateCoordinator) -> None:
-        """Initialize the entity."""
+    def __init__(self, client: DonetickApiClient, thing: DonetickThing,
+                 coordinator: DataUpdateCoordinator, entry_id: str) -> None:
+        """Initialize the entity, scoped to its config entry."""
         self._client = client
         self._thing = thing
         self._coordinator = coordinator
-        self._attr_unique_id = f"donetick_thing_{thing.id}"
+        self._attr_unique_id = f"{entry_id}_thing_{thing.id}"
         self._attr_name = thing.name
         self._attr_has_entity_name = True
         
