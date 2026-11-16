@@ -24,6 +24,9 @@ DEFAULT_SCHEDULED_DURATION = timedelta(hours=1)
 DEFAULT_LOGGED_DURATION = timedelta(minutes=1)
 HISTORY_LOOKBACK_DAYS = 90
 MAX_PROJECTED_OCCURRENCES = 365
+# A safety stop, not the number of events returned: an overdue schedule still
+# has to be stepped through one occurrence at a time to reach the range.
+MAX_PROJECTION_STEPS = 10_000
 
 CHORE_STATUS_IN_PROGRESS = 1
 CHORE_STATUS_PAUSED = 2
@@ -479,7 +482,7 @@ def _generate_occurrences(
 
     range_end_key = _comparison_datetime(range_end)
     next_due = current_due
-    for _ in range(MAX_PROJECTED_OCCURRENCES):
+    for _ in range(MAX_PROJECTION_STEPS):
         next_due = _schedule_next_due(task, next_due)
         if next_due is None:
             break
@@ -489,6 +492,9 @@ def _generate_occurrences(
             break
         if _event_in_range(next_event, range_start, range_end):
             events.append(next_event)
+            # Keep the response bounded while still walking the whole gap above.
+            if len(events) >= MAX_PROJECTED_OCCURRENCES:
+                break
 
     return events
 
