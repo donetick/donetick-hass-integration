@@ -113,6 +113,50 @@ class CalendarDateTests(unittest.TestCase):
                                  _circle_members=[])
         self.assertEqual(self.ns["event"](entity).uid, "donetick_2")
 
+    def schedule(self, due, frequency_type, **overrides):
+        task = self.task(due, frequency_type=frequency_type, **overrides)
+        return self.ns["_schedule_next_due"](task, task.next_due_date)
+
+    def test_monthly_projection_normalizes_the_day_like_donetick(self):
+        # Go's AddDate turns January 31 plus one month into March 3.
+        self.assertEqual(self.schedule("2026-01-31T09:00:00Z", "monthly"),
+                         datetime(2026, 3, 3, 9, tzinfo=timezone.utc))
+
+    def test_yearly_projection_normalizes_a_leap_day(self):
+        # Go's AddDate turns February 29 plus one year into March 1.
+        self.assertEqual(self.schedule("2024-02-29T09:00:00Z", "yearly"),
+                         datetime(2025, 3, 1, 9, tzinfo=timezone.utc))
+
+    def test_interval_months_and_years_use_the_same_normalization(self):
+        self.assertEqual(
+            self.schedule("2026-01-31T09:00:00Z", "interval", frequency=1,
+                          frequency_metadata={"unit": "months"}),
+            datetime(2026, 3, 3, 9, tzinfo=timezone.utc),
+        )
+        self.assertEqual(
+            self.schedule("2024-02-29T09:00:00Z", "interval", frequency=1,
+                          frequency_metadata={"unit": "years"}),
+            datetime(2025, 3, 1, 9, tzinfo=timezone.utc),
+        )
+
+    def test_day_of_the_month_still_clamps_the_day(self):
+        next_due = self.schedule(
+            "2026-01-31T09:00:00Z", "day_of_the_month", frequency=31,
+            frequency_metadata={"months": ["february"], "time": "2026-01-31T09:00:00Z"},
+        )
+        self.assertEqual(next_due, datetime(2026, 2, 28, 9, tzinfo=timezone.utc))
+
+    def test_monthly_occurrences_follow_the_server_sequence(self):
+        task = self.task("2026-01-31T09:00:00Z", frequency_type="monthly")
+        events = self.ns["_generate_occurrences"](
+            task, [], datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 5, 1, tzinfo=timezone.utc))
+        self.assertEqual([event.start for event in events], [
+            datetime(2026, 1, 31, 9, tzinfo=timezone.utc),
+            datetime(2026, 3, 3, 9, tzinfo=timezone.utc),
+            datetime(2026, 4, 3, 9, tzinfo=timezone.utc),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

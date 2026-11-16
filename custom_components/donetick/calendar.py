@@ -270,7 +270,21 @@ def _month_last_day(year: int, month: int) -> int:
 
 
 def _add_months(value: datetime, months: int) -> datetime:
-    """Add months to a datetime, clamping the day when needed."""
+    """Add months the way Donetick's Go AddDate does, normalizing the day.
+
+    Go constructs an out-of-range date and lets it overflow. January 31 plus
+    one month is February 31, which becomes March 3 (or March 2 in a leap
+    year). Starting from the first of the target month and adding the day
+    offset produces the same date while keeping the wall-clock time.
+    """
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return value.replace(year=year, month=month, day=1) + timedelta(days=value.day - 1)
+
+
+def _add_months_clamped(value: datetime, months: int) -> datetime:
+    """Add months, clamping the day to the target month's last day."""
     month_index = value.month - 1 + months
     year = value.year + month_index // 12
     month = month_index % 12 + 1
@@ -279,11 +293,8 @@ def _add_months(value: datetime, months: int) -> datetime:
 
 
 def _add_years(value: datetime, years: int) -> datetime:
-    """Add years to a datetime, clamping leap-day when needed."""
-    try:
-        return value.replace(year=value.year + years)
-    except ValueError:
-        return value.replace(year=value.year + years, day=28)
+    """Add years the way Donetick's Go AddDate does, normalizing a leap day."""
+    return _add_months(value, years * 12)
 
 
 def _apply_due_time(task: DonetickTask, base_date: datetime) -> datetime:
@@ -440,7 +451,7 @@ def _schedule_next_due(task: DonetickTask, current_due: datetime) -> Optional[da
 
         base_with_time = _apply_due_time(task, search_base)
         for offset in range(1, 13):
-            candidate = _add_months(base_with_time, offset)
+            candidate = _add_months_clamped(base_with_time, offset)
             if candidate.strftime("%B").lower() not in months:
                 continue
 
