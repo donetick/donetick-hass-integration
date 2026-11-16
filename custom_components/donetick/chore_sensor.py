@@ -27,18 +27,17 @@ async def async_setup_chore_sensors(
     config = hass.data[DOMAIN][config_entry.entry_id]
     coordinator = config["coordinator"]
 
-    entities = []
-    if coordinator.data:
-        for task in coordinator.data:
-            if task.is_active:
-                entities.append(DonetickChoreSensor(coordinator, config_entry, task.id))
+    entities = {
+        task.id: DonetickChoreSensor(coordinator, config_entry, task.id)
+        for task in coordinator.data or [] if task.is_active
+    }
 
     _LOGGER.debug("Creating %d chore sensor entities", len(entities))
     if entities:
-        async_add_entities(entities)
+        async_add_entities(list(entities.values()))
 
     # Listen for coordinator updates to add/remove sensors as chores change
-    _track_new_chores(hass, coordinator, config_entry, async_add_entities)
+    _track_new_chores(hass, coordinator, config_entry, async_add_entities, entities)
 
 
 def _track_new_chores(
@@ -46,41 +45,43 @@ def _track_new_chores(
     coordinator: DataUpdateCoordinator,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
+    entities: dict[int, "DonetickChoreSensor"],
 ) -> None:
-    """Track coordinator updates and add sensors for new chores."""
-    known_ids: set[int] = set()
-    if coordinator.data:
-        known_ids = {task.id for task in coordinator.data if task.is_active}
+    """Track coordinator updates and add or remove sensors as chores change."""
 
     @callback
     def _on_coordinator_update() -> None:
-        nonlocal known_ids
-        if not coordinator.data:
+        # None is a failed refresh. An empty list means every chore is gone.
+        if coordinator.data is None:
             return
 
         current_ids = {task.id for task in coordinator.data if task.is_active}
-        new_ids = current_ids - known_ids
-        removed_ids = known_ids - current_ids
+        new_entities = {
+            task_id: DonetickChoreSensor(coordinator, config_entry, task_id)
+            for task_id in current_ids - entities.keys()
+        }
+        if new_entities:
+            entities.update(new_entities)
+            async_add_entities(list(new_entities.values()))
 
-        if new_ids:
-            new_entities = [
-                DonetickChoreSensor(coordinator, config_entry, task_id)
-                for task_id in new_ids
-            ]
-            async_add_entities(new_entities)
-
-        if removed_ids:
-            registry = er.async_get(hass)
-            for task_id in removed_ids:
-                unique_id = f"dt_chore_{config_entry.entry_id}_{task_id}"
-                entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
-                if entity_id:
-                    _LOGGER.debug("Removing sensor for inactive chore %s", task_id)
-                    registry.async_remove(entity_id)
-
-        known_ids = current_ids
+        for task_id in entities.keys() - current_ids:
+            entity = entities.pop(task_id)
+            _remove_entity(hass, entity)
 
     coordinator.async_add_listener(_on_coordinator_update)
+
+
+def _remove_entity(hass: HomeAssistant, entity: "DonetickChoreSensor") -> None:
+    """Remove a deleted chore's registry entry and its live state."""
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id("sensor", DOMAIN, entity.unique_id)
+    if entity_id:
+        _LOGGER.debug("Removing sensor for deleted chore %s", entity.unique_id)
+        registry.async_remove(entity_id)
+    # Removing the registry entry alone leaves the current state unavailable
+    # until Home Assistant restarts.
+    if entity.hass is not None:
+        hass.async_create_task(entity.async_remove(force_remove=True))
 
 
 class DonetickChoreSensor(CoordinatorEntity, SensorEntity):
