@@ -519,12 +519,13 @@ async def async_skip_task_service(hass: HomeAssistant, call: ServiceCall) -> Non
     coordinator = config["coordinator"]
 
     try:
-        result = await client.async_skip_task(task_id, completed_by)
+        await client.async_skip_task(task_id, completed_by)
         _LOGGER.info("Task %d skipped successfully", task_id)
         await coordinator.async_request_refresh()
 
     except Exception as e:
         _LOGGER.error("Failed to skip task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to skip Donetick task {task_id}: {e}") from e
 
 async def async_delete_history_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the delete_history service call (e.g. undo a completion)."""

@@ -371,6 +371,7 @@ class DonetickApiClient:
                     "You are not allowed to delete this history",
                     "You are not allowed to complete this action, either you are not admin or the completed by user is not in the circle",
                     "The selected user cannot see this task",
+                    "Insufficient permissions for impersonation",
                 ):
                     raise ValueError(f"Donetick denied the {operation} (403): {reason}")
         response.raise_for_status()
@@ -556,21 +557,20 @@ class DonetickApiClient:
     async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
         """Skip a task, advancing to the next scheduled occurrence without recording a completion."""
         headers = self._headers()
-
-        params = {}
         if completed_by:
-            params["completedBy"] = completed_by
+            # The full API records the token owner unless it is asked to act as
+            # another circle member through this header.
+            headers["X-Impersonate-User-ID"] = str(completed_by)
 
         try:
             async with self._session.post(
-                f"{self._base_url}/eapi/v1/chore/{choreId}/skip",
+                f"{self._base_url}/api/v1/chores/{choreId}/skip",
                 headers=headers,
-                params=params,
                 timeout=API_TIMEOUT
             ) as response:
-                response.raise_for_status()
+                await self._raise_for_status(response, "skip")
                 data = await response.json()
-                return DonetickTask.from_json(data)
+                return DonetickTask.from_json(data["res"])
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error skipping task in Donetick: %s", err)
