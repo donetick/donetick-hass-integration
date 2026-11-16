@@ -140,6 +140,18 @@ class DonetickApiClient:
             _LOGGER.error("Error parsing Donetick circle members response: %s", err)
             return []
 
+    async def async_adjust_member_points(self, circle_id: int, user_id: int, action: str, points: int) -> None:
+        """Add or remove a member's points through Donetick's admin API."""
+        if action not in ("add", "remove") or points <= 0:
+            raise ValueError("Point adjustment must add or remove a positive whole number")
+        async with self._session.post(
+            f"{self._base_url}/api/v1/circles/{circle_id}/members/points/adjust",
+            headers=self._headers(),
+            json={"action": action, "points": points, "userId": user_id},
+            timeout=API_TIMEOUT,
+        ) as response:
+            response.raise_for_status()
+
     async def async_get_things(self) -> List[DonetickThing]:
         """Get things from Donetick."""
         headers = self._headers()
