@@ -85,7 +85,7 @@ class TaskCreationTests(unittest.IsolatedAsyncioTestCase):
         client = SimpleNamespace(async_create_task=AsyncMock(return_value=SimpleNamespace(id=79)))
         coordinator = SimpleNamespace(async_request_refresh=AsyncMock())
         resolve = AsyncMock(return_value=SimpleNamespace(entry_id="test"))
-        namespace = {"HomeAssistant": object, "ServiceCall": object, "PROPERTY_FIELDS": ("points",), "DOMAIN": "donetick",
+        namespace = {"HomeAssistant": object, "ServiceCall": object, "PROPERTY_FIELDS": ("points",), "RECURRENCE_FIELDS": (), "DOMAIN": "donetick",
                      "_LOGGER": logging.getLogger(__name__), "_get_config_entry": resolve,
                      "normalize_due_date": self.normalize}
         load_definitions("__init__.py", {"async_create_task_service"}, namespace)
