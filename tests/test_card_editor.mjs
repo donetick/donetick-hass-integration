@@ -23,6 +23,14 @@ assert.equal(editorFields().find(field=>field.name==='display_filters').selector
 assert.deepEqual(form.data.display_filters,[]);
 assert.equal(form.data.include_anyone,false);
 assert.equal(form.data.allow_any_assignee,false);
+assert.equal(form.data.optimistic_completion,false);
+assert.ok(editorFields().find(field=>field.name==='optimistic_completion').selector.boolean);
+assert.equal(form.computeLabel({name:'optimistic_completion'}),'Mark completed immediately');
+assert.match(form.computeHelper({name:'optimistic_completion'}),/restore the task/);
+assert.equal(form.data.completion_strikethrough,true);
+assert.ok(editorFields().find(field=>field.name==='completion_strikethrough').selector.boolean);
+assert.equal(form.computeLabel({name:'completion_strikethrough'}),'Strike through tasks when completing');
+
 assert.ok(editorFields().find(field=>field.name==='allow_any_assignee').selector.boolean);
 assert.equal(form.computeLabel({name:'allow_any_assignee'}),'Allow assigning any circle member');
 assert.match(form.computeHelper({name:'allow_any_assignee'}),/adds them to that list.*future assignments/);

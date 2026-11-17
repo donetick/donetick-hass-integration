@@ -55,11 +55,15 @@ console.log('An unresolved assignee falls back to the name the title shows');
 
 // A completion from the circle behaves like the checkbox, including the pending state.
 circles()[0].click();
-assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);
+assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry',expected_due_date:'2026-10-20T16:00:00Z'}]);
 assert.ok(circles()[0].disabled);
 await tick();
 assert.equal(root.querySelectorAll('.completed .complete-initials').length,1);
 await new Promise(resolve=>setTimeout(resolve,1050));
+assert.equal(root.querySelector('[aria-label="Complete: '+hass.states['todo.all'].attributes.tasks[0].name+'"]'),null);
+// Deliver a new occurrence instead of reusing the accepted, stale task forever.
+hass.states['todo.all'].attributes.tasks[0].next_due_date='2026-11-18T09:00:00Z';
+card.hass=hass;
 fail=true;circles()[2].click();await tick();
 assert.match(root.querySelector('.error').textContent,/Permission denied/);
 assert.equal(circles()[2].disabled,false);

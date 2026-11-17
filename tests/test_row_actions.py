@@ -1,7 +1,8 @@
 """Verify row actions use current assignment and preserve task schedules."""
 import ast
+import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,13 +59,108 @@ class RowActionTests(unittest.IsolatedAsyncioTestCase):
         self.action = namespace['async_task_row_action']
         self.hass = SimpleNamespace(data={'donetick': {'entry': {
             'client': SimpleNamespace(async_get_tasks=tasks, async_complete_task=complete, async_update_task=update, async_reschedule_task=reschedule),
-            'coordinator': SimpleNamespace(async_request_refresh=refresh)}}})
+            'coordinator': SimpleNamespace(async_refresh=refresh, async_request_refresh=refresh)}}})
 
     async def run_action(self, complete, **data):
         await self.action(self.hass, SimpleNamespace(data={'task_id': 1, **data}), complete=complete)
 
     async def test_completion_uses_current_server_assignee(self):
         await self.run_action(True)
+        self.assertEqual(self.calls, [('complete', 1, 2), ('refresh',)])
+
+    async def test_row_action_refreshes_immediately_instead_of_debouncing(self):
+        async def deferred_refresh():
+            self.fail('A completed row must not wait for a debounced refresh')
+        self.hass.data['donetick']['entry']['coordinator'].async_request_refresh = deferred_refresh
+        await self.run_action(True)
+        self.assertEqual(self.calls, [('complete', 1, 2), ('refresh',)])
+
+    async def test_duplicate_task_actions_are_rejected_while_in_flight(self):
+        started, release = asyncio.Event(), asyncio.Event()
+        config = self.hass.data['donetick']['entry']
+        async def complete(task_id, completed_by):
+            self.calls.append(('complete', task_id, completed_by))
+            started.set()
+            await release.wait()
+        config['client'].async_complete_task = complete
+        first = asyncio.create_task(self.run_action(True))
+        try:
+            await asyncio.wait_for(started.wait(), 1)
+            for complete_action in [True, False]:
+                with self.assertRaisesRegex(ValueError, 'already in progress'):
+                    await self.run_action(complete_action)
+            self.assertEqual(self.calls, [('complete', 1, 2)])
+        finally:
+            release.set()
+            await first
+        self.assertEqual(config['row_actions_in_flight'], set())
+
+    async def test_different_tasks_complete_concurrently(self):
+        started, release = asyncio.Event(), asyncio.Event()
+        config = self.hass.data['donetick']['entry']
+        second_task = SimpleNamespace(**{**vars(self.task), 'id': 2})
+        async def tasks():
+            return [self.task, second_task]
+        async def complete(task_id, completed_by):
+            self.calls.append(('complete', task_id, completed_by))
+            if len(self.calls) == 2:
+                started.set()
+            await release.wait()
+        config['client'].async_get_tasks = tasks
+        config['client'].async_complete_task = complete
+        jobs = [asyncio.create_task(self.run_action(True, task_id=id)) for id in [1, 2]]
+        try:
+            await asyncio.wait_for(started.wait(), 1)
+            self.assertEqual(config['row_actions_in_flight'], {1, 2})
+        finally:
+            release.set()
+            await asyncio.gather(*jobs)
+        self.assertEqual(config['row_actions_in_flight'], set())
+
+    async def test_rejection_refreshes_and_allows_retry(self):
+        config = self.hass.data['donetick']['entry']
+        original = config['client'].async_complete_task
+        async def reject(*args, **kwargs):
+            raise PermissionError('Denied')
+        config['client'].async_complete_task = reject
+        with self.assertRaisesRegex(ValueError, 'Denied'):
+            await self.run_action(True)
+        self.assertEqual(self.calls, [('refresh',)])
+        self.assertEqual(config['row_actions_in_flight'], set())
+        config['client'].async_complete_task = original
+        await self.run_action(True)
+        self.assertEqual(self.calls[-2:], [('complete', 1, 2), ('refresh',)])
+
+    async def test_refresh_failure_releases_task_guard(self):
+        config = self.hass.data['donetick']['entry']
+        async def fail():
+            raise RuntimeError('Refresh failed')
+        config['coordinator'].async_refresh = fail
+        with self.assertRaisesRegex(RuntimeError, 'Refresh failed'):
+            await self.run_action(True)
+        self.assertEqual(config['row_actions_in_flight'], set())
+
+    async def test_cancellation_refreshes_and_releases_task_guard(self):
+        config = self.hass.data['donetick']['entry']
+        started = asyncio.Event()
+        async def complete(*args, **kwargs):
+            started.set()
+            await asyncio.Event().wait()
+        config['client'].async_complete_task = complete
+        job = asyncio.create_task(self.run_action(True))
+        await asyncio.wait_for(started.wait(), 1)
+        job.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await job
+        self.assertEqual(self.calls, [('refresh',)])
+        self.assertEqual(config['row_actions_in_flight'], set())
+
+    async def test_stale_occurrence_is_rejected_and_refreshed(self):
+        with self.assertRaisesRegex(ValueError, 'occurrence has already changed'):
+            await self.run_action(True, expected_due_date=self.task.next_due_date - timedelta(days=1))
+        self.assertEqual(self.calls, [('refresh',)])
+        self.calls.clear()
+        await self.run_action(True, expected_due_date=self.task.next_due_date)
         self.assertEqual(self.calls, [('complete', 1, 2), ('refresh',)])
 
     async def test_anyone_task_completion_uses_api_default(self):

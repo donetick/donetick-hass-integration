@@ -221,6 +221,12 @@ function samePresentation(previous, next) {
   return previous.locale === next.locale && previous.themes === next.themes
     && previous.config === next.config && previous.localize === next.localize;
 }
+function sameOccurrence(a, b) {
+  return a?.task_id === b?.task_id && (a?.next_due_date ?? null) === (b?.next_due_date ?? null);
+}
+function isOneTimeTask(task) {
+  return task.is_recurring === false || ['once','no_repeat'].includes(task.frequency_type);
+}
 class DonetickUserTodoCard extends HTMLElement {
   static getConfigElement() { return document.createElement('donetick-user-todo-editor'); }
   static getStubConfig(hass) {
@@ -228,7 +234,8 @@ class DonetickUserTodoCard extends HTMLElement {
     return {entity, user_id: hass.states[entity]?.attributes.donetick_user_id ?? hass.states[entity]?.attributes.circle_members?.[0]?.user_id};
   }
   constructor() {
-    super(); this.attachShadow({mode: 'open'}); this._pending = new Map(); this._completed = new Map();
+    super(); this.attachShadow({mode: 'open'}); this._pending = new Map(); this._completed = new Map(); this._awaitingCompletions = new Map();
+    this._actionErrors = new Map();
     this._outside = event => {
       const path = event.composedPath();
       if (this._panel && !path.includes(this) && !path.some(node => node.localName === 'ha-dialog-date-picker') && !this._pending.has(this._panel.taskId)) this.closePanel();
@@ -264,12 +271,14 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.sort_by && !['due_date','priority','name'].includes(config.sort_by)) throw new Error('Choose a valid sort order');
     if (config.due_display && !['date','relative','both'].includes(config.due_display)) throw new Error('Choose a valid due date display');
     if (config.row_spacing !== undefined && !['auto','compact','comfortable'].includes(config.row_spacing)) throw new Error('Choose valid task spacing');
+    if (config.optimistic_completion !== undefined && typeof config.optimistic_completion !== 'boolean') throw new Error('Optimistic completion must be true or false');
+    if (config.completion_strikethrough !== undefined && typeof config.completion_strikethrough !== 'boolean') throw new Error('Completion strikethrough must be true or false');
     if (config.credit_completion !== undefined && !['assignee','choose'].includes(config.credit_completion)) throw new Error('Choose a valid completion credit');
     if (config.complete_as_picker !== undefined && !['chips','dropdown'].includes(config.complete_as_picker)) throw new Error('Choose a valid Complete as picker');
     if (config.complete_control !== undefined && !['checkbox','initials','button'].includes(config.complete_control)) throw new Error('Choose a valid completion control');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
     this._config = {task_view:'both', completed_days:1, completed_filter:'all', completed_limit:0, row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', credit_completion: 'assignee', complete_as_picker: 'chips', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
+      button_content: 'icon', optimistic_completion:false, completion_strikethrough:true, complete_control: 'checkbox', credit_completion: 'assignee', complete_as_picker: 'chips', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
     if (this._panel && this._panel.kind !== 'details' && !(this._panel.kind === 'performer' ? this.offersCompleteAs()
       : this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]])) this._panel = null;
     this._configInputSignature = signature;
@@ -289,8 +298,26 @@ class DonetickUserTodoCard extends HTMLElement {
     return 2 + (this._config?.task_view === 'completed' ? 0 : this.filteredTasks(state).length)
       + (this._config?.task_view === 'pending' ? 0 : completedTasks(state, this._config?.user_id, new Date(), this._config).length);
   }
-  filteredTasks(state) {
-    return userTasks(state, this._config?.user_id, this._config?.display_filters ?? this._config?.display_filter, new Date(), this._config?.upcoming_days, this._config?.sort_by, this._hass?.locale?.language, this._config?.include_overdue, this._config?.labels, this._config?.label_match, this._config?.include_anyone);
+  syncActionContext() {
+    const scope = JSON.stringify([this._config?.entity, this._hass?.states[this._config?.entity]?.attributes.config_entry_id]);
+    if (this._actionContext?.scope === scope) return;
+    this._actionContext = {scope};
+    this._pending.clear(); this._completed.clear(); this._awaitingCompletions.clear(); this._actionErrors.clear();
+    this._panel = null; this.clearError();
+  }
+  reconcileCompletions(state) {
+    if (!state || ['unavailable', 'unknown'].includes(state.state)) return;
+    const tasks = [...(state.attributes.tasks || []), ...(state.attributes.anyone_tasks || [])];
+    for (const [id, completed] of this._awaitingCompletions) {
+      // Compare occurrences, not just task IDs: recurring tasks keep their ID.
+      const recorded = (state.attributes.completed_tasks || []).some(task => task.task_id === id && !completed.historyUids.has(task.uid));
+      if ((recorded && !isOneTimeTask(completed)) || !tasks.some(task => sameOccurrence(task, completed))) this._awaitingCompletions.delete(id);
+    }
+  }
+  filteredTasks(state, includeAccepted = false) {
+    return userTasks(state, this._config?.user_id, this._config?.display_filters ?? this._config?.display_filter, new Date(), this._config?.upcoming_days, this._config?.sort_by, this._hass?.locale?.language, this._config?.include_overdue, this._config?.labels, this._config?.label_match, this._config?.include_anyone)
+      .filter(task => includeAccepted || (!sameOccurrence(this._awaitingCompletions.get(task.task_id), task)
+        && !(this._config.optimistic_completion && isOneTimeTask(task) && sameOccurrence(this._completed.get(task.task_id), task))));
   }
   // The Complete as panel has two ways in: its own row action, and the completion
   // control itself when credit_completion asks who did the work.
@@ -321,35 +348,66 @@ class DonetickUserTodoCard extends HTMLElement {
     else this.act(task, true);
   }
   async act(task, complete, dueDate, assignedTo, completedBy) {
-    if (this._pending.has(task.task_id)) return;
+    this.syncActionContext();
+    if (this._pending.has(task.task_id) || this._completed.has(task.task_id)
+      || sameOccurrence(this._awaitingCompletions.get(task.task_id), task)) return;
+    const context = this._actionContext;
+    const panel = this._panel;
+    task = {...task};
     const state = this._hass.states[this._config.entity];
-    this._pending.set(task.task_id, complete); this.clearError(); this.render();
+    if (!state || ['unavailable','unknown'].includes(state.state)) { this.render(); return; }
+    const historyUids = new Set((state.attributes.completed_tasks || []).filter(item => item.task_id === task.task_id).map(item => item.uid));
+    // Keep a snapshot for rollback. One-time rows disappear immediately; recurring
+    // rows retain completion feedback through slow requests and state updates.
+    if (complete && this._config.optimistic_completion) this._completed.set(task.task_id, task);
+    this._pending.set(task.task_id, complete); this.clearError(task.task_id); this.render();
     try {
       const data = actionData(state, task);
       if (dueDate) data.due_date = dueDate;
       if (assignedTo !== undefined) data.assigned_to = assignedTo;
       if (completedBy !== undefined) data.completed_by = completedBy;
+      if (complete && task.next_due_date) data.expected_due_date = task.next_due_date;
       await this._hass.callService('donetick', dueDate || assignedTo !== undefined ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
+      if (context !== this._actionContext) return;
       // Only a completion Donetick accepted moves its person to the front.
       if (completedBy !== undefined) this.rememberPerformer(completedBy);
       // Only this task's panel: a slow call must not close one opened meanwhile for
       // another row.
-      if (this._panel?.taskId === task.task_id) this._panel = null;
+      if (this._panel === panel && panel?.taskId === task.task_id) this._panel = null;
       if (complete) {
+        // The service response and HA state event can arrive in either order.
+        // Retain acceptance beyond the animation so stale state cannot undo it.
+        this._awaitingCompletions.set(task.task_id, {...task, historyUids});
+        if (isOneTimeTask(task)) {
+          this._completed.delete(task.task_id);
+          return;
+        }
         this._completed.set(task.task_id, task);
-        setTimeout(() => { this._completed.delete(task.task_id); this.render(); }, 1000);
+        setTimeout(() => {
+          if (context !== this._actionContext || this._completed.get(task.task_id) !== task) return;
+          this._completed.delete(task.task_id); this.render();
+        }, 1000);
       }
-    } catch (err) { this._error = err.message || String(err); this._errorTask = task; }
-    finally { this._pending.delete(task.task_id); this.render(); }
+    } catch (err) {
+      if (context !== this._actionContext) return;
+      if (complete) this._completed.delete(task.task_id);
+      this._actionErrors.set(task.task_id, {task, message:err.message || String(err)});
+    }
+    finally { if (context === this._actionContext) { this._pending.delete(task.task_id); this.render(); } }
   }
-  clearError() { this._error = ''; this._errorTask = null; }
+  clearError(taskId) { this._error = ''; this._errorTask = null; if (taskId !== undefined) this._actionErrors.delete(taskId); }
   // Only the panel of the task the message is about can show it.
-  errorIsInPanel() { return !!this._errorTask && this._panel?.taskId === this._errorTask.task_id && this._panel.kind !== 'details'; }
+  errorIsInPanel(task = this._errorTask) {
+    const state = this._hass?.states[this._config?.entity];
+    return !!task && !!state && !['unavailable','unknown'].includes(state.state)
+      && this._panel?.taskId === task.task_id && this._panel.kind !== 'details'
+      && this.filteredTasks(state, true).some(item => item.task_id === task.task_id);
+  }
   closePanel() {
     const taskId = this._panel?.taskId;
     const kind = this._panel?.kind;
     const opener = this._panel?.opener;
-    this._panel = null; this.clearError(); this.render();
+    this._panel = null; this.clearError(taskId); this.render();
     // Complete as has two ways in; focus goes back to the one that opened it.
     this.shadowRoot.querySelector(`[data-action="${kind}"][data-task-id="${taskId}"]${opener ? `[data-opener="${opener}"]` : ''}`)?.focus();
   }
@@ -360,7 +418,7 @@ class DonetickUserTodoCard extends HTMLElement {
     // The dropdown starts on the first person offered; it still books only on confirm.
     this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showTime:false, assignedTo:task.assigned_to ?? null,
       performer: choices[0]?.user_id ?? null, opener};
-    this.clearError();
+    this.clearError(task.task_id);
     this.render();
     // Chips book on activation, so none of them takes the focus: a second Enter must not
     // complete the task for whoever happens to come first.
@@ -369,7 +427,9 @@ class DonetickUserTodoCard extends HTMLElement {
   }
   render() {
     if (!this._config || !this._hass) return;
+    this.syncActionContext();
     const state = this._hass.states[this._config.entity];
+    this.reconcileCompletions(state);
     const userId = selectedUser(state, this._config.user_id);
     const member = state?.attributes.circle_members?.find(m => m.user_id === userId);
     const focusedField = this.shadowRoot.activeElement?.dataset.field;
@@ -381,7 +441,8 @@ class DonetickUserTodoCard extends HTMLElement {
       ha-card[data-spacing="compact"] .row { padding:2px 0; }
       ha-card[data-spacing="comfortable"] .row { padding:8px 0; }
       ha-card[data-labels="true"] { margin-block:4px; }
-      .completed .name { text-decoration:line-through; color:var(--secondary-text-color); }
+      .completed .name { color:var(--secondary-text-color); }
+      .completed:not(.no-strikethrough) .name { text-decoration:line-through; }
       .history-heading { font-size:14px; font-weight:500; color:var(--secondary-text-color); margin:16px 0 6px; border-top:1px solid var(--divider-color); padding-top:12px; }
       .history-check { color:var(--success-color, #43a047); width:44px; flex-shrink:0; }
       .history-row { padding:6px 0; }
@@ -442,9 +503,19 @@ class DonetickUserTodoCard extends HTMLElement {
     // belonging to the wrong row, so it moves up here and says which task it is about.
     if (this._error && !this.errorIsInPanel()) addText(card, 'p', this._errorTask
       ? `${this._errorTask.name}: ${this._error}` : this._error, 'error').setAttribute('role', 'alert');
+    for (const {task, message} of this._actionErrors.values()) {
+      if (this.errorIsInPanel(task)) continue;
+      addText(card, 'p', `${task.name}: ${message}`, 'error').setAttribute('role', 'alert');
+    }
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
     const tasks = this._config.task_view === 'completed' ? [] : this.filteredTasks(state);
-    for (const task of this._completed.values()) if (this._config.task_view !== 'completed' && !tasks.some(item => item.task_id === task.task_id) && this.filteredTasks({attributes:{tasks:[task]}}).length) tasks.push(task);
+    for (const task of this._completed.values()) {
+      if (this._config.optimistic_completion && isOneTimeTask(task)) continue;
+      if (this._config.task_view === 'completed' || !this.filteredTasks({attributes:{tasks:[task]}}, true).length) continue;
+      const index = tasks.findIndex(item => item.task_id === task.task_id);
+      // Show feedback on the occurrence clicked, not its newly scheduled successor.
+      if (index === -1) tasks.push(task); else tasks[index] = task;
+    }
     tasks.sort((a,b) => compareTasks(a,b,this._config.sort_by,this._hass.locale?.language));
     if (!tasks.length && this._config.task_view !== 'completed') addText(card, 'p', emptyMessage({...this._config,user_id:userId}, member?.display_name || member?.username || `User ${userId}`), 'empty');
     for (const task of tasks) {
@@ -453,6 +524,7 @@ class DonetickUserTodoCard extends HTMLElement {
       const choosing = this._config.credit_completion === 'choose';
       const performerOpen = this._panel?.taskId === task.task_id && this._panel.kind === 'performer';
       if (completed) row.classList.add('completed');
+      if (completed && !this._config.completion_strikethrough) row.classList.add('no-strikethrough');
       if (this._config.show_complete && this._config.complete_control === 'initials') {
         const members = state.attributes.circle_members || [];
         const assignee = members.find(member => member.user_id === task.assigned_to);
@@ -761,7 +833,8 @@ class DonetickUserTodoCard extends HTMLElement {
     controls.append(save); updateSave();
     }
     form.append(controls);
-    if (this._error && this._errorTask?.task_id === task.task_id) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
+    const errorMessage = this._errorTask?.task_id === task.task_id ? this._error : this._actionErrors.get(task.task_id)?.message;
+    if (errorMessage) { const error=addText(form,'p',errorMessage,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
     form.addEventListener('submit',event => {
       event.preventDefault(); if (busy || !form.reportValidity() || form.querySelector('ha-form')?.reportValidity?.() === false) return;
@@ -788,7 +861,7 @@ const EDITOR_DEFAULTS = {
   task_view:'both',
   completed_days:1, completed_filter:'all', completed_limit:0,
   row_spacing:'auto',
-  credit_completion:'assignee', complete_as_picker:'chips',
+  optimistic_completion:false, completion_strikethrough:true, credit_completion:'assignee', complete_as_picker:'chips',
   display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
   due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
@@ -837,8 +910,10 @@ const EDITOR_HELP = {
   button_content:'Icons save space. Labels explain actions, but may make narrow cards wider.',
   button_shape:'Changes action buttons; the completion checkbox stays the same.'
 };
-Object.assign(EDITOR_LABELS, {credit_completion:'Credit completion to', complete_as_picker:'Complete as picker'});
+Object.assign(EDITOR_LABELS, {optimistic_completion:'Mark completed immediately', completion_strikethrough:'Strike through tasks when completing', credit_completion:'Credit completion to', complete_as_picker:'Complete as picker'});
 Object.assign(EDITOR_HELP, {
+  optimistic_completion:'Mark the task immediately while Donetick completes it in the background. Strikethrough is controlled separately. If completion fails, restore the task, refresh its data and show the error. Off by default.',
+  completion_strikethrough:'Strike through the task name during completion feedback. Turn off to keep the name unchanged while the checkbox still gives immediate feedback. On by default.',
   credit_completion:'The task assignee is credited by default. Ask who completed it makes the completion control open Complete as, offering the task’s assignees, or anyone in the circle when nobody is assigned.',
   complete_as_picker:'Chips complete the task with one tap on a person. A dropdown scales better to a large circle and books after a confirmation.'
 });
@@ -1009,6 +1084,7 @@ class DonetickUserTodoEditor extends HTMLElement {
       ])] : []),
       ...(hasPending ? [group('actions_options','Available actions',[
         ...['show_complete','show_complete_as','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}})),
+        ...(this._config.show_complete !== false || this._config.show_complete_as ? ['optimistic_completion','completion_strikethrough'].map(name=>({name,selector:{boolean:{}}})) : []),
         ...(this._config.show_reassign !== false ? [{name:'allow_any_assignee',selector:{boolean:{}}}] : [])
       ])] : []),
       ...(hasPending ? [group('appearance','Appearance',[

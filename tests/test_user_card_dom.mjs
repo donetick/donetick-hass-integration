@@ -244,9 +244,14 @@ root.querySelector('form').dispatchEvent(new window.KeyboardEvent('keydown',{key
 fail=false;click('Change due date: One-off');click('Skip occurrence: Weekly');
 assert.equal(root.querySelectorAll('form').length,1);assert.equal(root.querySelector('form').getAttribute('aria-label'),'Skip occurrence: Weekly');
 document.body.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true}));assert.equal(root.querySelector('form'),null);
+const completingDue=hass.states['todo.all'].attributes.tasks[0].next_due_date;
 root.querySelector('[aria-label="Complete: Weekly"]').dispatchEvent(new window.Event('change'));await tick();
-assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);assert.ok(root.querySelector('.completed input').checked);
+assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry',expected_due_date:completingDue}]);assert.ok(root.querySelector('.completed input').checked);
 await new Promise(resolve=>setTimeout(resolve,1050));
+assert.equal(root.querySelector('[aria-label="Complete: Weekly"]'),null,'Accepted completion stays hidden while HA has the old occurrence');
+// Simulate the coordinator delivering the recurring task's next occurrence.
+hass.states['todo.all'].attributes.tasks[0].next_due_date='2026-10-27T16:00:00Z';
+card.hass=hass;
 card.setConfig({entity:'todo.all',user_id:1,complete_control:'button',button_content:'icon_and_label'});
 assert.equal(root.querySelectorAll('input[type=checkbox]').length,0);
 // Multi-user labels depend on the view's scope, even when only one user's tasks match.
