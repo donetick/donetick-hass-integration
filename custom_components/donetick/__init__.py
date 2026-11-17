@@ -124,6 +124,7 @@ COMPLETE_ASSIGNED_SCHEMA = ASSIGNED_TASK_SCHEMA.extend({
     vol.Optional("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("completed_by_ha_user"): cv.string,
     vol.Optional("completed_by_username"): cv.string,
+    vol.Optional("expected_due_date"): vol.Any(None, cv.datetime),
 })
 
 COMPLETE_CHORE_SCHEMA = vol.Schema({
@@ -587,11 +588,20 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
         raise HomeAssistantError("No matching Donetick integration found")
     config = hass.data[DOMAIN][entry.entry_id]
     client = config["client"]
+    task_id = call.data["task_id"]
+    in_flight = config.setdefault("row_actions_in_flight", set())
+    # Reject duplicate clicks across cards instead of queuing a second completion
+    # that could accidentally consume a recurring task's next occurrence.
+    if task_id in in_flight:
+        raise HomeAssistantError("An action for this task is already in progress")
+    in_flight.add(task_id)
     try:
         tasks = await client.async_get_tasks()
         task = next((task for task in tasks if task.id == call.data["task_id"] and task.is_active), None)
         if task is None:
             raise HomeAssistantError("Task is no longer active or visible; refresh the list")
+        if complete and "expected_due_date" in call.data and task.next_due_date != call.data["expected_due_date"]:
+            raise HomeAssistantError("This task occurrence has already changed; refresh the list")
         if complete:
             # Explicit performer and HA user mapping take priority over the assignee.
             # None leaves attribution to Donetick's authenticated API token owner.
@@ -608,7 +618,11 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
     except Exception as err:
         raise HomeAssistantError(f"Donetick task action failed: {err}") from err
     finally:
-        await config["coordinator"].async_request_refresh()
+        # A debounced request can return before the completed occurrence disappears.
+        try:
+            await config["coordinator"].async_refresh()
+        finally:
+            in_flight.discard(task_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

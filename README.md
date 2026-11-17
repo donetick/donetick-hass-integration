@@ -394,6 +394,26 @@ task it belongs to, or above the list naming that task when its panel has since 
 closed or another row's panel is open. An action that succeeds closes its own row's
 panel and leaves any other open.
 
+Enable **Mark completed immediately** under **Available actions** (YAML:
+`optimistic_completion: true`) to check and strike through the row immediately
+while Donetick completes it in the background. This is off by default. Other tasks
+remain usable, and duplicate completion clicks are blocked while waiting. On failure,
+the row returns to pending and the card shows the error. This also applies to
+**Complete as**, after choosing the performer.
+**Strike through tasks when completing** is a separate toggle, on by default.
+Set `completion_strikethrough: false` to keep task names unchanged while still
+checking the checkbox immediately with `optimistic_completion: true`.
+With optimistic completion enabled, known one-time tasks disappear immediately
+instead of keeping a feedback row. A rejected completion restores the row and
+shows the error. Recurring tasks retain the brief completion feedback.
+Accepted completions stay hidden while Home Assistant refreshes its task list.
+Recurring tasks return as a new occurrence with their next due date, if it matches
+the card's date filters.
+Rejected completions restore the task and refresh its data without reloading the
+dashboard or interrupting other completions. Errors for different tasks remain
+visible independently. Duplicate in-flight actions on the same task are rejected;
+scheduled completions also check that the occurrence's due date has not changed.
+
 **Complete tasks with** offers a third control besides the checkbox and the button: an
 **Initials circle on the left** showing the assignee's initials, which completes the task
 on tap like the checkbox does. One letter is used unless another circle member's name
