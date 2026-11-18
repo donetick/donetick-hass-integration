@@ -10,37 +10,41 @@ function registry(onWait = () => {}) {
     define(name, constructor) {
       assert.equal(definitions.has(name), false, `Duplicate registration: ${name}`);
       definitions.set(name, constructor);
-      pending.get(name)?.(constructor);
+      for (const resolve of pending.get(name) ?? []) resolve(constructor);
+      pending.delete(name);
     },
     whenDefined(name) {
       onWait(name);
       if (definitions.has(name)) return Promise.resolve(definitions.get(name));
-      return new Promise(resolve => pending.set(name, resolve));
+      return new Promise(resolve => pending.set(name, [...(pending.get(name) ?? []), resolve]));
     }
   };
 }
 
 // Reproduce an extra module loading before HA's registry polyfill.
+let waitingModules = 0;
 const nativeRegistry = registry(name => {
   assert.equal(name, 'home-assistant');
-  signalWaiting();
+  if (++waitingModules === 2) signalWaiting();
 });
 globalThis.customElements = nativeRegistry;
 globalThis.HTMLElement = class NativeHTMLElement {};
 globalThis.window = {};
 const cardUrl = new URL('../custom_components/donetick/frontend/donetick-user-todo-card.js', import.meta.url);
-const loading = import(cardUrl);
+const createCardUrl = new URL('../custom_components/donetick/frontend/donetick-create-task-card.js?v=startup-test', import.meta.url);
+const modules = [import(cardUrl), import(createCardUrl)];
 let timeout;
 try {
   await Promise.race([
     waiting,
-    loading.then(() => { throw new Error('Card loaded before HA initialized'); }),
+    Promise.race(modules).then(() => { throw new Error('Card loaded before HA initialized'); }),
     new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Startup wait not reached')), 2000); })
   ]);
 } finally {
   clearTimeout(timeout);
 }
 assert.equal(nativeRegistry.get('donetick-user-todo-card'), undefined);
+assert.equal(nativeRegistry.get('donetick-create-task-card'), undefined);
 assert.equal(window.customCards, undefined);
 
 // HA replaces these globals, then defines home-assistant in the native registry
@@ -52,18 +56,36 @@ globalThis.HTMLElement = PatchedHTMLElement;
 const HomeAssistant = class extends PatchedHTMLElement {};
 scopedRegistry.define('home-assistant', HomeAssistant);
 nativeRegistry.define('home-assistant', HomeAssistant);
-await loading;
-for (const name of ['donetick-user-todo-card', 'donetick-user-todo-editor']) {
+const [, { buildActionData }] = await Promise.all(modules);
+for (const name of ['donetick-user-todo-card', 'donetick-user-todo-editor', 'donetick-create-task-card']) {
   const constructor = scopedRegistry.get(name);
   assert.ok(constructor, `${name} registered in the final registry`);
   assert.equal(Object.getPrototypeOf(constructor.prototype), PatchedHTMLElement.prototype);
   assert.equal(nativeRegistry.get(name), undefined);
 }
-assert.equal(window.customCards.length, 1);
+assert.deepEqual(window.customCards.map(({ type }) => type).sort(), [
+  'donetick-create-task-card', 'donetick-user-todo-card',
+]);
+assert.equal(window.customCards.find(({ type }) => type === 'donetick-create-task-card').name, 'Donetick Create Task');
+
+// The visual editor is not needed for the picker or on ordinary dashboards.
+assert.equal(scopedRegistry.get('donetick-create-task-editor'), undefined);
+scopedRegistry.define('ha-form', class extends PatchedHTMLElement {});
+globalThis.document = { createElement: name => new (scopedRegistry.get(name))() };
+const createCard = scopedRegistry.get('donetick-create-task-card');
+const editor = await createCard.getConfigElement();
+assert.ok(editor instanceof scopedRegistry.get('donetick-create-task-editor'));
+assert.deepEqual(buildActionData({
+  name: 'Wash dishes', due_date: '2026-11-19', due_time: '18:30:00', points: 0, assignee: 'anyone',
+}, { name: {}, due_date: {}, points: {}, assigned_to: {} }), {
+  name: 'Wash dishes', due_date: '2026-11-19T18:30:00', points: 0, assigned_to: null,
+});
 
 // Loading through a manual resource after startup remains safe and idempotent.
 const originalCard = scopedRegistry.get('donetick-user-todo-card');
 await import(`${cardUrl}?manual-resource`);
+await import(new URL(createCardUrl.pathname + '?manual-resource', createCardUrl));
 assert.equal(scopedRegistry.get('donetick-user-todo-card'), originalCard);
-assert.equal(window.customCards.length, 1);
+assert.equal(scopedRegistry.get('donetick-create-task-card'), createCard);
+assert.equal(window.customCards.length, 2);
 console.log('Frontend startup race regression passed');

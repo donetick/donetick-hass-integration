@@ -111,6 +111,6 @@ user, task, and project IDs and existing mappings may refer to different records
 
 ## Task card and advanced actions
 
-The integration bundles the **Donetick User Tasks** card. It works in UI and YAML dashboards and needs no separate installation or resource registration. The full guide covers task filters, completed history, appearance, reassignment, due-date editing, completion attribution, HA user mapping, action pickers, and repeat schedules.
+The integration bundles two dashboard cards. **Donetick User Tasks** lists and manages existing tasks. **Donetick Create Task** opens a task form with native date and time pickers and a visual editor for the form layout and defaults. Both cards appear in the picker after the integration is configured and work in UI and YAML dashboards.
 
 - [Task card guide](docs/task-card.md)
