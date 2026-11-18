@@ -149,10 +149,10 @@ class DonetickApiClient:
             raise ValueError("Unexpected reward catalog response")
         return [DonetickReward.from_json(item) for item in payload if item.get("isActive", True)]
 
-    async def async_redeem_reward(self, reward_id: int) -> dict:
-        """Request a reward for the API-token owner."""
+    async def async_redeem_reward(self, reward_id: int, user_id: int | None = None) -> dict:
+        """Request a reward for the API-token owner or an explicitly selected member."""
         async with self._session.post(f"{self._base_url}/api/v1/rewards/{reward_id}/redeem",
-                                      headers=self._headers(), json={}, timeout=API_TIMEOUT) as response:
+                                      headers=self._headers(), json={"userId": user_id} if user_id else {}, timeout=API_TIMEOUT) as response:
             response.raise_for_status()
             return await response.json()
 

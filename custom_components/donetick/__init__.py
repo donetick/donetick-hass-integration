@@ -291,8 +291,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry = await _get_config_entry(hass, entry_id)
         if entry is None:
             raise ServiceValidationError("No matching Donetick integration found")
+        user_id = data.get("user_id")
+        if user_id is not None:
+            if type(user_id) is not int or user_id <= 0:
+                raise ServiceValidationError("Choose a valid Donetick member")
+            await _validate_circle_member(hass.data[DOMAIN][entry.entry_id], user_id)
         try:
-            await hass.data[DOMAIN][entry.entry_id]["client"].async_redeem_reward(reward_id)
+            await hass.data[DOMAIN][entry.entry_id]["client"].async_redeem_reward(reward_id, user_id)
         except Exception as err:
             raise HomeAssistantError(f"Donetick could not request that reward: {err}") from err
         for key in ("reward_coordinator", "coordinator"):

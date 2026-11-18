@@ -574,7 +574,7 @@ postpone_task:
 
 redeem_reward:
   name: Redeem Reward
-  description: Request a Donetick reward for the owner of the selected integration's API token. The request may need approval in Donetick.
+  description: Request a Donetick reward for the selected circle member. When no member is supplied, the API token owner is used. The request may need approval in Donetick.
   fields:
     reward:
       name: Reward
@@ -597,6 +597,13 @@ redeem_reward:
         select:
           options: []
           mode: dropdown
+    user_id:
+      name: Claiming member
+      description: The Donetick circle member whose points will be used. Selecting another member requires admin or manager access.
+      selector:
+        number:
+          min: 1
+          mode: box
 
 get_reward_webhook_url:
   name: Get Reward Approval Webhook URL
