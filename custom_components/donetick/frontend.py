@@ -11,6 +11,8 @@ CARD_URL = "/donetick/donetick-user-todo-card.js"
 CARD_FILE = Path(__file__).parent / "frontend" / "donetick-user-todo-card.js"
 ACTION_URL = "/donetick/donetick-action-editor.js"
 ACTION_FILE = Path(__file__).parent / "frontend" / "donetick-action-editor.js"
+REWARDS_URL = "/donetick/donetick-rewards-card.js"
+REWARDS_FILE = Path(__file__).parent / "frontend" / "donetick-rewards-card.js"
 DATA_FRONTEND = "donetick_frontend"
 
 
@@ -26,10 +28,14 @@ async def async_setup_frontend(hass: HomeAssistant) -> None:
         version = sha256(content).hexdigest()[:12]
         action_content = await hass.async_add_executor_job(ACTION_FILE.read_bytes)
         action_version = sha256(action_content).hexdigest()[:12]
+        rewards_content = await hass.async_add_executor_job(REWARDS_FILE.read_bytes)
+        rewards_version = sha256(rewards_content).hexdigest()[:12]
         await hass.http.async_register_static_paths(
             [StaticPathConfig(CARD_URL, str(CARD_FILE), False),
-             StaticPathConfig(ACTION_URL, str(ACTION_FILE), False)]
+             StaticPathConfig(ACTION_URL, str(ACTION_FILE), False),
+             StaticPathConfig(REWARDS_URL, str(REWARDS_FILE), False)]
         )
         add_extra_js_url(hass, f"{CARD_URL}?v={version}")
         add_extra_js_url(hass, f"{ACTION_URL}?v={action_version}")
+        add_extra_js_url(hass, f"{REWARDS_URL}?v={rewards_version}")
         state["registered"] = True
