@@ -3,6 +3,10 @@ from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 
 PROPERTY_FIELDS = ("points", "priority")
+DEFAULT_OVERDUE_NAGGING_MINUTES = 60
+MAX_OVERDUE_NAGGING_MINUTES = 7 * 24 * 60
+DEFAULT_OVERDUE_FOLLOW_UP_LIMIT = 3
+MAX_OVERDUE_FOLLOW_UP_LIMIT = 100
 
 
 def validate_points(value):
@@ -53,6 +57,30 @@ def validate_reminders(value):
     return templates
 
 
+def validate_overdue_nagging_interval(value):
+    """Accept a whole number of minutes from YAML or the number selector."""
+    try:
+        number = Decimal(str(value))
+        if not number.is_finite() or number != number.to_integral_value() or not 1 <= number <= MAX_OVERDUE_NAGGING_MINUTES:
+            raise ValueError()
+    except (InvalidOperation, ValueError):
+        raise ValueError(
+            f"Overdue follow-up interval must be a whole number from 1 to {MAX_OVERDUE_NAGGING_MINUTES} minutes"
+        ) from None
+    return int(number)
+
+
+def validate_overdue_follow_up_limit(value):
+    """Accept the maximum count per task occurrence."""
+    try:
+        count = validate_points(value)
+    except ValueError:
+        count = 0
+    if not 1 <= count <= MAX_OVERDUE_FOLLOW_UP_LIMIT:
+        raise ValueError(f"Maximum overdue follow-ups must be a whole number from 1 to {MAX_OVERDUE_FOLLOW_UP_LIMIT}")
+    return count
+
+
 def apply_task_properties(task, changes):
     """Return an editor payload without changing unrelated task settings."""
     payload = deepcopy(task)
@@ -70,10 +98,32 @@ def apply_task_properties(task, changes):
         templates = changes["reminders"]
         if not isinstance(templates, list) or len(templates) > 5:
             raise ValueError("Reminders must contain at most five offsets")
+        if templates and (not payload.get("nextDueDate") or payload.get("frequencyType") in ("always", "trigger")):
+            raise ValueError("Reminders require a scheduled due date; always-available and trigger-based tasks cannot have reminders")
         metadata = deepcopy(payload.get("notificationMetadata") or {})
         metadata["templates"] = deepcopy(templates)
         payload["notificationMetadata"] = metadata
         payload["notification"] = bool(templates)
+    if any(field.startswith("overdue_") for field in changes):
+        metadata = deepcopy(payload.get("notificationMetadata") or {})
+        if changes.get("overdue_follow_ups", changes.get("overdue_nagging")) is False:
+            metadata["overdueNagging"] = None
+        else:
+            if not payload.get("nextDueDate") or payload.get("frequencyType") in ("always", "trigger"):
+                raise ValueError("Overdue follow-ups require a scheduled due date")
+            current = metadata.get("overdueNagging") or {}
+            minutes = changes.get(
+                "overdue_follow_up_interval_minutes",
+                changes.get("overdue_nagging_interval_minutes", current.get("intervalMinutes", DEFAULT_OVERDUE_NAGGING_MINUTES)),
+            )
+            limit = changes.get("overdue_follow_up_limit", current.get("maxFollowUps", DEFAULT_OVERDUE_FOLLOW_UP_LIMIT))
+            continue_until_complete = changes.get("overdue_follow_up_until_complete", current.get("continueUntilComplete", False))
+            metadata["overdueNagging"] = {
+                "intervalMinutes": validate_overdue_nagging_interval(minutes),
+                "maxFollowUps": validate_overdue_follow_up_limit(limit),
+                "continueUntilComplete": continue_until_complete,
+            }
+        payload["notificationMetadata"] = metadata
     if "assigned_to" in changes:
         assignee = changes["assigned_to"]
         if assignee is not None and (type(assignee) is not int or assignee < 1):

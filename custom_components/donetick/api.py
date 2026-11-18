@@ -462,6 +462,11 @@ class DonetickApiClient:
                 actual_templates = (updated_data.get("notificationMetadata") or {}).get("templates", [])
                 if updated_data.get("notification") != bool(expected_templates) or actual_templates != expected_templates:
                     raise ValueError(f"Donetick did not apply reminders for task {task_id}; refresh the task")
+            if any(field.startswith("overdue_") for field in properties):
+                expected_nagging = (payload.get("notificationMetadata") or {}).get("overdueNagging")
+                actual_nagging = (updated_data.get("notificationMetadata") or {}).get("overdueNagging")
+                if actual_nagging != expected_nagging:
+                    raise ValueError(f"Donetick did not apply overdue follow-ups for task {task_id}; refresh the task")
         expected_metadata = {key: value for key, value in (payload["frequencyMetadata"] or {}).items()
                              if value not in (None, "", [])}
         actual_metadata = {key: value for key, value in (updated.frequency_metadata or {}).items()

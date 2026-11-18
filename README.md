@@ -114,3 +114,7 @@ user, task, and project IDs and existing mappings may refer to different records
 The integration bundles the **Donetick User Tasks** card. It works in UI and YAML dashboards and needs no separate installation or resource registration. The full guide covers task filters, completed history, appearance, reassignment, due-date editing, completion attribution, HA user mapping, action pickers, and repeat schedules.
 
 - [Task card guide](docs/task-card.md)
+
+### Overdue follow-ups
+
+`create_task` and `update_task` accept `overdue_follow_ups: true` for scheduled tasks. By default, Donetick sends up to three follow-ups, one hour apart, beginning one full interval after the due time. Set `overdue_follow_up_interval_minutes` and `overdue_follow_up_limit` to configure the interval and maximum. Set `overdue_follow_up_until_complete: true` to continue until completion; this takes precedence over the maximum. Set `overdue_follow_ups: false` to disable follow-ups. Follow-ups are separate from reminders, and reminders require a due date.

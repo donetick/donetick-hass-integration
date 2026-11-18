@@ -141,6 +141,8 @@ def build_recurrence_payload(task, changes, default_timezone="UTC", *, name=None
                                    "condition": thing.get("condition", "")}
     if kind in ("trigger", "always"):
         payload["notification"] = False
+        if (payload.get("notificationMetadata") or {}).get("overdueNagging") is not None:
+            payload["notificationMetadata"]["overdueNagging"] = None
     payload["frequencyMetadata"] = metadata if kind in CUSTOM_TYPES else (None if changed_type else deepcopy(task.get("frequencyMetadata")))
     payload["labelsV2"] = [{"id": label["id"]} for label in task.get("labelsV2") or []]
     return payload

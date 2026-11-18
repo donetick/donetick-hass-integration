@@ -34,6 +34,67 @@ class PropertyPayloadTests(unittest.TestCase):
             self.assertEqual(result['notification'], enabled)
             self.assertEqual(result['notificationMetadata'], task['notificationMetadata'])
 
+    def test_overdue_nagging_can_be_changed_independently_of_reminders(self):
+        task = task_fixture()
+        enabled = apply(task, {'overdue_nagging': True})
+        self.assertTrue(enabled['notification'])
+        self.assertEqual(enabled['notificationMetadata']['templates'],
+                         task['notificationMetadata']['templates'])
+        self.assertEqual(enabled['notificationMetadata']['overdueNagging'], {'intervalMinutes': 60, 'maxFollowUps': 3, 'continueUntilComplete': False})
+
+        nagging_only = apply(enabled, {'reminders': [], 'overdue_nagging_interval_minutes': 15})
+        self.assertFalse(nagging_only['notification'])
+        self.assertEqual(nagging_only['notificationMetadata']['overdueNagging'], {'intervalMinutes': 15, 'maxFollowUps': 3, 'continueUntilComplete': False})
+
+        disabled = apply(enabled, {'overdue_nagging': False})
+        self.assertTrue(disabled['notification'])
+        self.assertIsNone(disabled['notificationMetadata']['overdueNagging'])
+
+    def test_reminders_require_a_scheduled_due_date(self):
+        reminders = [{'value': 0, 'unit': 'm'}]
+        task = task_fixture()
+        scheduled = apply(task, {'reminders': reminders})
+        self.assertEqual(scheduled['notificationMetadata']['templates'], [{'value': 0, 'unit': 'm'}])
+        self.assertTrue(scheduled['notification'])
+
+        for invalid_task in (
+            {**task, 'nextDueDate': None},
+            {**task, 'frequencyType': 'trigger'},
+            {**task, 'frequencyType': 'always'},
+        ):
+            with self.subTest(frequency=invalid_task['frequencyType'], due=invalid_task['nextDueDate']), \
+                    self.assertRaisesRegex(ValueError, 'Reminders require a scheduled due date'):
+                apply(invalid_task, {'reminders': reminders})
+
+        cleared = apply({**task, 'nextDueDate': None}, {'reminders': []})
+        self.assertFalse(cleared['notification'])
+
+    def test_overdue_nagging_validates_interval_and_due_date(self):
+        for invalid in (0, -1, 1.5, True, 10081):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'interval'):
+                apply(task_fixture(), {'overdue_nagging_interval_minutes': invalid})
+        with self.assertRaisesRegex(ValueError, 'due date'):
+            apply({**task_fixture(), 'nextDueDate': None}, {'overdue_nagging': True})
+
+    def test_overdue_follow_up_limit_preserves_interval_and_validates_count(self):
+        enabled = apply(task_fixture(), {'overdue_follow_up_interval_minutes': 20})
+        limited = apply(enabled, {'overdue_follow_up_limit': 7})
+        self.assertEqual(limited['notificationMetadata']['overdueNagging'], {'intervalMinutes': 20, 'maxFollowUps': 7, 'continueUntilComplete': False})
+        for invalid in (0, 101, 2.5, True):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'Maximum overdue follow-ups'):
+                apply(enabled, {'overdue_follow_up_limit': invalid})
+
+    def test_overdue_follow_ups_can_continue_until_completed(self):
+        enabled = apply(task_fixture(), {'overdue_follow_up_until_complete': True})
+        self.assertEqual(enabled['notificationMetadata']['overdueNagging'], {
+            'intervalMinutes': 60, 'maxFollowUps': 3, 'continueUntilComplete': True
+        })
+        limited = apply(enabled, {'overdue_follow_up_limit': 8})
+        self.assertEqual(limited['notificationMetadata']['overdueNagging']['maxFollowUps'], 8)
+        self.assertTrue(limited['notificationMetadata']['overdueNagging']['continueUntilComplete'])
+        disabled = apply(enabled, {'overdue_follow_up_until_complete': False})
+        self.assertFalse(disabled['notificationMetadata']['overdueNagging']['continueUntilComplete'])
+
     def test_invalid_points_are_rejected(self):
         validate = PROPERTIES['validate_points']
         for points in (-1, 1.5, True, 'NaN', 'three'):
@@ -96,7 +157,7 @@ class CreationSchemaTests(unittest.TestCase):
     def test_create_and_update_accept_the_same_repeat_fields_and_properties(self):
         for name in ('CREATE_TASK_SCHEMA', 'UPDATE_TASK_SCHEMA'):
             with self.subTest(schema=name):
-                self.assertLessEqual({'RECURRENCE_SCHEMA', 'TASK_PROPERTY_SCHEMA'}, self.spreads(name))
+                self.assertLessEqual({'RECURRENCE_SCHEMA', 'TASK_PROPERTY_SCHEMA', 'REMINDER_SCHEMA'}, self.spreads(name))
         keys = {key.args[0].value for key in self.schemas['RECURRENCE_SCHEMA'].keys}
         self.assertEqual(keys, set(RECURRENCE['RECURRENCE_FIELDS']))
 
@@ -121,6 +182,10 @@ class CreationSchemaTests(unittest.TestCase):
             self.assertIn(f'{field}:', create)
         self.assertIn('priority:', create)
         self.assertIn('priority:', update)
+        for service in (create, update):
+            for field in ('overdue_follow_ups:', 'overdue_follow_up_interval_minutes:',
+                          'overdue_follow_up_limit:', 'overdue_follow_up_until_complete:'):
+                self.assertTrue(any(line.startswith(field) for line in service), field)
 
 class PropertyServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -177,6 +242,29 @@ class PropertyServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.create(self.hass, SimpleNamespace(data={'name': 'Milk'}))
         self.client.async_create_task.assert_awaited_once()
         self.client.async_update_task_recurrence.assert_not_awaited()
+
+    async def test_creation_forwards_continuous_follow_up_options(self):
+        await self.create(self.hass, SimpleNamespace(data={
+            'name': 'Water the plants', 'due_date': '2026-11-15T09:00:00Z',
+            'overdue_follow_ups': True, 'overdue_follow_up_interval_minutes': 30,
+            'overdue_follow_up_limit': 5, 'overdue_follow_up_until_complete': True,
+        }))
+        self.client.async_update_task_recurrence.assert_awaited_once_with(
+            17, {}, 'UTC', properties={
+                'overdue_follow_ups': True, 'overdue_follow_up_interval_minutes': 30,
+                'overdue_follow_up_limit': 5, 'overdue_follow_up_until_complete': True,
+            })
+
+    async def test_update_forwards_continuous_follow_up_options(self):
+        await self.update(self.hass, SimpleNamespace(data={
+            'task_id': 17, 'overdue_follow_ups': True,
+            'overdue_follow_up_until_complete': True,
+        }))
+        self.client.async_update_task_recurrence.assert_awaited_once_with(
+            17, {}, 'UTC', name=None, description=None, due_date=None,
+            force_unarchive=False, properties={
+                'overdue_follow_ups': True, 'overdue_follow_up_until_complete': True,
+            })
 
     async def test_repeating_task_without_due_date_fails_before_creation(self):
         with self.assertRaisesRegex(ValueError, 'Due Date for the first occurrence'):

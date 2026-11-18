@@ -236,6 +236,17 @@ class RecurrenceApiTests(unittest.IsolatedAsyncioTestCase):
                     'projectId', 'subTasks', 'requireApproval', 'completionActions'):
             self.assertEqual(self.payload[key], self.task[key])
 
+    async def test_continuous_overdue_follow_ups_reach_the_editor_payload(self):
+        await self.client.async_update_task_recurrence(5, {}, 'UTC', properties={
+            'overdue_follow_ups': True,
+            'overdue_follow_up_interval_minutes': 30,
+            'overdue_follow_up_limit': 5,
+            'overdue_follow_up_until_complete': True,
+        })
+        self.assertEqual(self.payload['notificationMetadata']['overdueNagging'], {
+            'intervalMinutes': 30, 'maxFollowUps': 5, 'continueUntilComplete': True,
+        })
+
     async def test_properties_and_schedule_can_change_together(self):
         await self.client.async_update_task_recurrence(5, {'frequency_type': 'daily'}, 'UTC',
                                                       properties={'points': 3})

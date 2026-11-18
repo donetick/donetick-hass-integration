@@ -87,7 +87,7 @@ complete_chore:
 
 create_task:
   name: Create Task
-  description: Create a new Donetick task. Extra assignment, points, priority, reminder, and repeat settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
+  description: Create a new Donetick task. Extra assignment, points, priority, reminder, overdue follow-up, and repeat settings require task edit permission. If saving extra settings fails, the error reports the created task ID; update that task instead of retrying creation.
   fields:
     name:
       name: Task Name
@@ -145,11 +145,39 @@ create_task:
             - {value: "2", label: P2 (high)}
             - {value: "3", label: P3 (medium)}
             - {value: "4", label: P4 (low)}
+    overdue_follow_ups: &overdue_follow_ups
+      name: Overdue follow-ups
+      description: Enable or disable overdue follow-ups independently of reminders. New settings default to three follow-ups, 60 minutes apart.
+      selector:
+        boolean:
+    overdue_follow_up_interval_minutes: &overdue_follow_up_interval
+      name: Overdue follow-up interval (minutes)
+      description: Set the interval and enable follow-ups. The first follow-up is scheduled one full interval after the task is due. Requires a due date.
+      selector:
+        number:
+          min: 1
+          max: 10080
+          step: 1
+          mode: box
+    overdue_follow_up_limit: &overdue_follow_up_limit
+      name: Maximum follow-ups
+      description: Set the maximum per task occurrence and enable overdue follow-ups. The default is three.
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+    overdue_follow_up_until_complete: &overdue_follow_up_until_complete
+      name: Keep following up until completed
+      description: Continue sending overdue follow-ups until the task is completed, regardless of the maximum count.
+      selector:
+        boolean:
     reminders:
       name: Reminders
       description: >-
-        Add up to five reminder offsets. Edit each entry to choose its timing and offset.
-        Remove all entries to create without reminders.
+        Add up to five reminder offsets for a task with a scheduled due date. Set due_date first for new tasks.
+        Trigger-based and always-available tasks cannot have reminders. Remove all entries to clear reminders.
       selector:
         object:
           multiple: true
@@ -337,6 +365,10 @@ update_task:
             - {value: "2", label: P2 (high)}
             - {value: "3", label: P3 (medium)}
             - {value: "4", label: P4 (low)}
+    overdue_follow_ups: *overdue_follow_ups
+    overdue_follow_up_interval_minutes: *overdue_follow_up_interval
+    overdue_follow_up_limit: *overdue_follow_up_limit
+    overdue_follow_up_until_complete: *overdue_follow_up_until_complete
     reminders:
       name: Reminders
       description: >-

@@ -18,7 +18,10 @@ from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
 from .action_selectors import async_setup_action_selectors, async_refresh_action_selectors, async_prepare_action_call
 from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS, build_recurrence_payload
-from .task_properties import PROPERTY_FIELDS, apply_task_properties, validate_points, validate_priority, validate_reminders
+from .task_properties import (
+    PROPERTY_FIELDS, apply_task_properties, validate_overdue_follow_up_limit, validate_overdue_nagging_interval,
+    validate_points, validate_priority, validate_reminders,
+)
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -50,6 +53,12 @@ TASK_PROPERTY_SCHEMA = {
 
 REMINDER_SCHEMA = {
     vol.Optional("reminders"): validate_reminders,
+    vol.Optional("overdue_nagging"): cv.boolean,
+    vol.Optional("overdue_nagging_interval_minutes"): validate_overdue_nagging_interval,
+    vol.Optional("overdue_follow_ups"): cv.boolean,
+    vol.Optional("overdue_follow_up_interval_minutes"): validate_overdue_nagging_interval,
+    vol.Optional("overdue_follow_up_limit"): validate_overdue_follow_up_limit,
+    vol.Optional("overdue_follow_up_until_complete"): cv.boolean,
 }
 
 RECURRENCE_SCHEMA = {
@@ -380,15 +389,19 @@ async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     try:
         due_date = normalize_due_date(call.data.get("due_date"))
         properties = {field: call.data[field] for field in (*PROPERTY_FIELDS, "assigned_to") if field in call.data}
-        if "reminders" in call.data:
-            properties["reminders"] = call.data["reminders"]
+        properties.update({field: value for field, value in call.data.items()
+                           if field == "reminders" or field.startswith("overdue_")})
         # Validate before creation, which cannot be retried safely on failure.
         if recurrence:
             # The external API creates a one-time task; the editor then sets its schedule.
-            build_recurrence_payload({"frequencyType": "once", "nextDueDate": due_date, "updatedAt": "new"},
-                                     recurrence, hass.config.time_zone)
+            planned_task = build_recurrence_payload(
+                {"frequencyType": "once", "nextDueDate": due_date, "updatedAt": "new"},
+                recurrence, hass.config.time_zone,
+            )
+        else:
+            planned_task = {"frequencyType": "once", "nextDueDate": due_date}
         if properties:
-            apply_task_properties({"frequencyType": "once", "nextDueDate": due_date}, properties)
+            apply_task_properties(planned_task, properties)
     except ValueError as err:
         raise ServiceValidationError(str(err)) from err
 
@@ -433,8 +446,8 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     config_entry_id = call.data.get("config_entry_id")
     recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
     properties = {field: call.data[field] for field in PROPERTY_FIELDS if field in call.data}
-    if "reminders" in call.data:
-        properties["reminders"] = call.data["reminders"]
+    properties.update({field: value for field, value in call.data.items()
+                       if field == "reminders" or field.startswith("overdue_")})
     if properties and "assigned_to" in call.data:
         properties["assigned_to"] = assigned_to
 
