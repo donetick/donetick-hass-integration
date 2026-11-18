@@ -217,6 +217,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.debug("Reward catalog is unavailable on this Donetick server: %s", err)
 
+    async def refresh_after_reward_approval():
+        """Refresh member balances promptly after an approved redemption."""
+        try:
+            await coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.warning("Reward approval arrived, but the Donetick balance refresh failed: %s", err)
+
     async def reward_webhook_handler(hass, webhook_id, request):
         try:
             payload = await request.json()
@@ -238,6 +245,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.bus.async_fire(REWARD_APPROVED_EVENT, {
             **data, "timestamp": payload.get("timestamp"), "config_entry_id": entry.entry_id,
         })
+        hass.async_create_task(refresh_after_reward_approval())
 
     webhook.async_register(hass, DOMAIN, "Donetick reward approvals", config["reward_webhook_id"],
                            reward_webhook_handler, allowed_methods=["POST"], local_only=False)

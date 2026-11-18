@@ -608,6 +608,14 @@ Thing-trigger schedule removes that trigger association.
 
 The **Donetick Rewards** card lists active rewards with descriptions and point prices, shows the existing per-member Points entities, and can request a reward. Add it independently with `type: custom:donetick-rewards-card`.
 
-To receive approval automations, listen for the `donetick_reward_redeem_approved` Home Assistant event. Its data includes `redemption_id`, `reward_id`, `recipient_user_id`, `timestamp`, and `config_entry_id`. The integration records handled redemption IDs to avoid firing twice. Call `donetick.get_reward_webhook_url` in Home Assistant's Actions developer tool to retrieve the callback URL, then configure that as Donetick's circle webhook URL. Select the Donetick integration if you have more than one. Donetick has one webhook destination per circle, so this replaces that circle's current webhook URL. Webhook delivery is best effort.
+To configure approval webhooks:
+
+1. In Home Assistant, open **Developer tools → Actions** and run **Donetick: Get Reward Approval Webhook URL**. If you have multiple Donetick entries, select the one for this circle. Copy the `url` from the action response.
+2. In Donetick, open **Settings → Integrations → Webhooks** as a circle admin with a Donetick Plus account. Enable the webhook, paste the URL from Home Assistant, and save.
+3. Request a reward, then approve that redemption in Donetick. HA fires the `donetick_reward_redeem_approved` event with `redemption_id`, `reward_id`, `recipient_user_id`, `timestamp`, and `config_entry_id`, and immediately refreshes point balances. Use that event as the trigger for automations.
+
+Donetick has one webhook destination per circle. Saving the HA URL replaces the circle's existing webhook destination. The Donetick server must be able to reach the URL HA returned; for Docker or reverse-proxy setups, check the hostname and port from the Donetick container. Delivery is best effort, so the configured HA refresh interval remains the fallback if a webhook is missed. The integration records handled redemption IDs to avoid firing the HA event twice.
+
+Member point balances use the configured Donetick refresh interval. When an approval webhook arrives, the integration refreshes its existing coordinator immediately instead of waiting for that interval.
 
 This integration change depends on Donetick's reward API-token access and `reward.redeem_approved` webhook support. Keep this PR unmerged until both Donetick-side changes are available upstream.
