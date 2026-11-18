@@ -1,5 +1,6 @@
 """Action descriptions expose stable HA account IDs without losing service metadata."""
 import ast
+from collections import Counter
 from copy import copy, deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +24,7 @@ class ActionSelectorTests(unittest.IsolatedAsyncioTestCase):
         def listen(event, callback):
             listeners[event] = callback
             return lambda: listeners.pop(event)
-        namespace = {'DOMAIN': 'donetick', 'deepcopy': deepcopy, 'copy': copy,
+        namespace = {'DOMAIN': 'donetick', 'Counter': Counter, 'deepcopy': deepcopy, 'copy': copy,
             'EVENT_SERVICE_REGISTERED': 'service_registered',
             'EVENT_USER_ADDED': 'user_added', 'EVENT_USER_REMOVED': 'user_removed',
             'EVENT_USER_UPDATED': 'user_updated',
@@ -67,12 +68,12 @@ class PickerResolutionTests(unittest.IsolatedAsyncioTestCase):
         source = Path(__file__).resolve().parents[1] / 'custom_components/donetick/action_selectors.py'
         tree = ast.parse(source.read_text(encoding='utf-8'))
         tree.body = [node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)]
-        self.namespace = {'DOMAIN': 'donetick', 'deepcopy': deepcopy, 'copy': copy,
+        self.namespace = {'DOMAIN': 'donetick', 'Counter': Counter, 'deepcopy': deepcopy, 'copy': copy,
                           'EVENT_SERVICE_REGISTERED': 'service_registered',
                           'HomeAssistantError': ValueError}
         exec(compile(tree, str(source), 'exec'), self.namespace)
         self.prepare = self.namespace['async_prepare_action_call']
-        self.members = [SimpleNamespace(user_id=7, username='alice', is_active=True)]
+        self.members = [SimpleNamespace(user_id=7, username='alice', display_name='Alice', is_active=True)]
         self.client = SimpleNamespace(async_get_circle_members=AsyncMock(return_value=self.members))
         self.hass = SimpleNamespace(data={'donetick': {'one': {'client': self.client}}})
         self.entry = SimpleNamespace(entry_id='one')
@@ -183,3 +184,39 @@ class PickerResolutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(choice['label'].startswith('#42 · alice ·') for choice in choices))
         self.assertTrue(updates['update_task']['fields']['task']['selector']['select']['custom_value'])
         self.assertEqual(updates['update_task']['fields']['task_id'], {'selector': {'number': {}}})
+        assignees = updates['update_task']['fields']['assigned_to_username']['selector']['select']['options']
+        self.assertEqual(assignees, [
+            {'value': 'one/alice', 'label': 'Alice · Local (one)'},
+            {'value': 'two/alice', 'label': 'Alice · Local (two)'},
+        ])
+
+    async def test_create_task_assignees_show_display_names_without_changing_values(self):
+        descriptions = {'donetick': {'create_task': {'fields': {'assigned_to_username': {}}}}}
+        update = Mock()
+        self.namespace.update(async_get_all_descriptions=AsyncMock(return_value=descriptions),
+                              async_set_service_schema=update)
+        self.hass.data['donetick']['one'] = {
+            'coordinator': SimpleNamespace(data=[]),
+            'circle_members': [
+                SimpleNamespace(username=username, display_name=name, user_id=user_id, is_active=active)
+                for user_id, (username, name, active) in enumerate([
+                    ('family_jamie', ' Jamie ', True),
+                    ('sam1', 'Sam', True),
+                    ('sam2', 'Sam', True),
+                    ('no_display_name', '  ', True),
+                    ('former_member', 'Former member', False),
+                ], start=1)
+            ],
+        }
+        self.hass.auth = SimpleNamespace(async_get_users=AsyncMock(return_value=[]))
+        self.hass.config_entries = SimpleNamespace(async_get_entry=lambda entry_id: SimpleNamespace(title='Local'))
+        self.hass.bus = SimpleNamespace(async_fire=Mock())
+        await self.namespace['async_refresh_action_selectors'](self.hass)
+        schema = update.call_args.args[3]
+        choices = schema['fields']['assigned_to_username']['selector']['select']['options']
+        self.assertEqual(choices, [
+            {'value': 'one/family_jamie', 'label': 'Jamie'},
+            {'value': 'one/no_display_name', 'label': 'no_display_name'},
+            {'value': 'one/sam1', 'label': 'Sam (sam1)'},
+            {'value': 'one/sam2', 'label': 'Sam (sam2)'},
+        ])
