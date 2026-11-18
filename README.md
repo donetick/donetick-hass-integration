@@ -46,8 +46,10 @@ a circle admin, and the server must support the member points adjustment API.
 - `donetick.complete_assigned_task` - Complete a task as its current assignee, or as the API token owner for tasks assigned to Anyone
 - `donetick.postpone_task` - Move a task to its next scheduled occurrence without recording a completion
 - `donetick.complete_chore` - Complete a chore through Donetick's full API and credit any active circle member, not only its assignees; the assignees stay unchanged. Choose the task from the searchable picker or by task ID, as with `update_task`. Needs an API token of a circle admin or manager, so everyone who can call this action can record completions for any member
+- `donetick.redeem_reward` - Request a reward for the owner of the selected integration's API token. The searchable reward dropdown shows the point price; Donetick may require an admin or manager to approve the request.
+- `donetick.get_reward_webhook_url` - Return the Home Assistant callback URL to configure in Donetick for reward approval events.
 
-The bundled task card uses the last two for its completion control and its **Skip
+The bundled task card uses `complete_assigned_task` for its completion control and `postpone_task` for its **Skip
 occurrence** action; both resolve the task on the server before acting.
 
 To undo a completion, call `donetick.complete_task` with `response_variable`. The response holds `history_id` (the history entry the completion created), `due_date` (the due date before the completion) and `next_due_date`. Pass `task_id` and `history_id` to `donetick.delete_history`, then restore `due_date` with `donetick.update_task` (with `force_unarchive: true` for a one-off task). A failed completion now raises an error instead of only logging it.
@@ -601,3 +603,11 @@ tasks and existing Thing-trigger schedules are also supported; configure new
 Thing triggers in Donetick. Switching to a Thing-trigger or always-available
 schedule disables reminders, as required by Donetick. Switching away from a
 Thing-trigger schedule removes that trigger association.
+
+### Reward catalog and approval events
+
+The **Donetick Rewards** card lists active rewards with descriptions and point prices, shows the existing per-member Points entities, and can request a reward. Add it independently with `type: custom:donetick-rewards-card`.
+
+To receive approval automations, listen for the `donetick_reward_redeem_approved` Home Assistant event. Its data includes `redemption_id`, `reward_id`, `recipient_user_id`, `timestamp`, and `config_entry_id`. The integration records handled redemption IDs to avoid firing twice. Call `donetick.get_reward_webhook_url` in Home Assistant's Actions developer tool to retrieve the callback URL, then configure that as Donetick's circle webhook URL. Select the Donetick integration if you have more than one. Donetick has one webhook destination per circle, so this replaces that circle's current webhook URL. Webhook delivery is best effort.
+
+This integration change depends on Donetick's reward API-token access and `reward.redeem_approved` webhook support. Keep this PR unmerged until both Donetick-side changes are available upstream.

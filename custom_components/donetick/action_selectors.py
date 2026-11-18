@@ -19,7 +19,7 @@ async def async_refresh_action_selectors(hass):
          if names.count(user.name or user.id) == 1 else f"{user.name or user.id} ({user.id})"}
         for user in sorted(users, key=lambda user: (user.name or user.id).casefold())
     ]
-    tasks, members, integrations = [], [], []
+    tasks, members, integrations, rewards = [], [], [], []
     for entry_id, config in hass.data.get(DOMAIN, {}).items():
         entry = hass.config_entries.async_get_entry(entry_id)
         if entry is None:
@@ -29,6 +29,10 @@ async def async_refresh_action_selectors(hass):
             reference = entry_id
         label = f"{entry.title} ({reference})"
         integrations.append({"value": entry_id, "label": label})
+        for reward in config.get("rewards", []):
+            value = f"{entry_id}/{reward.id}"
+            choice = {"value": value, "label": f"{reward.name} · {reward.points_cost} points · {label}"}
+            rewards.append(choice)
         active_members = [member for member in config.get("circle_members", []) if member.is_active]
         usernames = {member.user_id: member.username for member in active_members}
         members.extend({"value": f"{entry_id}/{member.username}",
@@ -42,7 +46,7 @@ async def async_refresh_action_selectors(hass):
             # The searchable HA picker displays its stored value. Resolve the
             # number and integration suffix so renamed tasks still work.
             tasks.append({"value": task_label, "label": task_label})
-    options = {"task": tasks, "completed_by_ha_user": ha_options,
+    options = {"task": tasks, "reward": rewards, "completed_by_ha_user": ha_options,
                "completed_by_username": members, "assigned_to_username": members,
                "config_entry_id": integrations}
     descriptions = await async_get_all_descriptions(hass)
@@ -52,7 +56,7 @@ async def async_refresh_action_selectors(hass):
             if field in description["fields"]:
                 selector = {"options": sorted(choices, key=lambda choice: choice["label"].casefold()),
                             "mode": "dropdown"}
-                if field in ("task", "config_entry_id"):
+                if field in ("task", "reward", "config_entry_id"):
                     selector["custom_value"] = True
                 description["fields"][field]["selector"] = {"select": selector}
         if description != original:
@@ -78,9 +82,11 @@ async def async_setup_action_selectors(hass, entry):
 async def async_prepare_action_call(hass, call, resolve_entry):
     """Resolve selectors to legacy IDs before any action changes a task."""
     data = dict(call.data)
-    if call.service != "create_task":
+    if call.service not in ("create_task", "redeem_reward"):
         if ("task" in data) == ("task_id" in data):
             raise HomeAssistantError("Choose either Task or Task ID, not both; one is required")
+    if call.service == "redeem_reward" and ("reward" in data) == ("reward_id" in data):
+        raise HomeAssistantError("Choose either a reward or reward_id")
     performer_fields = ("completed_by", "completed_by_ha_user", "completed_by_username")
     if sum(field in data for field in performer_fields) > 1:
         raise HomeAssistantError("Choose only one completion performer: ID, HA user, or Donetick username")
@@ -88,7 +94,7 @@ async def async_prepare_action_call(hass, call, resolve_entry):
         raise HomeAssistantError("Choose either Assignee User ID or Assignee username, not both")
 
     scoped_entry = None
-    for field in ("task", "completed_by_username", "assigned_to_username"):
+    for field in ("task", "reward", "completed_by_username", "assigned_to_username"):
         if field not in data:
             continue
         value = data[field]
@@ -102,7 +108,7 @@ async def async_prepare_action_call(hass, call, resolve_entry):
         if "/" in value:
             entry_id, value = value.split("/", 1)
             if scoped_entry is not None and entry_id != scoped_entry:
-                raise HomeAssistantError("Task and username selections must use the same Donetick integration")
+                raise HomeAssistantError("Selections must use the same Donetick integration")
             scoped_entry = entry_id
         elif field == "task":
             raise HomeAssistantError("Choose a task from the picker or provide task_id")
@@ -113,7 +119,7 @@ async def async_prepare_action_call(hass, call, resolve_entry):
     if entry is None:
         raise HomeAssistantError("No matching Donetick integration found")
     if scoped_entry is not None and scoped_entry != entry.entry_id:
-        raise HomeAssistantError("The selected task or username belongs to a different Donetick integration")
+        raise HomeAssistantError("A selected value belongs to a different Donetick integration")
     data["config_entry_id"] = entry.entry_id
     if "task" in data:
         try:
@@ -123,6 +129,14 @@ async def async_prepare_action_call(hass, call, resolve_entry):
         except ValueError as err:
             raise HomeAssistantError("Invalid task selection; choose a task again") from err
         data["task_id"] = task_id
+    if call.service == "redeem_reward" and "reward" in data:
+        try:
+            reward_id = int(data.pop("reward"))
+            if reward_id < 1:
+                raise ValueError
+        except ValueError as err:
+            raise HomeAssistantError("Choose a reward from the picker or provide reward_id") from err
+        data["reward_id"] = reward_id
 
     username_fields = {"completed_by_username": "completed_by", "assigned_to_username": "assigned_to"}
     if any(field in data for field in username_fields):

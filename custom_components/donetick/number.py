@@ -80,6 +80,11 @@ class DonetickMemberPointsNumber(CoordinatorEntity, NumberEntity):
         return super().available and self._current_member is not None
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"config_entry_id": self._entry_id, "donetick_user_id": self._user_id,
+                "circle_id": self._circle_id}
+
+    @property
     def _current_member(self) -> DonetickMember | None:
         return next(
             (member for member in self._config.get("circle_members", [])

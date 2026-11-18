@@ -10,7 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from .const import API_TIMEOUT
-from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
+from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory, DonetickReward
 from .recurrence import build_recurrence_payload
 from .task_properties import apply_task_properties
 _LOGGER = logging.getLogger(__name__)
@@ -139,6 +139,22 @@ class DonetickApiClient:
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick circle members response: %s", err)
             return []
+
+    async def async_get_rewards(self) -> List[DonetickReward]:
+        """Fetch the active circle reward catalog."""
+        async with self._session.get(f"{self._base_url}/api/v1/rewards", headers=self._headers(), timeout=API_TIMEOUT) as response:
+            response.raise_for_status()
+            payload = await response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Unexpected reward catalog response")
+        return [DonetickReward.from_json(item) for item in payload if item.get("isActive", True)]
+
+    async def async_redeem_reward(self, reward_id: int) -> dict:
+        """Request a reward for the API-token owner."""
+        async with self._session.post(f"{self._base_url}/api/v1/rewards/{reward_id}/redeem",
+                                      headers=self._headers(), json={}, timeout=API_TIMEOUT) as response:
+            response.raise_for_status()
+            return await response.json()
 
     async def async_adjust_member_points(self, circle_id: int, user_id: int, action: str, points: int) -> None:
         """Add or remove a member's points through Donetick's admin API."""
