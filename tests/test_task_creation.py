@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 import unittest
 from zoneinfo import ZoneInfo
 
-from test_task_sensor_attributes import load_definitions
+from test_task_sensor_attributes import load_definitions, load_task_model
 from test_update_permissions import HttpError, Response
 
 
@@ -26,7 +26,7 @@ class TaskCreationTests(unittest.IsolatedAsyncioTestCase):
                      "aiohttp": SimpleNamespace(ClientError=HttpError), "API_TIMEOUT": 10,
                      "re": re, "date": date, "time": time, "Optional": Optional,
                      "dt_util": SimpleNamespace(get_default_time_zone=lambda: ZoneInfo("Europe/Brussels"))}
-        load_definitions("model.py", {"_parse_datetime", "DonetickTask"}, namespace)
+        load_task_model(namespace)
         tree = ast.parse((COMPONENT / "api.py").read_text(encoding="utf-8"))
         client = next(node for node in tree.body if isinstance(node, ast.ClassDef))
         client.body = [node for node in client.body if getattr(node, "name", None)

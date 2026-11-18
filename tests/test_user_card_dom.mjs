@@ -382,4 +382,30 @@ assert.deepEqual([...root.querySelectorAll('.name')].map(node=>node.textContent)
 card.setConfig({entity:'todo.all',user_id:'all',sort_by:'name'});
 assert.deepEqual([...root.querySelectorAll('.name')].map(node=>node.textContent),['One-off','Other user','Weekly']);
 assert.throws(()=>card.setConfig({entity:'todo.all',user_id:1,sort_by:'unknown'}),/valid sort order/);
+
+const attributes = hass.states['todo.all'].attributes;
+attributes.donetick_url = 'https://donetick.example.test';
+weeklyTask.description = '<p>Inspect &amp; repair.</p>'
+  + '<img src="https://images.example.test/photo.jpg?sig=one&amp;size=2" alt="Reference photo" onerror="bad()">'
+  + '<img src="/assets/image.png">'
+  + '<img src="data:image/png;base64,AAAA"><img src="javascript:bad()">'
+  + '<img src="blob:https://donetick.example.test/image">';
+attributes.tasks[1].description = '<img src="/assets/other.png">';
+card.hass = hass;
+click('Show description: Weekly');
+const details = root.querySelector('.description');
+assert.equal(details.firstChild.textContent, 'Inspect & repair.');
+assert.equal(details.querySelector('img'), null);
+const links = [...details.querySelectorAll('a')];
+assert.deepEqual(links.map(link => [link.href, link.textContent]), [
+  ['https://images.example.test/photo.jpg?sig=one&size=2', 'Reference photo'],
+  ['https://donetick.example.test/assets/image.png', 'Open image'],
+]);
+assert.ok(links.every(link => link.target === '_blank' && link.rel === 'noopener noreferrer'));
+click('Show description: One-off');
+assert.equal(root.querySelector('.description a').href, 'https://donetick.example.test/assets/other.png');
+attributes.tasks[1].description = '<img src="data:image/png;base64,AAAA">';
+card.hass = hass;
+assert.equal(root.querySelector('.description'), null);
+assert.equal(root.querySelector('[aria-label="Show description: One-off"]'), null);
 console.log('Compact inline editing, repeated-tap toggles, preserved time, confirmed actions and feedback passed');

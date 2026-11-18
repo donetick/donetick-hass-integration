@@ -2,6 +2,7 @@
 import importlib.util
 import ast
 from datetime import datetime, timezone
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
@@ -23,7 +24,7 @@ class CompletionHistoryTests(IsolatedAsyncioTestCase):
         local = ZoneInfo('Europe/Brussels')
         namespace = {'datetime':datetime,'TodoItem':lambda **values:SimpleNamespace(**values),'TodoItemStatus':SimpleNamespace(COMPLETED='completed'),
                      'dt_util':SimpleNamespace(now=lambda:datetime(2026,10,13,12,tzinfo=local),as_local=lambda value:value.astimezone(local)),
-                     'HomeAssistantError':ValueError,'_LOGGER':SimpleNamespace(debug=lambda *args:None)}
+                     'HomeAssistantError':ValueError,'_LOGGER':logging.getLogger(__name__)}
         exec(compile(ast.Module(body=methods,type_ignores=[]),str(source),'exec'),namespace)
         self.methods = namespace
 
@@ -47,6 +48,31 @@ class CompletionHistoryTests(IsolatedAsyncioTestCase):
             await self.methods['async_update_todo_item'](None,SimpleNamespace(uid='history--1'))
         with self.assertRaisesRegex(ValueError,'read-only'):
             await self.methods['async_delete_todo_items'](None,['10--date','history--1'])
+
+    async def test_native_list_update_sends_only_changed_descriptions(self):
+        client = SimpleNamespace(async_update_task=AsyncMock())
+        self.methods.update(async_get_clientsession=lambda hass: None,
+                            DonetickApiClient=lambda *args: client,
+                            CONF_URL="url", CONF_TOKEN="token")
+        entity = SimpleNamespace(
+            hass=None,
+            coordinator=SimpleNamespace(
+                data=[SimpleNamespace(id=10, description="<p>Original text</p>")],
+                async_refresh=AsyncMock(),
+            ),
+            _config_entry=SimpleNamespace(data={"url": "https://example.invalid", "token": "test"}),
+        )
+        for incoming, expected in (
+            ("<p>Original text</p>", None), ("New text", "New text"), ("", ""),
+        ):
+            with self.subTest(incoming=incoming):
+                client.async_update_task.reset_mock()
+                item = SimpleNamespace(uid="10--date", summary="Renamed", status="needs_action",
+                                       description=incoming, due=None)
+                await self.methods["async_update_todo_item"](entity, item)
+                client.async_update_task.assert_awaited_once_with(
+                    task_id=10, name="Renamed", description=expected, due_date=None,
+                )
 
     async def test_history_keeps_occurrences_and_original_performer(self):
         task = SimpleNamespace(id=10, name='Daily task', description='', project_id=3, assigned_to=2, labels=[])

@@ -303,11 +303,18 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                 due_date = None
                 if item.due:
                     due_date = item.due.isoformat()
-                
+
+                # HA copies the displayed description into updates for other fields.
+                # Omitting it preserves inline images in the original Donetick task.
+                task = next((task for task in self.coordinator.data if task.id == task_id), None)
+                description = item.description
+                if task is not None and description == (task.description or ""):
+                    description = None
+
                 await client.async_update_task(
                     task_id=task_id,
                     name=item.summary,
-                    description=item.description,
+                    description=description,
                     due_date=due_date,
                 )
                 _LOGGER.info("Updated task %d", task_id)
