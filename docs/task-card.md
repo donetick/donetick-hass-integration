@@ -6,6 +6,7 @@ The **Donetick User Tasks** card is bundled with the integration. It appears in 
 
 ## Find a topic
 
+- [Create tasks from a dashboard](#create-tasks-from-a-dashboard)
 - [Choose whose tasks to show](#choose-whose-tasks-to-show)
 - [Filter and sort tasks](#filter-and-sort-tasks)
 - [Show completed tasks](#show-completed-tasks)
@@ -15,6 +16,27 @@ The **Donetick User Tasks** card is bundled with the integration. It appears in 
 - [Map Home Assistant users](#map-home-assistant-users)
 - [Use performer and task pickers in automations](#use-performer-and-task-pickers-in-automations)
 - [Edit a repeat schedule](#edit-a-repeat-schedule)
+
+## Create tasks from a dashboard
+
+After setting up the Donetick integration, edit your dashboard and choose **Add card > By card > Donetick Create Task**. Home Assistant loads the card and its visual editor automatically. The form runs the [Create Task action](actions.md), with native date and time pickers and the fields supported by the installed integration.
+
+On a dashboard you can edit in Home Assistant, open the card's visual editor to change its title, reorder or hide fields, and set defaults. A hidden field keeps its position so it returns to the same place when shown again. A default can also supply a value for a hidden field.
+
+For a YAML dashboard, start with the card type and add any overrides you need. For example, this shows three fields and assigns five points to each new task.
+
+```yaml
+type: custom:donetick-create-task-card
+fields:
+  - name
+  - due_date
+  - assignee
+sections: {}
+defaults:
+  points: 5
+```
+
+Use `sections` to define named groups of fields and `hidden_fields` to keep fields in those groups while hiding them from the task form.
 
 ## Quick start
 
