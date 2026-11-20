@@ -378,7 +378,7 @@ hass.states['todo.all'].attributes.tasks[0].priority=4;
 hass.states['todo.all'].attributes.tasks[1].priority=1;
 hass.states['todo.all'].attributes.tasks[2].priority=3;
 card.setConfig({entity:'todo.all',user_id:'all',sort_by:'priority'});
-assert.deepEqual([...root.querySelectorAll('.name')].map(node=>node.textContent),['Weekly','Other user','One-off']);
+assert.deepEqual([...root.querySelectorAll('.name')].map(node=>node.textContent),['One-off','Other user','Weekly']);
 card.setConfig({entity:'todo.all',user_id:'all',sort_by:'name'});
 assert.deepEqual([...root.querySelectorAll('.name')].map(node=>node.textContent),['One-off','Other user','Weekly']);
 assert.throws(()=>card.setConfig({entity:'todo.all',user_id:1,sort_by:'unknown'}),/valid sort order/);
