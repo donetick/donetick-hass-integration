@@ -572,6 +572,51 @@ postpone_task:
       selector:
         text:
 
+redeem_reward:
+  name: Redeem Reward
+  description: Request a Donetick reward for the selected circle member. When no member is supplied, the API token owner is used. The request may need approval in Donetick.
+  fields:
+    reward:
+      name: Reward
+      description: Search the active reward catalog; choices include their point price.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    reward_id:
+      name: Reward ID
+      description: Use the numeric ID instead of the reward picker.
+      selector:
+        number:
+          min: 1
+          mode: box
+    config_entry_id:
+      name: Donetick integration
+      description: Select which Donetick circle to use when multiple integrations are configured.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+    user_id:
+      name: Claiming member
+      description: The Donetick circle member whose points will be used. Selecting another member requires admin or manager access.
+      selector:
+        number:
+          min: 1
+          mode: box
+
+get_reward_webhook_url:
+  name: Get Reward Approval Webhook URL
+  description: Return the Home Assistant callback URL to configure as the Donetick circle webhook destination.
+  fields:
+    config_entry_id:
+      name: Donetick integration
+      description: Select which Donetick circle to use when multiple integrations are configured.
+      selector:
+        select:
+          options: []
+          mode: dropdown
+
 delete_history:
   name: Delete History Entry
   description: Delete one history entry of a Donetick task, e.g. to undo a completion. Use with the history_id returned by complete_task; restore the previous due date with update_task.

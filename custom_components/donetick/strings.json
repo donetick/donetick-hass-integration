@@ -43,6 +43,25 @@
       "unknown": "Unexpected error"
     }
   },
+  "services": {
+    "redeem_reward": {
+      "name": "Redeem Reward",
+      "description": "Request a reward for the selected Donetick circle member.",
+      "fields": {
+        "reward": {"name": "Reward", "description": "Choose an active reward; its point price is shown."},
+        "reward_id": {"name": "Reward ID", "description": "Use this instead of the reward picker."},
+        "config_entry_id": {"name": "Donetick integration", "description": "Choose a Donetick circle."},
+        "user_id": {"name": "Claiming member", "description": "Choose whose points to use. Claiming for another member requires admin or manager access."}
+      }
+    },
+    "get_reward_webhook_url": {
+      "name": "Get Reward Approval Webhook URL",
+      "description": "Return the callback URL to configure in Donetick.",
+      "fields": {
+        "config_entry_id": {"name": "Donetick integration", "description": "Choose a Donetick circle."}
+      }
+    }
+  },
   "options": {
     "step": {
       "settings": {

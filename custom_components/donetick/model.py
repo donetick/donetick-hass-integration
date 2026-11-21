@@ -71,6 +71,25 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
         _LOGGER.debug("Unable to parse Donetick datetime: %s", value)
         return None
 
+
+@dataclass
+class DonetickReward:
+    """A redeemable Donetick circle reward."""
+
+    id: int
+    name: str
+    points_cost: int
+    description: str = ""
+    is_active: bool = True
+
+    @classmethod
+    def from_json(cls, data: dict) -> "DonetickReward":
+        """Create a reward from the Donetick API response."""
+        return cls(id=int(data["id"]), name=str(data["name"]),
+                   points_cost=int(data["pointsCost"]),
+                   description=str(data.get("description") or ""),
+                   is_active=bool(data.get("isActive", True)))
+
 @dataclass
 class DonetickProject:
     """Donetick project model."""

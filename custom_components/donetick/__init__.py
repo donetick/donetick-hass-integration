@@ -1,5 +1,6 @@
 """The Donetick integration."""
 import logging
+import asyncio
 from datetime import timedelta
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
@@ -9,8 +10,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from .const import (DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL,
+from homeassistant.components import webhook
+from hashlib import sha256
+from .const import (DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL, SERVICE_REDEEM_REWARD, SERVICE_GET_REWARD_WEBHOOK_URL, REWARD_APPROVED_EVENT,
                     HISTORY_COMPLETED, HISTORY_PENDING_APPROVAL)
 from .api import DonetickApiClient, normalize_due_date
 from .user_mapping import completion_user
@@ -134,6 +138,16 @@ COMPLETE_CHORE_SCHEMA = vol.Schema({
     vol.Optional("config_entry_id"): cv.string,
 })
 
+REDEEM_REWARD_SCHEMA = vol.Schema({
+    vol.Optional("reward"): cv.string,
+    vol.Optional("reward_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("config_entry_id"): cv.string,
+})
+
+GET_REWARD_WEBHOOK_URL_SCHEMA = vol.Schema({
+    vol.Optional("config_entry_id"): cv.string,
+})
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Donetick from a config entry."""
     hass.data.setdefault(DOMAIN, {})
@@ -180,7 +194,64 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "client": client,
         "circle_members": circle_members,
+        "rewards": [],
+        "reward_webhook_id": "donetick_reward_" + sha256(entry.entry_id.encode()).hexdigest()[:24],
     }
+    config = hass.data[DOMAIN][entry.entry_id]
+    config["reward_webhook_url"] = webhook.async_generate_url(hass, config["reward_webhook_id"])
+    delivery_store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_reward_deliveries")
+    processed = list(dict.fromkeys(await delivery_store.async_load() or []))
+    delivery_lock = asyncio.Lock()
+    async def update_rewards():
+        try:
+            config["rewards"] = await client.async_get_rewards()
+        except Exception as err:
+            _LOGGER.warning("Could not refresh Donetick rewards: %s", err)
+        return config["rewards"]
+    config["reward_coordinator"] = DataUpdateCoordinator(
+        hass, _LOGGER, name=f"{DOMAIN}_rewards_{entry.entry_id}",
+        update_method=update_rewards, update_interval=timedelta(seconds=refresh_interval_seconds),
+    )
+    try:
+        await config["reward_coordinator"].async_config_entry_first_refresh()
+    except Exception as err:
+        _LOGGER.debug("Reward catalog is unavailable on this Donetick server: %s", err)
+
+    async def refresh_after_reward_approval():
+        """Refresh member balances promptly after an approved redemption."""
+        try:
+            await coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.warning("Reward approval arrived, but the Donetick balance refresh failed: %s", err)
+
+    async def reward_webhook_handler(hass, webhook_id, request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return
+        if not isinstance(payload, dict) or payload.get("type") != "reward.redeem_approved":
+            return
+        data = payload.get("data") or {}
+        if not isinstance(data, dict) or not all(type(data.get(key)) is int and data[key] > 0
+                   for key in ("redemption_id", "reward_id", "recipient_user_id")):
+            return
+        redemption_id = data["redemption_id"]
+        async with delivery_lock:
+            if redemption_id in processed:
+                return
+            deliveries = [*processed, redemption_id][-5000:]
+            await delivery_store.async_save(deliveries)
+            processed[:] = deliveries
+        hass.bus.async_fire(REWARD_APPROVED_EVENT, {
+            **data, "timestamp": payload.get("timestamp"), "config_entry_id": entry.entry_id,
+        })
+        hass.async_create_task(refresh_after_reward_approval())
+
+    webhook.async_register(hass, DOMAIN, "Donetick reward approvals", config["reward_webhook_id"],
+                           reward_webhook_handler, allowed_methods=["POST"], local_only=False)
+    entry.async_on_unload(lambda: webhook.async_unregister(hass, config["reward_webhook_id"]))
+    entry.async_on_unload(config["reward_coordinator"].async_add_listener(
+        lambda: hass.async_create_task(async_refresh_action_selectors(hass))))
     
     # Register services before setting up platforms
     def with_selectors(handler):
@@ -208,6 +279,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def complete_chore_handler(call: ServiceCall) -> None:
         await async_complete_chore_service(hass, call)
+
+    async def redeem_reward_handler(call: ServiceCall) -> None:
+        data = call.data
+        if ("reward_id" in data) == ("reward" in data):
+            raise ServiceValidationError("Choose either a reward or reward_id")
+        reward_id = data.get("reward_id")
+        if not reward_id:
+            raise ServiceValidationError("Choose a reward or provide reward_id")
+        entry_id = data.get("config_entry_id")
+        entry = await _get_config_entry(hass, entry_id)
+        if entry is None:
+            raise ServiceValidationError("No matching Donetick integration found")
+        user_id = data.get("user_id")
+        if user_id is not None:
+            if type(user_id) is not int or user_id <= 0:
+                raise ServiceValidationError("Choose a valid Donetick member")
+            await _validate_circle_member(hass.data[DOMAIN][entry.entry_id], user_id)
+        try:
+            await hass.data[DOMAIN][entry.entry_id]["client"].async_redeem_reward(reward_id, user_id)
+        except Exception as err:
+            raise HomeAssistantError(f"Donetick could not request that reward: {err}") from err
+        for key in ("reward_coordinator", "coordinator"):
+            try:
+                await hass.data[DOMAIN][entry.entry_id][key].async_request_refresh()
+            except Exception as err:
+                _LOGGER.warning("Reward request succeeded, but %s refresh failed: %s", key, err)
+
+    async def get_reward_webhook_url_handler(call: ServiceCall) -> ServiceResponse:
+        entry = await _get_config_entry(hass, call.data.get("config_entry_id"))
+        if entry is None:
+            raise ServiceValidationError("No matching Donetick integration found")
+        return {"url": hass.data[DOMAIN][entry.entry_id]["reward_webhook_url"]}
 
     hass.services.async_register(
         DOMAIN,
@@ -251,6 +354,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         SERVICE_COMPLETE_CHORE,
         with_selectors(complete_chore_handler),
         schema=COMPLETE_CHORE_SCHEMA,
+    )
+    hass.services.async_register(DOMAIN, SERVICE_REDEEM_REWARD, with_selectors(redeem_reward_handler),
+                                 schema=REDEEM_REWARD_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_GET_REWARD_WEBHOOK_URL, get_reward_webhook_url_handler,
+        schema=GET_REWARD_WEBHOOK_URL_SCHEMA, supports_response=SupportsResponse.ONLY,
     )
     _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
                   DOMAIN, SERVICE_COMPLETE_TASK, DOMAIN, SERVICE_CREATE_TASK,
@@ -635,7 +744,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Remove services if this is the last config entry
         if not hass.data[DOMAIN]:
-            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK, SERVICE_DELETE_HISTORY, SERVICE_COMPLETE_CHORE]:
+            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK, SERVICE_DELETE_HISTORY, SERVICE_COMPLETE_CHORE, SERVICE_REDEEM_REWARD, SERVICE_GET_REWARD_WEBHOOK_URL]:
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)
             _LOGGER.debug("Removed services: %s.%s, %s.%s, %s.%s, %s.%s", 
