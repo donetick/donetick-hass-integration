@@ -1,13 +1,19 @@
 
 # Donetick Home Assistant Integration
 
-
-
 A Home Assistant integration for Donetick that provides support for managing todo lists and controlling "things" as Home Assistant entities.
+
+## Contents
+
+- [Features](#features)
+- [Services](#services)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Task card and advanced actions](#task-card-and-advanced-actions)
 
 ## Features
 
-### 📋 Todo Lists
+### Todo lists
 - **Multiple Todo Lists**: "All Tasks" view, individual assignee lists, and optional project lists
 - **Task Management**: Create, update, delete, and complete tasks
 - **Task attributes**: Task descriptions, due dates can be managed in Home Assistant
@@ -30,14 +36,14 @@ many points; the step is 1, and the balance cannot be reduced below zero. Change
 are recorded in Donetick's points history. The connected Donetick account must be
 a circle admin, and the server must support the member points adjustment API.
 
-### 🔧 Things Integration  
+### Things integration
 - **Sync things**: Control Donetick "things" as Home Assistant entities
 - **Multiple Entity Types**: 
   - **Switch**: Boolean things (true/false)
   - **Number**: Numeric things with increment/decrement
   - **Text**: Text input things
 
-### 🔧 Services
+### Services
 - `donetick.create_task` - Create new tasks
 - `donetick.update_task` - Update existing tasks
 - `donetick.delete_task` - Delete tasks
@@ -114,11 +120,12 @@ points and reminders can be combined with the existing repeat-schedule fields.
 Thing trigger configuration remains managed in Donetick.
 
 To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick circle member's user ID, or `null` for Anyone. Selecting a member outside the task's assignee list adds them to that list while preserving the existing members and assignment strategy; a list with a single person is replaced by the new member instead, keeping its strategy. This and switching to or from Anyone use Donetick's task editor and require permission to edit the task. Donetick remains authoritative on membership and private-project restrictions.
+See the [services and automation guide](docs/actions.md) for completion behavior, undoing completions, task creation, points, reminders, and assignment.
 
 ## Installation
 
-### Via HACS
-1. Open HACS in Home Assistant
+### Install from Marketplace
+1. Open Marketplace in Home Assistant
 2. Navigate to Integrations  
 3. Click "⋮" → "Custom repositories"
 4. Add repository: `https://github.com/donetick/donetick-hass-integration/`
@@ -169,12 +176,9 @@ user, task, and project IDs and existing mappings may refer to different records
 - **Create Unified List**: Enable "All Tasks" todo list (default: true)  
 - **Create Assignee Lists**: Individual todo lists per user (default: false) 
 
-## Per-user task card
+## Task card and advanced actions
 
-The existing card includes a **Completed today** section by default, showing the
-completion time and performer. **Task view** can show pending tasks, completed
-tasks only, or both (`task_view: pending`, `completed`, or `both`). History survives
-a browser refresh and includes completions made outside Home Assistant.
+The integration bundles two dashboard cards. **Donetick User Tasks** lists and manages existing tasks. **Donetick Create Task** opens a task form with native date and time pickers and a visual editor for the form layout and defaults. Both cards appear in the picker after the integration is configured and work in UI and YAML dashboards.
 
 Expand **Completed tasks** in the editor to adjust:
 
@@ -619,3 +623,4 @@ Donetick has one webhook destination per circle. Saving the HA URL replaces the 
 Member point balances use the configured Donetick refresh interval. When an approval webhook arrives, the integration refreshes its existing coordinator immediately instead of waiting for that interval.
 
 This integration change depends on Donetick's reward API-token access and `reward.redeem_approved` webhook support. Keep this PR unmerged until both Donetick-side changes are available upstream.
+- [Task card guide](docs/task-card.md)

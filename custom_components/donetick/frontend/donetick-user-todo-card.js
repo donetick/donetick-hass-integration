@@ -197,23 +197,45 @@ export function localDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 export function descriptionText(value) {
-  if (typeof value !== 'string' || !value.trim()) return '';
-  // Template contents are inert and never attached to the page. Only text is rendered.
+  return descriptionContent(value).text;
+}
+function descriptionContent(value, donetickUrl) {
+  const images = [];
+  if (typeof value !== 'string' || !value.trim()) return {text: '', images};
+  // Keep the supplied markup inert. Render text and build validated links separately.
   const template = document.createElement('template'); template.innerHTML = value;
   const omitted = new Set(['SCRIPT','STYLE','NOSCRIPT','IFRAME','OBJECT','EMBED','SVG','MATH','HEAD','TEMPLATE']);
   const blocks = new Set(['P','DIV','SECTION','ARTICLE','BLOCKQUOTE','PRE','H1','H2','H3','H4','H5','H6']);
+  const baseUrl = donetickUrl ? `${donetickUrl.replace(/\/$/, '')}/` : undefined;
   const text = node => {
     if (node.nodeType === 3) return node.nodeValue || '';
-    if (node.nodeType !== 1 || omitted.has(node.tagName)) return '';
-    if (node.tagName === 'BR') return '\n';
+    if (node.nodeType !== 1) return '';
+    const tag = node.tagName.toUpperCase();
+    if (omitted.has(tag)) return '';
+    if (tag === 'IMG') {
+      const source = node.getAttribute('src')?.trim();
+      if (source) {
+        try {
+          const url = new URL(source, baseUrl);
+          if (url.protocol === 'https:' || url.protocol === 'http:') {
+            images.push({href: url.href, label: node.getAttribute('alt')?.trim() || 'Open image'});
+          }
+        } catch {
+          // The image source is missing a usable URL.
+        }
+      }
+      return '';
+    }
+    if (tag === 'BR') return '\n';
     const content = [...node.childNodes].map(text).join('');
-    if (node.tagName === 'LI') return `- ${content.trim()}\n`;
-    if (blocks.has(node.tagName) || ['UL','OL','TR'].includes(node.tagName)) return `\n${content}\n`;
-    if (['TD','TH'].includes(node.tagName)) return `${content}\t`;
+    if (tag === 'LI') return `- ${content.trim()}\n`;
+    if (blocks.has(tag) || ['UL','OL','TR'].includes(tag)) return `\n${content}\n`;
+    if (['TD','TH'].includes(tag)) return `${content}\t`;
     return content;
   };
-  return [...template.content.childNodes].map(text).join('').replace(/\u00a0/g,' ')
+  const content = [...template.content.childNodes].map(text).join('').replace(/\u00a0/g,' ')
     .replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  return {text: content, images};
 }
 // HA replaces its hass object for unrelated entity updates too. Only the selected
 // list and presentation settings affect this card's DOM.
@@ -462,6 +484,7 @@ class DonetickUserTodoCard extends HTMLElement {
       .task-label { max-width:100%; box-sizing:border-box; padding:1px 6px; border-radius:10px; background:var(--secondary-background-color); color:var(--secondary-text-color); font-size:11px; line-height:16px; overflow-wrap:anywhere; text-align:start; }
       .description-indicator { --mdc-icon-size:16px; flex-shrink:0; color:var(--secondary-text-color); }
       .description { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; color:var(--secondary-text-color); margin:2px 0 8px; }
+      .description a { display:block; width:fit-content; color:var(--link-text-color,var(--primary-color)); }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
       button:disabled, input:disabled { opacity: .5; cursor: default; }
       .complete-checkbox { width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
@@ -553,7 +576,8 @@ class DonetickUserTodoCard extends HTMLElement {
         checkbox.addEventListener('change', () => this.completeAction(task));
         target.append(checkbox);
       }
-      const hasDescription = !!descriptionText(task.description);
+      const details = descriptionContent(task.description, state?.attributes.donetick_url);
+      const hasDescription = !!(details.text || details.images.length);
       const text = document.createElement(hasDescription ? 'button' : 'div'); text.className = 'task'; row.append(text);
       if (hasDescription) {
       text.type = 'button';
@@ -683,7 +707,7 @@ class DonetickUserTodoCard extends HTMLElement {
         reassign.addEventListener('click', () => this.togglePanel(task, 'assign')); actions.append(reassign);
       }
       if (!actions.childElementCount) actions.remove();
-      if (this._panel?.taskId === task.task_id) this.renderPanel(row, task, addText);
+      if (this._panel?.taskId === task.task_id) this.renderPanel(row, task, addText, details);
     }
     if (this._config.task_view !== 'pending') {
       const history = completedTasks(state, this._config.user_id, new Date(), this._config);
@@ -705,14 +729,21 @@ class DonetickUserTodoCard extends HTMLElement {
     }
     if (focusedField) this.shadowRoot.querySelector(`[data-field="${focusedField}"]`)?.focus();
   }
-  renderPanel(row, task, addText) {
+  renderPanel(row, task, addText, details) {
     const panel = this._panel;
     if (panel.kind === 'details') {
-      const content = descriptionText(task.description);
-      if (!content) { this._panel = null; return; }
+      if (!details.text && !details.images.length) { this._panel = null; return; }
       const description = document.createElement('div'); description.className = 'description';
       description.id = `description-${task.task_id}`;
-      description.textContent = content;
+      description.textContent = details.text;
+      for (const image of details.images) {
+        const link = document.createElement('a');
+        link.href = image.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = image.label;
+        description.append(link);
+      }
       row.after(description); return;
     }
     const busy = this._pending.has(task.task_id);

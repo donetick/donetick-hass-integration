@@ -1,4 +1,5 @@
 """Searchable action choices, resolved within a single Donetick integration."""
+from collections import Counter
 from copy import copy, deepcopy
 
 from homeassistant.auth import EVENT_USER_ADDED, EVENT_USER_REMOVED, EVENT_USER_UPDATED
@@ -20,6 +21,7 @@ async def async_refresh_action_selectors(hass):
         for user in sorted(users, key=lambda user: (user.name or user.id).casefold())
     ]
     tasks, members, integrations, rewards = [], [], [], []
+    assignees = []
     for entry_id, config in hass.data.get(DOMAIN, {}).items():
         entry = hass.config_entries.async_get_entry(entry_id)
         if entry is None:
@@ -35,8 +37,11 @@ async def async_refresh_action_selectors(hass):
             rewards.append(choice)
         active_members = [member for member in config.get("circle_members", []) if member.is_active]
         usernames = {member.user_id: member.username for member in active_members}
-        members.extend({"value": f"{entry_id}/{member.username}",
-                        "label": f"{member.username} · {label}"} for member in active_members)
+        for member in active_members:
+            value = f"{entry_id}/{member.username}"
+            members.append({"value": value, "label": f"{member.username} · {label}"})
+            name = (member.display_name or "").strip() or member.username
+            assignees.append((value, name, member.username, label))
         for task in config["coordinator"].data or []:
             if not task.is_active:
                 continue
@@ -46,8 +51,18 @@ async def async_refresh_action_selectors(hass):
             # The searchable HA picker displays its stored value. Resolve the
             # number and integration suffix so renamed tasks still work.
             tasks.append({"value": task_label, "label": task_label})
+    name_counts = Counter(
+        (connection, name.casefold()) for _, name, _, connection in assignees
+    )
+    assignee_options = []
+    for value, name, username, connection in assignees:
+        if name_counts[connection, name.casefold()] > 1:
+            name = f"{name} ({username})"
+        if len(integrations) > 1:
+            name = f"{name} · {connection}"
+        assignee_options.append({"value": value, "label": name})
     options = {"task": tasks, "reward": rewards, "completed_by_ha_user": ha_options,
-               "completed_by_username": members, "assigned_to_username": members,
+               "completed_by_username": members, "assigned_to_username": assignee_options,
                "config_entry_id": integrations}
     descriptions = await async_get_all_descriptions(hass)
     for service, original in descriptions.get(DOMAIN, {}).items():
