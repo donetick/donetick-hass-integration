@@ -24,6 +24,9 @@ DEFAULT_SCHEDULED_DURATION = timedelta(hours=1)
 DEFAULT_LOGGED_DURATION = timedelta(minutes=1)
 HISTORY_LOOKBACK_DAYS = 90
 MAX_PROJECTED_OCCURRENCES = 365
+# A safety stop, not the number of events returned: an overdue schedule still
+# has to be stepped through one occurrence at a time to reach the range.
+MAX_PROJECTION_STEPS = 10_000
 
 CHORE_STATUS_IN_PROGRESS = 1
 CHORE_STATUS_PAUSED = 2
@@ -270,7 +273,21 @@ def _month_last_day(year: int, month: int) -> int:
 
 
 def _add_months(value: datetime, months: int) -> datetime:
-    """Add months to a datetime, clamping the day when needed."""
+    """Add months the way Donetick's Go AddDate does, normalizing the day.
+
+    Go constructs an out-of-range date and lets it overflow. January 31 plus
+    one month is February 31, which becomes March 3 (or March 2 in a leap
+    year). Starting from the first of the target month and adding the day
+    offset produces the same date while keeping the wall-clock time.
+    """
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return value.replace(year=year, month=month, day=1) + timedelta(days=value.day - 1)
+
+
+def _add_months_clamped(value: datetime, months: int) -> datetime:
+    """Add months, clamping the day to the target month's last day."""
     month_index = value.month - 1 + months
     year = value.year + month_index // 12
     month = month_index % 12 + 1
@@ -279,11 +296,8 @@ def _add_months(value: datetime, months: int) -> datetime:
 
 
 def _add_years(value: datetime, years: int) -> datetime:
-    """Add years to a datetime, clamping leap-day when needed."""
-    try:
-        return value.replace(year=value.year + years)
-    except ValueError:
-        return value.replace(year=value.year + years, day=28)
+    """Add years the way Donetick's Go AddDate does, normalizing a leap day."""
+    return _add_months(value, years * 12)
 
 
 def _apply_due_time(task: DonetickTask, base_date: datetime) -> datetime:
@@ -440,7 +454,7 @@ def _schedule_next_due(task: DonetickTask, current_due: datetime) -> Optional[da
 
         base_with_time = _apply_due_time(task, search_base)
         for offset in range(1, 13):
-            candidate = _add_months(base_with_time, offset)
+            candidate = _add_months_clamped(base_with_time, offset)
             if candidate.strftime("%B").lower() not in months:
                 continue
 
@@ -479,7 +493,7 @@ def _generate_occurrences(
 
     range_end_key = _comparison_datetime(range_end)
     next_due = current_due
-    for _ in range(MAX_PROJECTED_OCCURRENCES):
+    for _ in range(MAX_PROJECTION_STEPS):
         next_due = _schedule_next_due(task, next_due)
         if next_due is None:
             break
@@ -489,6 +503,9 @@ def _generate_occurrences(
             break
         if _event_in_range(next_event, range_start, range_end):
             events.append(next_event)
+            # Keep the response bounded while still walking the whole gap above.
+            if len(events) >= MAX_PROJECTED_OCCURRENCES:
+                break
 
     return events
 
@@ -701,12 +718,16 @@ class DonetickActivityCalendar(CoordinatorEntity, CalendarEntity):
 
         now = datetime.now(timezone.utc)
         range_start_key = _comparison_datetime(range_start)
-        range_end_key = _comparison_datetime(range_end)
         now_key = _comparison_datetime(now)
-        if range_start_key > now_key or (range_end_key - range_start_key).days > HISTORY_LOOKBACK_DAYS:
+        if range_start_key > now_key:
             return []
 
-        history_days = max((now_key - range_start_key).days + 1, 1)
+        # The history endpoint only serves 90 days. Clip the fetch window
+        # instead of discarding a longer range: a six-month view should still
+        # show the newest 90 days of activity.
+        fetch_start_key = max(
+            range_start_key, now_key - timedelta(days=HISTORY_LOOKBACK_DAYS))
+        history_days = max((now_key - fetch_start_key).days + 1, 1)
         histories = await self._client.async_get_task_history(
             min(history_days, HISTORY_LOOKBACK_DAYS),
             include_members=True,

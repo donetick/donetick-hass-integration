@@ -1,5 +1,6 @@
 """The Donetick integration."""
 import logging
+import asyncio
 from datetime import timedelta
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
@@ -9,15 +10,19 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from .const import (DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL,
+from homeassistant.components import webhook
+from hashlib import sha256
+from .const import (DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL, SERVICE_REDEEM_REWARD, SERVICE_GET_REWARD_WEBHOOK_URL, REWARD_APPROVED_EVENT,
                     HISTORY_COMPLETED, HISTORY_PENDING_APPROVAL)
 from .api import DonetickApiClient, normalize_due_date
 from .user_mapping import completion_user
 from .frontend import async_setup_frontend
 from .completion_history import async_completed_occurrences
 from .action_selectors import async_setup_action_selectors, async_refresh_action_selectors, async_prepare_action_call
-from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS
+from .recurrence import RECURRENCE_FIELDS, FREQUENCY_TYPES, WEEKDAYS, MONTHS, build_recurrence_payload
+from .task_properties import PROPERTY_FIELDS, apply_task_properties, validate_points, validate_priority, validate_reminders
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.TODO, Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TEXT, Platform.CALENDAR]
@@ -31,6 +36,7 @@ SERVICE_SKIP_TASK = "skip_task"
 SERVICE_COMPLETE_ASSIGNED_TASK = "complete_assigned_task"
 SERVICE_POSTPONE_TASK = "postpone_task"
 SERVICE_DELETE_HISTORY = "delete_history"
+SERVICE_COMPLETE_CHORE = "complete_chore"
 
 COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Optional("task"): cv.string,
@@ -41,24 +47,16 @@ COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Optional("config_entry_id"): cv.string,
 })
 
-CREATE_TASK_SCHEMA = vol.Schema({
-    vol.Required("name"): cv.string,
-    vol.Optional("description"): cv.string,
-    vol.Optional("due_date"): cv.string,
-    vol.Optional("created_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
-    vol.Optional("config_entry_id"): cv.string,
-})
+TASK_PROPERTY_SCHEMA = {
+    vol.Optional("points"): validate_points,
+    vol.Optional("priority"): validate_priority,
+}
 
-UPDATE_TASK_SCHEMA = vol.Schema({
-    vol.Optional("task"): cv.string,
-    vol.Optional("task_id"): vol.Coerce(int),
-    vol.Optional("name"): cv.string,
-    vol.Optional("description"): cv.string,
-    vol.Optional("due_date"): cv.string,
-    vol.Optional("force_unarchive", default=False): cv.boolean,
-    vol.Optional("assigned_to_username"): cv.string,
-    vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
-    vol.Optional("config_entry_id"): cv.string,
+REMINDER_SCHEMA = {
+    vol.Optional("reminders"): validate_reminders,
+}
+
+RECURRENCE_SCHEMA = {
     vol.Optional("frequency_type"): vol.In(FREQUENCY_TYPES),
     vol.Optional("frequency"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1000)),
     vol.Optional("interval_unit"): vol.In(("hours", "days", "weeks", "months", "years")),
@@ -69,6 +67,34 @@ UPDATE_TASK_SCHEMA = vol.Schema({
     vol.Optional("day_of_month"): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
     vol.Optional("schedule_time"): cv.string,
     vol.Optional("schedule_from"): vol.In(("due_date", "completion")),
+}
+
+CREATE_TASK_SCHEMA = vol.Schema({
+    vol.Required("name"): cv.string,
+    vol.Optional("description"): cv.string,
+    vol.Optional("due_date"): cv.string,
+    vol.Optional("created_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+    vol.Optional("assigned_to_username"): cv.string,
+    **TASK_PROPERTY_SCHEMA,
+    **REMINDER_SCHEMA,
+    **RECURRENCE_SCHEMA,
+    vol.Optional("config_entry_id"): cv.string,
+})
+
+UPDATE_TASK_SCHEMA = vol.Schema({
+    **TASK_PROPERTY_SCHEMA,
+    **REMINDER_SCHEMA,
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.Coerce(int),
+    vol.Optional("name"): cv.string,
+    vol.Optional("description"): cv.string,
+    vol.Optional("due_date"): cv.string,
+    vol.Optional("force_unarchive", default=False): cv.boolean,
+    vol.Optional("assigned_to_username"): cv.string,
+    vol.Optional("assigned_to"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+    vol.Optional("config_entry_id"): cv.string,
+    **RECURRENCE_SCHEMA,
 })
 
 DELETE_TASK_SCHEMA = vol.Schema({
@@ -102,6 +128,24 @@ COMPLETE_ASSIGNED_SCHEMA = ASSIGNED_TASK_SCHEMA.extend({
     vol.Optional("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
     vol.Optional("completed_by_ha_user"): cv.string,
     vol.Optional("completed_by_username"): cv.string,
+    vol.Optional("expected_due_date"): vol.Any(None, cv.datetime),
+})
+
+COMPLETE_CHORE_SCHEMA = vol.Schema({
+    vol.Optional("task"): cv.string,
+    vol.Optional("task_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Required("completed_by"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("config_entry_id"): cv.string,
+})
+
+REDEEM_REWARD_SCHEMA = vol.Schema({
+    vol.Optional("reward"): cv.string,
+    vol.Optional("reward_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    vol.Optional("config_entry_id"): cv.string,
+})
+
+GET_REWARD_WEBHOOK_URL_SCHEMA = vol.Schema({
+    vol.Optional("config_entry_id"): cv.string,
 })
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -150,7 +194,64 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "client": client,
         "circle_members": circle_members,
+        "rewards": [],
+        "reward_webhook_id": "donetick_reward_" + sha256(entry.entry_id.encode()).hexdigest()[:24],
     }
+    config = hass.data[DOMAIN][entry.entry_id]
+    config["reward_webhook_url"] = webhook.async_generate_url(hass, config["reward_webhook_id"])
+    delivery_store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_reward_deliveries")
+    processed = list(dict.fromkeys(await delivery_store.async_load() or []))
+    delivery_lock = asyncio.Lock()
+    async def update_rewards():
+        try:
+            config["rewards"] = await client.async_get_rewards()
+        except Exception as err:
+            _LOGGER.warning("Could not refresh Donetick rewards: %s", err)
+        return config["rewards"]
+    config["reward_coordinator"] = DataUpdateCoordinator(
+        hass, _LOGGER, name=f"{DOMAIN}_rewards_{entry.entry_id}",
+        update_method=update_rewards, update_interval=timedelta(seconds=refresh_interval_seconds),
+    )
+    try:
+        await config["reward_coordinator"].async_config_entry_first_refresh()
+    except Exception as err:
+        _LOGGER.debug("Reward catalog is unavailable on this Donetick server: %s", err)
+
+    async def refresh_after_reward_approval():
+        """Refresh member balances promptly after an approved redemption."""
+        try:
+            await coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.warning("Reward approval arrived, but the Donetick balance refresh failed: %s", err)
+
+    async def reward_webhook_handler(hass, webhook_id, request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return
+        if not isinstance(payload, dict) or payload.get("type") != "reward.redeem_approved":
+            return
+        data = payload.get("data") or {}
+        if not isinstance(data, dict) or not all(type(data.get(key)) is int and data[key] > 0
+                   for key in ("redemption_id", "reward_id", "recipient_user_id")):
+            return
+        redemption_id = data["redemption_id"]
+        async with delivery_lock:
+            if redemption_id in processed:
+                return
+            deliveries = [*processed, redemption_id][-5000:]
+            await delivery_store.async_save(deliveries)
+            processed[:] = deliveries
+        hass.bus.async_fire(REWARD_APPROVED_EVENT, {
+            **data, "timestamp": payload.get("timestamp"), "config_entry_id": entry.entry_id,
+        })
+        hass.async_create_task(refresh_after_reward_approval())
+
+    webhook.async_register(hass, DOMAIN, "Donetick reward approvals", config["reward_webhook_id"],
+                           reward_webhook_handler, allowed_methods=["POST"], local_only=False)
+    entry.async_on_unload(lambda: webhook.async_unregister(hass, config["reward_webhook_id"]))
+    entry.async_on_unload(config["reward_coordinator"].async_add_listener(
+        lambda: hass.async_create_task(async_refresh_action_selectors(hass))))
     
     # Register services before setting up platforms
     def with_selectors(handler):
@@ -175,6 +276,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def delete_history_handler(call: ServiceCall) -> None:
         await async_delete_history_service(hass, call)
+
+    async def complete_chore_handler(call: ServiceCall) -> None:
+        await async_complete_chore_service(hass, call)
+
+    async def redeem_reward_handler(call: ServiceCall) -> None:
+        data = call.data
+        if ("reward_id" in data) == ("reward" in data):
+            raise ServiceValidationError("Choose either a reward or reward_id")
+        reward_id = data.get("reward_id")
+        if not reward_id:
+            raise ServiceValidationError("Choose a reward or provide reward_id")
+        entry_id = data.get("config_entry_id")
+        entry = await _get_config_entry(hass, entry_id)
+        if entry is None:
+            raise ServiceValidationError("No matching Donetick integration found")
+        user_id = data.get("user_id")
+        if user_id is not None:
+            if type(user_id) is not int or user_id <= 0:
+                raise ServiceValidationError("Choose a valid Donetick member")
+            await _validate_circle_member(hass.data[DOMAIN][entry.entry_id], user_id)
+        try:
+            await hass.data[DOMAIN][entry.entry_id]["client"].async_redeem_reward(reward_id, user_id)
+        except Exception as err:
+            raise HomeAssistantError(f"Donetick could not request that reward: {err}") from err
+        for key in ("reward_coordinator", "coordinator"):
+            try:
+                await hass.data[DOMAIN][entry.entry_id][key].async_request_refresh()
+            except Exception as err:
+                _LOGGER.warning("Reward request succeeded, but %s refresh failed: %s", key, err)
+
+    async def get_reward_webhook_url_handler(call: ServiceCall) -> ServiceResponse:
+        entry = await _get_config_entry(hass, call.data.get("config_entry_id"))
+        if entry is None:
+            raise ServiceValidationError("No matching Donetick integration found")
+        return {"url": hass.data[DOMAIN][entry.entry_id]["reward_webhook_url"]}
 
     hass.services.async_register(
         DOMAIN,
@@ -212,6 +348,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         SERVICE_DELETE_HISTORY,
         with_selectors(delete_history_handler),
         schema=DELETE_HISTORY_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_COMPLETE_CHORE,
+        with_selectors(complete_chore_handler),
+        schema=COMPLETE_CHORE_SCHEMA,
+    )
+    hass.services.async_register(DOMAIN, SERVICE_REDEEM_REWARD, with_selectors(redeem_reward_handler),
+                                 schema=REDEEM_REWARD_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_GET_REWARD_WEBHOOK_URL, get_reward_webhook_url_handler,
+        schema=GET_REWARD_WEBHOOK_URL_SCHEMA, supports_response=SupportsResponse.ONLY,
     )
     _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
                   DOMAIN, SERVICE_COMPLETE_TASK, DOMAIN, SERVICE_CREATE_TASK,
@@ -285,34 +433,103 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
         response["due_date"] = entry.due_date.isoformat() if entry.due_date else None
     return response
 
+async def async_complete_chore_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Complete a chore through the Full API and credit the member who did it."""
+    entry = await _get_config_entry(hass, call.data.get("config_entry_id"))
+    if not entry:
+        raise HomeAssistantError("No matching Donetick integration found for complete_chore")
+
+    config = hass.data[DOMAIN][entry.entry_id]
+    chore_id = call.data["task_id"]
+    completed_by = call.data["completed_by"]
+    await _validate_circle_member(config, completed_by)
+
+    try:
+        await config["client"].async_complete_chore(chore_id, completed_by)
+    except Exception as e:
+        _LOGGER.error("Failed to complete chore %d: %s", chore_id, e)
+        raise HomeAssistantError(f"Failed to complete Donetick chore {chore_id}: {e}") from e
+    _LOGGER.info("Chore %d completed for user %d", chore_id, completed_by)
+
+    try:
+        await config["coordinator"].async_request_refresh()
+    except Exception as e:
+        raise HomeAssistantError(
+            f"Donetick chore {chore_id} was completed, but Home Assistant could not refresh: {e}"
+        ) from e
+
+async def _validate_circle_member(config: dict, user_id: int) -> None:
+    """Reject a user ID that is not an active member of the Donetick circle.
+
+    The cached member list is fetched again once if the ID is unknown, so members
+    who joined since the last refresh are accepted. Without a member list the check
+    is skipped and Donetick decides.
+    """
+    members = config.get("circle_members")
+    if not members or any(m.user_id == user_id and m.is_active for m in members):
+        return
+    try:
+        members = await config["client"].async_get_circle_members()
+    except Exception as e:
+        _LOGGER.warning("Could not refresh Donetick circle members to check user %d: %s", user_id, e)
+        return
+    if not members:
+        return
+    config["circle_members"] = members
+    if not any(m.user_id == user_id and m.is_active for m in members):
+        raise ServiceValidationError(f"User {user_id} is not an active Donetick circle member")
+
 async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the create_task service call."""
     name = call.data["name"]
     description = call.data.get("description")
     created_by = call.data.get("created_by")
     config_entry_id = call.data.get("config_entry_id")
+    recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
     try:
         due_date = normalize_due_date(call.data.get("due_date"))
+        properties = {field: call.data[field] for field in (*PROPERTY_FIELDS, "assigned_to") if field in call.data}
+        if "reminders" in call.data:
+            properties["reminders"] = call.data["reminders"]
+        # Validate before creation, which cannot be retried safely on failure.
+        if recurrence:
+            # The external API creates a one-time task; the editor then sets its schedule.
+            build_recurrence_payload({"frequencyType": "once", "nextDueDate": due_date, "updatedAt": "new"},
+                                     recurrence, hass.config.time_zone)
+        if properties:
+            apply_task_properties({"frequencyType": "once", "nextDueDate": due_date}, properties)
     except ValueError as err:
         raise ServiceValidationError(str(err)) from err
 
     # Find the config entry to use
     entry = await _get_config_entry(hass, config_entry_id)
     if not entry:
-        return
+        raise HomeAssistantError("No matching Donetick integration found for create_task")
 
     # Get API client and coordinator
     config = hass.data[DOMAIN][entry.entry_id]
     client = config["client"]
     coordinator = config["coordinator"]
 
+    result = None
     try:
         result = await client.async_create_task(name, description, due_date, created_by)
+        if recurrence or properties:
+            await client.async_update_task_recurrence(
+                result.id, recurrence, hass.config.time_zone, properties=properties)
         _LOGGER.info("Task '%s' created successfully with ID %d", name, result.id)
-        await coordinator.async_request_refresh()
 
     except Exception as e:
         _LOGGER.error("Failed to create task '%s': %s", name, e)
+        if result is not None:
+            raise HomeAssistantError(
+                f"Task {result.id} was created, but its extra settings could not be saved: {e}. "
+                "Use update_task on this ID; do not retry create_task."
+            ) from e
+        raise HomeAssistantError(f"Failed to create Donetick task: {e}") from e
+    finally:
+        if result is not None:
+            await coordinator.async_request_refresh()
 
 async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the update_task service call."""
@@ -324,8 +541,13 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     assigned_to = call.data.get("assigned_to")
     config_entry_id = call.data.get("config_entry_id")
     recurrence = {field: call.data[field] for field in RECURRENCE_FIELDS if field in call.data}
+    properties = {field: call.data[field] for field in PROPERTY_FIELDS if field in call.data}
+    if "reminders" in call.data:
+        properties["reminders"] = call.data["reminders"]
+    if properties and "assigned_to" in call.data:
+        properties["assigned_to"] = assigned_to
 
-    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive and not recurrence:
+    if not any(field in call.data for field in ("name", "description", "due_date", "assigned_to")) and not force_unarchive and not recurrence and not properties:
         raise HomeAssistantError("Provide at least one task field to update")
     
     # Find the config entry to use
@@ -340,13 +562,17 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
 
     try:
         result = None
-        if recurrence:
+        if properties:
+            result = await client.async_update_task_recurrence(
+                task_id, recurrence, hass.config.time_zone, name=name, description=description,
+                due_date=due_date, force_unarchive=force_unarchive, properties=properties)
+        elif recurrence:
             result = await client.async_update_task_recurrence(
                 task_id, recurrence, hass.config.time_zone, name=name, description=description,
                 due_date=due_date, force_unarchive=force_unarchive)
         elif force_unarchive or any(field in call.data for field in ("name", "description", "due_date")):
             result = await client.async_update_task(task_id, name, description, due_date, force_unarchive)
-        if "assigned_to" in call.data:
+        if "assigned_to" in call.data and not properties:
             await client.async_assign_task(task_id, assigned_to)
         _LOGGER.info("Task %d updated successfully", task_id)
         await coordinator.async_request_refresh()
@@ -403,12 +629,13 @@ async def async_skip_task_service(hass: HomeAssistant, call: ServiceCall) -> Non
     coordinator = config["coordinator"]
 
     try:
-        result = await client.async_skip_task(task_id, completed_by)
+        await client.async_skip_task(task_id, completed_by)
         _LOGGER.info("Task %d skipped successfully", task_id)
         await coordinator.async_request_refresh()
 
     except Exception as e:
         _LOGGER.error("Failed to skip task %d: %s", task_id, e)
+        raise HomeAssistantError(f"Failed to skip Donetick task {task_id}: {e}") from e
 
 async def async_delete_history_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle the delete_history service call (e.g. undo a completion)."""
@@ -470,11 +697,20 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
         raise HomeAssistantError("No matching Donetick integration found")
     config = hass.data[DOMAIN][entry.entry_id]
     client = config["client"]
+    task_id = call.data["task_id"]
+    in_flight = config.setdefault("row_actions_in_flight", set())
+    # Reject duplicate clicks across cards instead of queuing a second completion
+    # that could accidentally consume a recurring task's next occurrence.
+    if task_id in in_flight:
+        raise HomeAssistantError("An action for this task is already in progress")
+    in_flight.add(task_id)
     try:
         tasks = await client.async_get_tasks()
         task = next((task for task in tasks if task.id == call.data["task_id"] and task.is_active), None)
         if task is None:
             raise HomeAssistantError("Task is no longer active or visible; refresh the list")
+        if complete and "expected_due_date" in call.data and task.next_due_date != call.data["expected_due_date"]:
+            raise HomeAssistantError("This task occurrence has already changed; refresh the list")
         if complete:
             # Explicit performer and HA user mapping take priority over the assignee.
             # None leaves attribution to Donetick's authenticated API token owner.
@@ -491,7 +727,11 @@ async def async_task_row_action(hass: HomeAssistant, call: ServiceCall, *, compl
     except Exception as err:
         raise HomeAssistantError(f"Donetick task action failed: {err}") from err
     finally:
-        await config["coordinator"].async_request_refresh()
+        # A debounced request can return before the completed occurrence disappears.
+        try:
+            await config["coordinator"].async_refresh()
+        finally:
+            in_flight.discard(task_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -504,7 +744,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Remove services if this is the last config entry
         if not hass.data[DOMAIN]:
-            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK, SERVICE_DELETE_HISTORY]:
+            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK, SERVICE_COMPLETE_ASSIGNED_TASK, SERVICE_POSTPONE_TASK, SERVICE_DELETE_HISTORY, SERVICE_COMPLETE_CHORE, SERVICE_REDEEM_REWARD, SERVICE_GET_REWARD_WEBHOOK_URL]:
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)
             _LOGGER.debug("Removed services: %s.%s, %s.%s, %s.%s, %s.%s", 

@@ -8,7 +8,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .thing import async_setup_entry as thing_async_setup_entry
 from .chore_sensor import async_setup_chore_sensors
+<<<<<<< HEAD:custom_components/donetick_dev/sensor.py
 from .user_sensor import async_setup_user_sensors
+=======
+from .reward_sensor import async_setup_reward_sensors
+>>>>>>> 08829ddcaac572a30a45bb190e16b0d3a24516f9:custom_components/donetick/sensor.py
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,4 +28,8 @@ async def async_setup_entry(
         _LOGGER.debug("Thing sensor setup skipped: %s", err)
 
     await async_setup_chore_sensors(hass, config_entry, async_add_entities)
+<<<<<<< HEAD:custom_components/donetick_dev/sensor.py
     await async_setup_user_sensors(hass, config_entry, async_add_entities)
+=======
+    await async_setup_reward_sensors(hass, config_entry, async_add_entities)
+>>>>>>> 08829ddcaac572a30a45bb190e16b0d3a24516f9:custom_components/donetick/sensor.py

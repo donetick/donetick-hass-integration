@@ -22,7 +22,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_SHOW_NO_DUE_DATE, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_PROJECT_LISTS, CONF_CREATE_ASSIGNEE_LISTS
+from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_SHOW_NO_DUE_DATE, CONF_CREATE_UNIFIED_LIST, CONF_CREATE_PROJECT_LISTS, CONF_CREATE_ASSIGNEE_LISTS, CONF_USER_MAPPING
 from .api import DonetickApiClient
 from .user_mapping import completion_user
 from .model import DonetickProject, DonetickTask, DonetickMember
@@ -182,6 +182,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             "config_entry_id": self._config_entry.entry_id,
             "donetick_url": self._config_entry.data[CONF_URL],
             "donetick_project_id": hasattr(self, '_project') and self._project.id or None,
+            "donetick_user_mapping": self._config_entry.data.get(CONF_USER_MAPPING, {}),
         }
         
         # Add circle members data for custom card user selection
@@ -303,11 +304,18 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
                 due_date = None
                 if item.due:
                     due_date = item.due.isoformat()
-                
+
+                # HA copies the displayed description into updates for other fields.
+                # Omitting it preserves inline images in the original Donetick task.
+                task = next((task for task in self.coordinator.data if task.id == task_id), None)
+                description = item.description
+                if task is not None and description == (task.description or ""):
+                    description = None
+
                 await client.async_update_task(
                     task_id=task_id,
                     name=item.summary,
-                    description=item.description,
+                    description=description,
                     due_date=due_date,
                 )
                 _LOGGER.info("Updated task %d", task_id)

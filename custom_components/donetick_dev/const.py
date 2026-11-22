@@ -14,6 +14,9 @@ CONF_REFRESH_INTERVAL = "refresh_interval"
 DEFAULT_REFRESH_INTERVAL = 900 # seconds - 15 minutes
 
 API_TIMEOUT = 10  # seconds
+SERVICE_REDEEM_REWARD = "redeem_reward"
+SERVICE_GET_REWARD_WEBHOOK_URL = "get_reward_webhook_url"
+REWARD_APPROVED_EVENT = f"{DOMAIN}_reward_redeem_approved"
 CONF_MAP_COMPLETION_USER = "map_completion_user"
 CONF_USER_MAPPING = "user_mapping"
 CONF_UNMAPPED_USER = "unmapped_user"

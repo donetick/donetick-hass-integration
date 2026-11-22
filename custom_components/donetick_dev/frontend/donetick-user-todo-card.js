@@ -154,8 +154,10 @@ export function actionData(state, task) {
   const data = {task_id: task.task_id, config_entry_id: state.attributes.config_entry_id};
   return data;
 }
+// The current assignee stays listed even if they have since been deactivated,
+// so the picker shows who has the task instead of falling back to Anyone.
 export function assignableMembers(state, task, allowAnyAssignee = false) {
-  return (state?.attributes.circle_members || []).filter(member => member.is_active !== false && (allowAnyAssignee === true || !task.assignee_ids?.length || task.assignee_ids.includes(member.user_id)));
+  return (state?.attributes.circle_members || []).filter(member => (member.is_active !== false || member.user_id === task.assigned_to) && (allowAnyAssignee === true || !task.assignee_ids?.length || task.assignee_ids.includes(member.user_id)));
 }
 // Only the task's own people: Donetick refuses to credit anyone else ("User is not
 // assigned to chore"). It would also take a circle admin or manager on a public chore,
@@ -173,6 +175,21 @@ export function performerChoices(state, task, lastChosen) {
   return members.map((member, index) => ({member, index})).sort((a, b) =>
     rank(a.member) - rank(b.member) || a.index - b.index).map(entry => entry.member);
 }
+// A second character is added only when another member's name starts with the same
+// letter, so a row of circles stays narrow. Names sharing two characters keep the
+// same initials; the control's title and aria-label carry the full name.
+export function memberInitials(member, members = [], language) {
+  const nameOf = entry => String(entry?.display_name || entry?.username || (entry?.user_id ? `User ${entry.user_id}` : '')).trim();
+  const letters = Array.from(nameOf(member));
+  if (!letters.length) return '';
+  const initial = letters[0].toLocaleUpperCase(language);
+  const shared = members.some(other => other?.user_id !== member?.user_id
+    && Array.from(nameOf(other))[0]?.toLocaleUpperCase(language) === initial);
+  // The next letter, not the next character: a space or a dot would be invisible
+  // in the circle and the disambiguation would be lost.
+  const next = shared ? letters.slice(1).find(letter => /\p{L}/u.test(letter)) : undefined;
+  return next ? `${initial}${next.toLocaleLowerCase(language)}` : initial;
+}
 export function localDateTime(value) {
   const date = value ? new Date(value) : new Date();
   if (isNaN(date)) return '';
@@ -180,29 +197,57 @@ export function localDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 export function descriptionText(value) {
-  if (typeof value !== 'string' || !value.trim()) return '';
-  // Template contents are inert and never attached to the page. Only text is rendered.
+  return descriptionContent(value).text;
+}
+function descriptionContent(value, donetickUrl) {
+  const images = [];
+  if (typeof value !== 'string' || !value.trim()) return {text: '', images};
+  // Keep the supplied markup inert. Render text and build validated links separately.
   const template = document.createElement('template'); template.innerHTML = value;
   const omitted = new Set(['SCRIPT','STYLE','NOSCRIPT','IFRAME','OBJECT','EMBED','SVG','MATH','HEAD','TEMPLATE']);
   const blocks = new Set(['P','DIV','SECTION','ARTICLE','BLOCKQUOTE','PRE','H1','H2','H3','H4','H5','H6']);
+  const baseUrl = donetickUrl ? `${donetickUrl.replace(/\/$/, '')}/` : undefined;
   const text = node => {
     if (node.nodeType === 3) return node.nodeValue || '';
-    if (node.nodeType !== 1 || omitted.has(node.tagName)) return '';
-    if (node.tagName === 'BR') return '\n';
+    if (node.nodeType !== 1) return '';
+    const tag = node.tagName.toUpperCase();
+    if (omitted.has(tag)) return '';
+    if (tag === 'IMG') {
+      const source = node.getAttribute('src')?.trim();
+      if (source) {
+        try {
+          const url = new URL(source, baseUrl);
+          if (url.protocol === 'https:' || url.protocol === 'http:') {
+            images.push({href: url.href, label: node.getAttribute('alt')?.trim() || 'Open image'});
+          }
+        } catch {
+          // The image source is missing a usable URL.
+        }
+      }
+      return '';
+    }
+    if (tag === 'BR') return '\n';
     const content = [...node.childNodes].map(text).join('');
-    if (node.tagName === 'LI') return `- ${content.trim()}\n`;
-    if (blocks.has(node.tagName) || ['UL','OL','TR'].includes(node.tagName)) return `\n${content}\n`;
-    if (['TD','TH'].includes(node.tagName)) return `${content}\t`;
+    if (tag === 'LI') return `- ${content.trim()}\n`;
+    if (blocks.has(tag) || ['UL','OL','TR'].includes(tag)) return `\n${content}\n`;
+    if (['TD','TH'].includes(tag)) return `${content}\t`;
     return content;
   };
-  return [...template.content.childNodes].map(text).join('').replace(/\u00a0/g,' ')
+  const content = [...template.content.childNodes].map(text).join('').replace(/\u00a0/g,' ')
     .replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  return {text: content, images};
 }
 // HA replaces its hass object for unrelated entity updates too. Only the selected
 // list and presentation settings affect this card's DOM.
 function samePresentation(previous, next) {
   return previous.locale === next.locale && previous.themes === next.themes
     && previous.config === next.config && previous.localize === next.localize;
+}
+function sameOccurrence(a, b) {
+  return a?.task_id === b?.task_id && (a?.next_due_date ?? null) === (b?.next_due_date ?? null);
+}
+function isOneTimeTask(task) {
+  return task.is_recurring === false || ['once','no_repeat'].includes(task.frequency_type);
 }
 class DonetickUserTodoCard extends HTMLElement {
   static getConfigElement() { return document.createElement('donetick-dev-user-todo-editor'); }
@@ -211,7 +256,8 @@ class DonetickUserTodoCard extends HTMLElement {
     return {entity, user_id: hass.states[entity]?.attributes.donetick_user_id ?? hass.states[entity]?.attributes.circle_members?.[0]?.user_id};
   }
   constructor() {
-    super(); this.attachShadow({mode: 'open'}); this._pending = new Map(); this._completed = new Map();
+    super(); this.attachShadow({mode: 'open'}); this._pending = new Map(); this._completed = new Map(); this._awaitingCompletions = new Map();
+    this._actionErrors = new Map();
     this._outside = event => {
       const path = event.composedPath();
       if (this._panel && !path.includes(this) && !path.some(node => node.localName === 'ha-dialog-date-picker') && !this._pending.has(this._panel.taskId)) this.closePanel();
@@ -247,11 +293,14 @@ class DonetickUserTodoCard extends HTMLElement {
     if (config.sort_by && !['due_date','priority','name'].includes(config.sort_by)) throw new Error('Choose a valid sort order');
     if (config.due_display && !['date','relative','both'].includes(config.due_display)) throw new Error('Choose a valid due date display');
     if (config.row_spacing !== undefined && !['auto','compact','comfortable'].includes(config.row_spacing)) throw new Error('Choose valid task spacing');
+    if (config.optimistic_completion !== undefined && typeof config.optimistic_completion !== 'boolean') throw new Error('Optimistic completion must be true or false');
+    if (config.completion_strikethrough !== undefined && typeof config.completion_strikethrough !== 'boolean') throw new Error('Completion strikethrough must be true or false');
     if (config.credit_completion !== undefined && !['assignee','choose'].includes(config.credit_completion)) throw new Error('Choose a valid completion credit');
     if (config.complete_as_picker !== undefined && !['chips','dropdown'].includes(config.complete_as_picker)) throw new Error('Choose a valid Complete as picker');
+    if (config.complete_control !== undefined && !['checkbox','initials','button'].includes(config.complete_control)) throw new Error('Choose a valid completion control');
     if (config.upcoming_days !== undefined && (!Number.isInteger(Number(config.upcoming_days)) || Number(config.upcoming_days) < 0 || Number(config.upcoming_days) > 365)) throw new Error('Days ahead must be a whole number from 0 to 365');
     this._config = {task_view:'both', completed_days:1, completed_filter:'all', completed_limit:0, row_spacing:'auto', display_filter:'all', sort_by:'due_date', button_style: 'text', button_size: 'compact', button_shape: 'rounded',
-      button_content: 'icon', complete_control: 'checkbox', credit_completion: 'assignee', complete_as_picker: 'chips', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:true, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
+      button_content: 'icon', optimistic_completion:false, completion_strikethrough:true, complete_control: 'checkbox', credit_completion: 'assignee', complete_as_picker: 'chips', include_overdue:true, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, ...config, completed_days:config.completed_days ?? 1, completed_limit:config.completed_limit ?? 0, labels:taskLabels(config.labels), user_id: config.user_id === undefined || config.user_id === 'all' ? 'all' : Number(config.user_id), upcoming_days:upcomingDayLimit(config.upcoming_days)};
     if (this._panel && this._panel.kind !== 'details' && !(this._panel.kind === 'performer' ? this.offersCompleteAs()
       : this._config[{skip:'show_postpone',date:'show_due_date',assign:'show_reassign'}[this._panel.kind]])) this._panel = null;
     this._configInputSignature = signature;
@@ -271,8 +320,26 @@ class DonetickUserTodoCard extends HTMLElement {
     return 2 + (this._config?.task_view === 'completed' ? 0 : this.filteredTasks(state).length)
       + (this._config?.task_view === 'pending' ? 0 : completedTasks(state, this._config?.user_id, new Date(), this._config).length);
   }
-  filteredTasks(state) {
-    return userTasks(state, this._config?.user_id, this._config?.display_filters ?? this._config?.display_filter, new Date(), this._config?.upcoming_days, this._config?.sort_by, this._hass?.locale?.language, this._config?.include_overdue, this._config?.labels, this._config?.label_match, this._config?.include_anyone);
+  syncActionContext() {
+    const scope = JSON.stringify([this._config?.entity, this._hass?.states[this._config?.entity]?.attributes.config_entry_id]);
+    if (this._actionContext?.scope === scope) return;
+    this._actionContext = {scope};
+    this._pending.clear(); this._completed.clear(); this._awaitingCompletions.clear(); this._actionErrors.clear();
+    this._panel = null; this.clearError();
+  }
+  reconcileCompletions(state) {
+    if (!state || ['unavailable', 'unknown'].includes(state.state)) return;
+    const tasks = [...(state.attributes.tasks || []), ...(state.attributes.anyone_tasks || [])];
+    for (const [id, completed] of this._awaitingCompletions) {
+      // Compare occurrences, not just task IDs: recurring tasks keep their ID.
+      const recorded = (state.attributes.completed_tasks || []).some(task => task.task_id === id && !completed.historyUids.has(task.uid));
+      if ((recorded && !isOneTimeTask(completed)) || !tasks.some(task => sameOccurrence(task, completed))) this._awaitingCompletions.delete(id);
+    }
+  }
+  filteredTasks(state, includeAccepted = false) {
+    return userTasks(state, this._config?.user_id, this._config?.display_filters ?? this._config?.display_filter, new Date(), this._config?.upcoming_days, this._config?.sort_by, this._hass?.locale?.language, this._config?.include_overdue, this._config?.labels, this._config?.label_match, this._config?.include_anyone)
+      .filter(task => includeAccepted || (!sameOccurrence(this._awaitingCompletions.get(task.task_id), task)
+        && !(this._config.optimistic_completion && isOneTimeTask(task) && sameOccurrence(this._completed.get(task.task_id), task))));
   }
   // The Complete as panel has two ways in: its own row action, and the completion
   // control itself when credit_completion asks who did the work.
@@ -303,35 +370,66 @@ class DonetickUserTodoCard extends HTMLElement {
     else this.act(task, true);
   }
   async act(task, complete, dueDate, assignedTo, completedBy) {
-    if (this._pending.has(task.task_id)) return;
+    this.syncActionContext();
+    if (this._pending.has(task.task_id) || this._completed.has(task.task_id)
+      || sameOccurrence(this._awaitingCompletions.get(task.task_id), task)) return;
+    const context = this._actionContext;
+    const panel = this._panel;
+    task = {...task};
     const state = this._hass.states[this._config.entity];
-    this._pending.set(task.task_id, complete); this.clearError(); this.render();
+    if (!state || ['unavailable','unknown'].includes(state.state)) { this.render(); return; }
+    const historyUids = new Set((state.attributes.completed_tasks || []).filter(item => item.task_id === task.task_id).map(item => item.uid));
+    // Keep a snapshot for rollback. One-time rows disappear immediately; recurring
+    // rows retain completion feedback through slow requests and state updates.
+    if (complete && this._config.optimistic_completion) this._completed.set(task.task_id, task);
+    this._pending.set(task.task_id, complete); this.clearError(task.task_id); this.render();
     try {
       const data = actionData(state, task);
       if (dueDate) data.due_date = dueDate;
       if (assignedTo !== undefined) data.assigned_to = assignedTo;
       if (completedBy !== undefined) data.completed_by = completedBy;
-      await this._hass.callService('donetick_dev', dueDate || assignedTo !== undefined ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
+      if (complete && task.next_due_date) data.expected_due_date = task.next_due_date;
+      await this._hass.callService('donetick', dueDate || assignedTo !== undefined ? 'update_task' : complete ? 'complete_assigned_task' : 'postpone_task', data);
+      if (context !== this._actionContext) return;
       // Only a completion Donetick accepted moves its person to the front.
       if (completedBy !== undefined) this.rememberPerformer(completedBy);
       // Only this task's panel: a slow call must not close one opened meanwhile for
       // another row.
-      if (this._panel?.taskId === task.task_id) this._panel = null;
+      if (this._panel === panel && panel?.taskId === task.task_id) this._panel = null;
       if (complete) {
+        // The service response and HA state event can arrive in either order.
+        // Retain acceptance beyond the animation so stale state cannot undo it.
+        this._awaitingCompletions.set(task.task_id, {...task, historyUids});
+        if (isOneTimeTask(task)) {
+          this._completed.delete(task.task_id);
+          return;
+        }
         this._completed.set(task.task_id, task);
-        setTimeout(() => { this._completed.delete(task.task_id); this.render(); }, 1000);
+        setTimeout(() => {
+          if (context !== this._actionContext || this._completed.get(task.task_id) !== task) return;
+          this._completed.delete(task.task_id); this.render();
+        }, 1000);
       }
-    } catch (err) { this._error = err.message || String(err); this._errorTask = task; }
-    finally { this._pending.delete(task.task_id); this.render(); }
+    } catch (err) {
+      if (context !== this._actionContext) return;
+      if (complete) this._completed.delete(task.task_id);
+      this._actionErrors.set(task.task_id, {task, message:err.message || String(err)});
+    }
+    finally { if (context === this._actionContext) { this._pending.delete(task.task_id); this.render(); } }
   }
-  clearError() { this._error = ''; this._errorTask = null; }
+  clearError(taskId) { this._error = ''; this._errorTask = null; if (taskId !== undefined) this._actionErrors.delete(taskId); }
   // Only the panel of the task the message is about can show it.
-  errorIsInPanel() { return !!this._errorTask && this._panel?.taskId === this._errorTask.task_id && this._panel.kind !== 'details'; }
+  errorIsInPanel(task = this._errorTask) {
+    const state = this._hass?.states[this._config?.entity];
+    return !!task && !!state && !['unavailable','unknown'].includes(state.state)
+      && this._panel?.taskId === task.task_id && this._panel.kind !== 'details'
+      && this.filteredTasks(state, true).some(item => item.task_id === task.task_id);
+  }
   closePanel() {
     const taskId = this._panel?.taskId;
     const kind = this._panel?.kind;
     const opener = this._panel?.opener;
-    this._panel = null; this.clearError(); this.render();
+    this._panel = null; this.clearError(taskId); this.render();
     // Complete as has two ways in; focus goes back to the one that opened it.
     this.shadowRoot.querySelector(`[data-action="${kind}"][data-task-id="${taskId}"]${opener ? `[data-opener="${opener}"]` : ''}`)?.focus();
   }
@@ -342,7 +440,7 @@ class DonetickUserTodoCard extends HTMLElement {
     // The dropdown starts on the first person offered; it still books only on confirm.
     this._panel = {taskId: task.task_id, kind, date: value.slice(0, 10), time: task.next_due_date ? value.slice(11) : '09:00:00', showTime:false, assignedTo:task.assigned_to ?? null,
       performer: choices[0]?.user_id ?? null, opener};
-    this.clearError();
+    this.clearError(task.task_id);
     this.render();
     // Chips book on activation, so none of them takes the focus: a second Enter must not
     // complete the task for whoever happens to come first.
@@ -351,7 +449,9 @@ class DonetickUserTodoCard extends HTMLElement {
   }
   render() {
     if (!this._config || !this._hass) return;
+    this.syncActionContext();
     const state = this._hass.states[this._config.entity];
+    this.reconcileCompletions(state);
     const userId = selectedUser(state, this._config.user_id);
     const member = state?.attributes.circle_members?.find(m => m.user_id === userId);
     const focusedField = this.shadowRoot.activeElement?.dataset.field;
@@ -363,7 +463,8 @@ class DonetickUserTodoCard extends HTMLElement {
       ha-card[data-spacing="compact"] .row { padding:2px 0; }
       ha-card[data-spacing="comfortable"] .row { padding:8px 0; }
       ha-card[data-labels="true"] { margin-block:4px; }
-      .completed .name { text-decoration:line-through; color:var(--secondary-text-color); }
+      .completed .name { color:var(--secondary-text-color); }
+      .completed:not(.no-strikethrough) .name { text-decoration:line-through; }
       .history-heading { font-size:14px; font-weight:500; color:var(--secondary-text-color); margin:16px 0 6px; border-top:1px solid var(--divider-color); padding-top:12px; }
       .history-check { color:var(--success-color, #43a047); width:44px; flex-shrink:0; }
       .history-row { padding:6px 0; }
@@ -383,9 +484,13 @@ class DonetickUserTodoCard extends HTMLElement {
       .task-label { max-width:100%; box-sizing:border-box; padding:1px 6px; border-radius:10px; background:var(--secondary-background-color); color:var(--secondary-text-color); font-size:11px; line-height:16px; overflow-wrap:anywhere; text-align:start; }
       .description-indicator { --mdc-icon-size:16px; flex-shrink:0; color:var(--secondary-text-color); }
       .description { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; color:var(--secondary-text-color); margin:2px 0 8px; }
+      .description a { display:block; width:fit-content; color:var(--link-text-color,var(--primary-color)); }
       button { cursor: pointer; border: 1px solid var(--divider-color); border-radius: 8px; padding: 9px 11px; background: var(--card-background-color); color: var(--primary-color); font: inherit; font-size: 13px; }
       button:disabled, input:disabled { opacity: .5; cursor: default; }
       .complete-checkbox { width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
+      /* Matches .complete-checkbox and .history-check at 44px so pending and completed rows line up. */
+      ha-card button.complete-initials { width:44px; height:44px; min-width:44px; min-height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border:0; border-radius:0; padding:0; background:transparent; color:var(--primary-color); font:inherit; }
+      .complete-initials span { box-sizing:border-box; width:24px; height:24px; display:grid; place-items:center; border:2px solid currentColor; border-radius:50%; font-size:11px; font-weight:600; line-height:1; }
       input[type="checkbox"] { width:18px; height:18px; margin:0; accent-color:var(--primary-color); cursor:pointer; } button:focus-visible { outline: 2px solid var(--primary-color); }
       button { display:inline-flex; justify-content:center; align-items:center; gap:6px; box-sizing:border-box; min-width:44px; min-height:44px; } ha-icon { --mdc-icon-size:20px; display:inline-flex; align-items:center; justify-content:center; width:var(--mdc-icon-size); height:var(--mdc-icon-size); line-height:0; vertical-align:middle; }
       [data-style="text"] button { border-color:transparent; background:transparent; }
@@ -421,9 +526,19 @@ class DonetickUserTodoCard extends HTMLElement {
     // belonging to the wrong row, so it moves up here and says which task it is about.
     if (this._error && !this.errorIsInPanel()) addText(card, 'p', this._errorTask
       ? `${this._errorTask.name}: ${this._error}` : this._error, 'error').setAttribute('role', 'alert');
+    for (const {task, message} of this._actionErrors.values()) {
+      if (this.errorIsInPanel(task)) continue;
+      addText(card, 'p', `${task.name}: ${message}`, 'error').setAttribute('role', 'alert');
+    }
     if (!state || ['unavailable', 'unknown'].includes(state.state)) { addText(card, 'p', 'Donetick list unavailable', 'empty'); return; }
     const tasks = this._config.task_view === 'completed' ? [] : this.filteredTasks(state);
-    for (const task of this._completed.values()) if (this._config.task_view !== 'completed' && !tasks.some(item => item.task_id === task.task_id) && this.filteredTasks({attributes:{tasks:[task]}}).length) tasks.push(task);
+    for (const task of this._completed.values()) {
+      if (this._config.optimistic_completion && isOneTimeTask(task)) continue;
+      if (this._config.task_view === 'completed' || !this.filteredTasks({attributes:{tasks:[task]}}, true).length) continue;
+      const index = tasks.findIndex(item => item.task_id === task.task_id);
+      // Show feedback on the occurrence clicked, not its newly scheduled successor.
+      if (index === -1) tasks.push(task); else tasks[index] = task;
+    }
     tasks.sort((a,b) => compareTasks(a,b,this._config.sort_by,this._hass.locale?.language));
     if (!tasks.length && this._config.task_view !== 'completed') addText(card, 'p', emptyMessage({...this._config,user_id:userId}, member?.display_name || member?.username || `User ${userId}`), 'empty');
     for (const task of tasks) {
@@ -432,7 +547,25 @@ class DonetickUserTodoCard extends HTMLElement {
       const choosing = this._config.credit_completion === 'choose';
       const performerOpen = this._panel?.taskId === task.task_id && this._panel.kind === 'performer';
       if (completed) row.classList.add('completed');
-      if (this._config.show_complete && this._config.complete_control === 'checkbox') {
+      if (completed && !this._config.completion_strikethrough) row.classList.add('no-strikethrough');
+      if (this._config.show_complete && this._config.complete_control === 'initials') {
+        const members = state.attributes.circle_members || [];
+        const assignee = members.find(member => member.user_id === task.assigned_to);
+        const name = assignee?.display_name || assignee?.username || (task.assigned_to ? `User ${task.assigned_to}` : 'Anyone');
+        const button = document.createElement('button'); button.className = 'complete-initials'; row.append(button); button.type = 'button';
+        button.disabled = this._pending.has(task.task_id) || completed;
+        // The same aria-label as the checkbox, since both controls do the same thing;
+        // the assignee is in the title, where it does not repeat on every row.
+        button.setAttribute('aria-label', `Complete: ${task.name}`);
+        button.title = `Complete: ${task.name} · ${name}`;
+        if (choosing) { button.dataset.action = 'performer'; button.dataset.taskId = task.task_id; button.dataset.opener = 'control'; button.setAttribute('aria-expanded', String(performerOpen)); }
+        // Only an Anyone task shows an empty circle. An assignee missing from
+        // circle_members, which the integration fills once per entity, falls back to
+        // the same User N the title shows rather than reading as Anyone.
+        addText(button, 'span', task.assigned_to
+          ? memberInitials(assignee ?? {user_id: task.assigned_to}, members, this._hass.locale?.language) : '');
+        button.addEventListener('click', () => this.completeAction(task));
+      } else if (this._config.show_complete && this._config.complete_control !== 'button') {
         const target = document.createElement('label'); target.className = 'complete-checkbox'; row.append(target);
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
         checkbox.disabled = this._pending.has(task.task_id) || completed; checkbox.checked = this._pending.get(task.task_id) === true || completed;
@@ -443,7 +576,8 @@ class DonetickUserTodoCard extends HTMLElement {
         checkbox.addEventListener('change', () => this.completeAction(task));
         target.append(checkbox);
       }
-      const hasDescription = !!descriptionText(task.description);
+      const details = descriptionContent(task.description, state?.attributes.donetick_url);
+      const hasDescription = !!(details.text || details.images.length);
       const text = document.createElement(hasDescription ? 'button' : 'div'); text.className = 'task'; row.append(text);
       if (hasDescription) {
       text.type = 'button';
@@ -509,7 +643,7 @@ class DonetickUserTodoCard extends HTMLElement {
       }
       const actions = document.createElement('div'); actions.className = 'actions'; row.append(actions);
       for (const [label, complete] of [[this._config.complete_label || 'Complete', true], [this._config.postpone_label || 'Skip occurrence', false]]) {
-        if (complete && (!this._config.show_complete || this._config.complete_control === 'checkbox')) continue;
+        if (complete && (!this._config.show_complete || this._config.complete_control !== 'button')) continue;
         if (!complete && (!this._config.show_postpone || !task.can_postpone)) continue;
         const button = document.createElement('button'); actions.append(button); button.type = 'button';
         button.disabled = this._pending.has(task.task_id) || completed;
@@ -574,7 +708,7 @@ class DonetickUserTodoCard extends HTMLElement {
         reassign.addEventListener('click', () => this.togglePanel(task, 'assign')); actions.append(reassign);
       }
       if (!actions.childElementCount) actions.remove();
-      if (this._panel?.taskId === task.task_id) this.renderPanel(row, task, addText);
+      if (this._panel?.taskId === task.task_id) this.renderPanel(row, task, addText, details);
     }
     if (this._config.task_view !== 'pending') {
       const history = completedTasks(state, this._config.user_id, new Date(), this._config);
@@ -596,14 +730,21 @@ class DonetickUserTodoCard extends HTMLElement {
     }
     if (focusedField) this.shadowRoot.querySelector(`[data-field="${focusedField}"]`)?.focus();
   }
-  renderPanel(row, task, addText) {
+  renderPanel(row, task, addText, details) {
     const panel = this._panel;
     if (panel.kind === 'details') {
-      const content = descriptionText(task.description);
-      if (!content) { this._panel = null; return; }
+      if (!details.text && !details.images.length) { this._panel = null; return; }
       const description = document.createElement('div'); description.className = 'description';
       description.id = `description-${task.task_id}`;
-      description.textContent = content;
+      description.textContent = details.text;
+      for (const image of details.images) {
+        const link = document.createElement('a');
+        link.href = image.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = image.label;
+        description.append(link);
+      }
       row.after(description); return;
     }
     const busy = this._pending.has(task.task_id);
@@ -724,7 +865,8 @@ class DonetickUserTodoCard extends HTMLElement {
     controls.append(save); updateSave();
     }
     form.append(controls);
-    if (this._error && this._errorTask?.task_id === task.task_id) { const error=addText(form,'p',this._error,'error'); error.setAttribute('role','alert'); }
+    const errorMessage = this._errorTask?.task_id === task.task_id ? this._error : this._actionErrors.get(task.task_id)?.message;
+    if (errorMessage) { const error=addText(form,'p',errorMessage,'error'); error.setAttribute('role','alert'); }
     form.addEventListener('keydown',event => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); this.closePanel(); } });
     form.addEventListener('submit',event => {
       event.preventDefault(); if (busy || !form.reportValidity() || form.querySelector('ha-form')?.reportValidity?.() === false) return;
@@ -751,8 +893,8 @@ const EDITOR_DEFAULTS = {
   task_view:'both',
   completed_days:1, completed_filter:'all', completed_limit:0,
   row_spacing:'auto',
-  credit_completion:'assignee', complete_as_picker:'chips',
-  display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:true, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, complete_control:'checkbox', button_style:'text', button_size:'compact',
+  optimistic_completion:false, completion_strikethrough:true, credit_completion:'assignee', complete_as_picker:'chips',
+  display_filters:[], label_match:'any', sort_by:'due_date', upcoming_days:7, include_anyone:false, due_display:'date', show_labels:false, show_points:false, show_recurrence:false, use_label_colors:false, show_assignee:true, show_complete:true, show_complete_as:false, show_postpone:true, show_due_date:true, show_reassign:true, allow_any_assignee:false, complete_control:'checkbox', button_style:'text', button_size:'compact',
   button_shape:'rounded', button_content:'icon', complete_label:'Complete', postpone_label:'Skip occurrence',
   due_date_label:'Change due date', complete_icon:'mdi:check', postpone_icon:'mdi:calendar-arrow-right',
   due_date_icon:'mdi:calendar-edit', reassign_label:'Reassign', reassign_icon:'mdi:account-switch-outline', complete_as_label:'Complete as', complete_as_icon:'mdi:account-check-outline',
@@ -782,7 +924,7 @@ const EDITOR_HELP = {
   user_id:'Show one user’s tasks or all users. Unless Credit completion to asks, completion credits the current assignee by default, or the API token owner for Anyone tasks. Optional HA user mapping in the integration settings can override this.',
   include_anyone:'Show Anyone tasks alongside the selected user’s tasks, using the same date filters and sorting.',
   show_assignee:'Show the assigned name beside the due date. Available when the list can contain multiple users.',
-  allow_any_assignee:'Off by default. Selecting someone outside a task’s eligible assignees adds them to that list. They may receive future assignments under the existing rotation strategy. Requires permission to edit the task.',
+  allow_any_assignee:'Off by default. Selecting someone outside a task’s eligible assignees adds them to that list, or replaces the only person on it. Added members may receive future assignments under the existing rotation strategy. Requires permission to edit the task.',
   show_reassign:'Show a user-switch action on each row. Changes are saved only after confirmation.',
   show_complete_as:'Show an action that completes a task for someone else among its assignees, or anyone in the circle when nobody is assigned. Off by default; the plain completion control keeps crediting as before.',
   show_complete:'Show the completion checkbox or button. Turn off for a display-only task list.',
@@ -794,14 +936,16 @@ const EDITOR_HELP = {
   upcoming_days:'Maximum days ahead; leave empty or use 0 for no limit. The integration’s task window must also include those days.',
   title:'Leave empty to use the selected user’s name.',
   appearance_preset:'Choose a ready-made style. Applying a preset resets custom action icons, labels and colors.',
-  complete_control:'Checkbox stays on the left; Button places completion beside the other actions on the right.',
+  complete_control:'Checkbox and Initials circle stay on the left; Button places completion beside the other actions on the right. The circle shows the assignee’s initials, and stays empty for an Anyone task.',
   button_style:'Flat follows HA todo styling. Filled uses the action color as its background.',
   button_size:'Compact: 44 px. Standard: 48 px. Large: 52 px. All remain easy to tap.',
   button_content:'Icons save space. Labels explain actions, but may make narrow cards wider.',
   button_shape:'Changes action buttons; the completion checkbox stays the same.'
 };
-Object.assign(EDITOR_LABELS, {credit_completion:'Credit completion to', complete_as_picker:'Complete as picker'});
+Object.assign(EDITOR_LABELS, {optimistic_completion:'Mark completed immediately', completion_strikethrough:'Strike through tasks when completing', credit_completion:'Credit completion to', complete_as_picker:'Complete as picker'});
 Object.assign(EDITOR_HELP, {
+  optimistic_completion:'Mark the task immediately while Donetick completes it in the background. Strikethrough is controlled separately. If completion fails, restore the task, refresh its data and show the error. Off by default.',
+  completion_strikethrough:'Strike through the task name during completion feedback. Turn off to keep the name unchanged while the checkbox still gives immediate feedback. On by default.',
   credit_completion:'The task assignee is credited by default. Ask who completed it makes the completion control open Complete as, offering the task’s assignees, or anyone in the circle when nobody is assigned.',
   complete_as_picker:'Chips complete the task with one tap on a person. A dropdown scales better to a large circle and books after a confirmation.'
 });
@@ -972,12 +1116,13 @@ class DonetickUserTodoEditor extends HTMLElement {
       ])] : []),
       ...(hasPending ? [group('actions_options','Available actions',[
         ...['show_complete','show_complete_as','show_postpone','show_due_date','show_reassign'].map(name=>({name,selector:{boolean:{}}})),
+        ...(this._config.show_complete !== false || this._config.show_complete_as ? ['optimistic_completion','completion_strikethrough'].map(name=>({name,selector:{boolean:{}}})) : []),
         ...(this._config.show_reassign !== false ? [{name:'allow_any_assignee',selector:{boolean:{}}}] : [])
       ])] : []),
       ...(hasPending ? [group('appearance','Appearance',[
         select('appearance_preset',[['todo','HA todo — compact icons'],['labeled','Icons with labels'],['outlined','Outlined buttons'],['filled','Filled buttons'],['custom','Custom style']]),
         select('row_spacing',[['auto','Auto — extra space for labels'],['compact','Compact'],['comfortable','Comfortable']]),
-        ...(this._config.show_complete !== false ? [select('complete_control',[['checkbox','Checkbox on the left'],['button','Button on the right']])] : []),
+        ...(this._config.show_complete !== false ? [select('complete_control',[['checkbox','Checkbox on the left'],['initials','Initials circle on the left'],['button','Button on the right']])] : []),
         ...(this._config.show_complete !== false ? [select('credit_completion',[['assignee','The task assignee'],['choose','Ask who completed it']])] : []),
         ...(this._config.show_complete_as || (this._config.show_complete !== false && this._config.credit_completion === 'choose')
           ? [select('complete_as_picker',[['chips','Chips — one tap completes'],['dropdown','Dropdown — choose, then confirm']])] : []),

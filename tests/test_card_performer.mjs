@@ -8,13 +8,20 @@ customElements.define('home-assistant',class extends HTMLElement {});
 const {performerChoices} = await import('../custom_components/donetick_dev/frontend/donetick-user-todo-card.js');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 const calls=[]; let fail=false;
+let occurrence=0;
+// Successful mock completions publish a new recurring occurrence, as Donetick does.
+const advanceOccurrence=(testHass,id)=>{
+  const attributes=testHass.states['todo.all'].attributes;
+  attributes.tasks=attributes.tasks.map(task=>task.task_id===id
+    ? {...task,next_due_date:new Date(Date.UTC(2026,10,18)+ ++occurrence*60000).toISOString()} : task);
+};
 const members=[{user_id:1,display_name:'Casey'},{user_id:2,display_name:'Ivy'},{user_id:3,display_name:'Jamie'},{user_id:4,display_name:'Priya'}];
 const hass={locale:{language:'en'},states:{'todo.all':{state:'3',attributes:{config_entry_id:'entry',circle_members:members,tasks:[
   {task_id:1,assigned_to:null,assignee_ids:[],name:'Shared',can_postpone:false},
   {task_id:2,assigned_to:1,assignee_ids:[1],name:'Mine',can_postpone:false},
   {task_id:3,assigned_to:2,assignee_ids:[1,2,3,4],name:'Rotating',can_postpone:false}
-]}}},callService:async(...args)=>{calls.push(args);if(fail)throw new Error('Donetick task action failed: Donetick denied the completion (400): User is not assigned to chore');}};
-const card=document.createElement('donetick-dev-user-todo-card');
+]}}},callService:async(...args)=>{calls.push(args);if(fail)throw new Error('Donetick task action failed: Donetick denied the completion (400): User is not assigned to chore');advanceOccurrence(hass,args[2].task_id);}};
+const card=document.createElement('donetick-user-todo-card');
 const base={entity:'todo.all',user_id:'all',complete_control:'button',credit_completion:'choose'};
 card.setConfig(base);card.hass=hass;document.body.append(card);
 const root=card.shadowRoot;
@@ -76,8 +83,9 @@ console.log('A rejected completion keeps the panel open with the server error');
 
 // The option is off by default and works with every completion control.
 card.setConfig({entity:'todo.all',user_id:'all',complete_control:'button'});
+const sharedDue=hass.states['todo.all'].attributes.tasks.find(task=>task.task_id===1).next_due_date;
 controls()[0].click();
-assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);
+assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);
 assert.equal(root.querySelector('.action-panel'),null);
 await new Promise(resolve=>setTimeout(resolve,1050));
 assert.throws(()=>card.setConfig({...base,credit_completion:'ask'}),/valid completion credit/);
@@ -165,7 +173,7 @@ slowRoot.querySelector('.panel-members button').click();
 slowControls()[1].click();
 assert.equal(slowRoot.querySelector('.action-panel').getAttribute('aria-label'),'Complete as: Laundry');
 accept();await tick();await tick();
-assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:1}]);
+assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry',completed_by:1}]);
 assert.equal(slowRoot.querySelector('.action-panel').getAttribute('aria-label'),'Complete as: Laundry');
 assert.equal(cardError().length,0);
 console.log('A booking that succeeds closes its own panel and leaves another row\'s open');
@@ -251,7 +259,7 @@ await new Promise(resolve=>setTimeout(resolve,1050));
   globalThis.localStorage=window.localStorage;localStorage.clear();
   const pageCalls=[];let refuse=false;
   const pageHass={...hass,callService:async(...args)=>{pageCalls.push(args);if(refuse)throw new Error('Donetick denied the completion (400)');}};
-  const page=document.createElement('donetick-dev-user-todo-card');
+  const page=document.createElement('donetick-user-todo-card');
   page.setConfig(base);page.hass=pageHass;document.body.append(page);
   const pageRoot=page.shadowRoot;
   const open=name=>pageRoot.querySelector(`.actions [aria-label="Complete: ${name}"]`).click();

@@ -10,8 +10,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from .const import API_TIMEOUT
-from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory
+from .model import DonetickProject, DonetickTask, DonetickThing, DonetickMember, DonetickChoreHistory, DonetickReward
 from .recurrence import build_recurrence_payload
+from .task_properties import apply_task_properties
 _LOGGER = logging.getLogger(__name__)
 
 _DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -138,6 +139,34 @@ class DonetickApiClient:
         except (KeyError, ValueError, json.JSONDecodeError) as err:
             _LOGGER.error("Error parsing Donetick circle members response: %s", err)
             return []
+
+    async def async_get_rewards(self) -> List[DonetickReward]:
+        """Fetch the active circle reward catalog."""
+        async with self._session.get(f"{self._base_url}/api/v1/rewards", headers=self._headers(), timeout=API_TIMEOUT) as response:
+            response.raise_for_status()
+            payload = await response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Unexpected reward catalog response")
+        return [DonetickReward.from_json(item) for item in payload if item.get("isActive", True)]
+
+    async def async_redeem_reward(self, reward_id: int, user_id: int | None = None) -> dict:
+        """Request a reward for the API-token owner or an explicitly selected member."""
+        async with self._session.post(f"{self._base_url}/api/v1/rewards/{reward_id}/redeem",
+                                      headers=self._headers(), json={"userId": user_id} if user_id else {}, timeout=API_TIMEOUT) as response:
+            response.raise_for_status()
+            return await response.json()
+
+    async def async_adjust_member_points(self, circle_id: int, user_id: int, action: str, points: int) -> None:
+        """Add or remove a member's points through Donetick's admin API."""
+        if action not in ("add", "remove") or points <= 0:
+            raise ValueError("Point adjustment must add or remove a positive whole number")
+        async with self._session.post(
+            f"{self._base_url}/api/v1/circles/{circle_id}/members/points/adjust",
+            headers=self._headers(),
+            json={"action": action, "points": points, "userId": user_id},
+            timeout=API_TIMEOUT,
+        ) as response:
+            response.raise_for_status()
 
     async def async_get_things(self) -> List[DonetickThing]:
         """Get things from Donetick."""
@@ -274,6 +303,25 @@ class DonetickApiClient:
             _LOGGER.debug("Donetick refused the completion: %s", err)
             raise
 
+    async def async_complete_chore(self, chore_id: int, completed_by: int) -> None:
+        """Complete a chore through the Full API, crediting completed_by.
+
+        Unlike the external API, this endpoint lets a circle admin or manager credit
+        any circle member, not only the chore's assignees.
+        """
+        try:
+            async with self._session.post(
+                f"{self._base_url}/api/v1/chores/{chore_id}/do",
+                headers=self._headers(),
+                json={"completedBy": completed_by},
+                timeout=API_TIMEOUT,
+            ) as response:
+                # The body ({"res": <chore>}) is not needed.
+                await self._raise_for_status(response, "completion")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error completing chore in Donetick: %s", err)
+            raise
+
     async def async_create_task(self, name: str, description: str = None, due_date: str = None, created_by: int = None, project_id: int = None) -> DonetickTask:
         """Create a one-time task attributed and assigned to created_by (or the token owner)."""
         headers = self._headers()
@@ -337,6 +385,9 @@ class DonetickApiClient:
                     "Only the chore creator or a circle admin/manager can update this chore",
                     "Only the chore creator or a circle admin/manager can delete this chore",
                     "You are not allowed to delete this history",
+                    "You are not allowed to complete this action, either you are not admin or the completed by user is not in the circle",
+                    "The selected user cannot see this task",
+                    "Insufficient permissions for impersonation",
                 ):
                     raise ValueError(f"Donetick denied the {operation} (403): {reason}")
         response.raise_for_status()
@@ -402,12 +453,15 @@ class DonetickApiClient:
         return task
 
     async def async_update_task_recurrence(self, task_id: int, recurrence: dict, default_timezone: str,
-                                         name=None, description=None, due_date=None, force_unarchive=False) -> DonetickTask:
+                                         name=None, description=None, due_date=None, force_unarchive=False,
+                                         properties=None) -> DonetickTask:
         """Use the task editor, retaining its current values and concurrency token."""
         task = await self._async_get_editor_task(task_id)
         payload = build_recurrence_payload(task, recurrence, default_timezone, name=name,
                                            description=description, due_date=due_date,
                                            force_unarchive=force_unarchive)
+        if properties:
+            payload = apply_task_properties(payload, properties)
         async with self._session.put(
             f"{self._base_url}/api/v1/chores/",
             headers=self._headers(), json=payload, timeout=API_TIMEOUT,
@@ -415,6 +469,15 @@ class DonetickApiClient:
             await self._raise_for_status(response, "recurrence update")
         updated_data = await self._async_get_editor_task(task_id)
         updated = DonetickTask.from_json(updated_data)
+        if properties:
+            for key in ("points", "priority", "assignedTo"):
+                if key in payload and updated_data.get(key) != payload[key]:
+                    raise ValueError(f"Donetick did not apply {key} for task {task_id}; refresh the task")
+            if "reminders" in properties:
+                expected_templates = payload.get("notificationMetadata", {}).get("templates", [])
+                actual_templates = (updated_data.get("notificationMetadata") or {}).get("templates", [])
+                if updated_data.get("notification") != bool(expected_templates) or actual_templates != expected_templates:
+                    raise ValueError(f"Donetick did not apply reminders for task {task_id}; refresh the task")
         expected_metadata = {key: value for key, value in (payload["frequencyMetadata"] or {}).items()
                              if value not in (None, "", [])}
         actual_metadata = {key: value for key, value in (updated.frequency_metadata or {}).items()
@@ -444,7 +507,7 @@ class DonetickApiClient:
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise ValueError("Unable to fetch the current task for reassignment")
 
-        assignees = task.get("assignees") or []
+        assignees = [assignee for assignee in task.get("assignees") or [] if isinstance(assignee, dict)]
         already_eligible = any(assignee.get("userId") == assigned_to for assignee in assignees)
         if assigned_to is None or task.get("assignStrategy") == "no_assignee" or not already_eligible:
             payload = dict(task)
@@ -454,6 +517,10 @@ class DonetickApiClient:
                 payload["assignees"] = []
             elif task.get("assignStrategy") == "no_assignee" or not assignees:
                 payload["assignStrategy"] = "keep_last_assigned"
+                payload["assignees"] = [{"userId": assigned_to}]
+            elif len(assignees) == 1:
+                # A single-person list is replaced, keeping its strategy. Adding
+                # the new member would turn it into a rotation of two.
                 payload["assignees"] = [{"userId": assigned_to}]
             else:
                 # The dedicated endpoint only accepts existing assignees. Add
@@ -506,21 +573,20 @@ class DonetickApiClient:
     async def async_skip_task(self, choreId: int, completed_by: int = None) -> DonetickTask:
         """Skip a task, advancing to the next scheduled occurrence without recording a completion."""
         headers = self._headers()
-
-        params = {}
         if completed_by:
-            params["completedBy"] = completed_by
+            # The full API records the token owner unless it is asked to act as
+            # another circle member through this header.
+            headers["X-Impersonate-User-ID"] = str(completed_by)
 
         try:
             async with self._session.post(
-                f"{self._base_url}/eapi/v1/chore/{choreId}/skip",
+                f"{self._base_url}/api/v1/chores/{choreId}/skip",
                 headers=headers,
-                params=params,
                 timeout=API_TIMEOUT
             ) as response:
-                response.raise_for_status()
+                await self._raise_for_status(response, "skip")
                 data = await response.json()
-                return DonetickTask.from_json(data)
+                return DonetickTask.from_json(data["res"])
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error skipping task in Donetick: %s", err)

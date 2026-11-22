@@ -1,7 +1,9 @@
 """Donetick models."""
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from html.parser import HTMLParser
 from typing import Any, Optional, List
 from homeassistant.components.todo import (
     TodoItem,
@@ -11,6 +13,47 @@ from homeassistant.components.todo import (
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _InlineImageParser(HTMLParser):
+    """Record the source spans of HTML images with embedded base64 data."""
+
+    def __init__(self, description: str) -> None:
+        super().__init__(convert_charrefs=False)
+        self.line_starts = [0, *(match.end() for match in re.finditer("\n", description))]
+        self.spans: list[tuple[int, int]] = []
+        self.feed(description)
+        self.close()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "img":
+            return
+        if any(
+            name == "src" and value and re.match(
+                r"data:image/[\w.+-]+(?:;[^;,\s]+)*;base64,", value.lstrip(), re.IGNORECASE
+            )
+            for name, value in attrs
+        ):
+            line, column = self.getpos()
+            start = self.line_starts[line - 1] + column
+            self.spans.append((start, start + len(self.get_starttag_text())))
+
+
+def _strip_inline_images(description: str | None) -> str | None:
+    """Remove inline images while retaining the original surrounding HTML."""
+    if not description or not re.search(r"<img[\s/>]", description, re.IGNORECASE):
+        return description
+    spans = _InlineImageParser(description).spans
+    if not spans:
+        return description
+
+    parts = []
+    previous_end = 0
+    for start, end in spans:
+        parts.append(description[previous_end:start])
+        previous_end = end
+    parts.append(description[previous_end:])
+    return "".join(parts)
 
 
 def _parse_datetime(value: Any) -> Optional[datetime]:
@@ -27,6 +70,25 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     except ValueError:
         _LOGGER.debug("Unable to parse Donetick datetime: %s", value)
         return None
+
+
+@dataclass
+class DonetickReward:
+    """A redeemable Donetick circle reward."""
+
+    id: int
+    name: str
+    points_cost: int
+    description: str = ""
+    is_active: bool = True
+
+    @classmethod
+    def from_json(cls, data: dict) -> "DonetickReward":
+        """Create a reward from the Donetick API response."""
+        return cls(id=int(data["id"]), name=str(data["name"]),
+                   points_cost=int(data["pointsCost"]),
+                   description=str(data.get("description") or ""),
+                   is_active=bool(data.get("isActive", True)))
 
 @dataclass
 class DonetickProject:
@@ -153,7 +215,7 @@ class DonetickTask:
             assigned_to=assigned_to,
             assignee_ids=[assignee["userId"] for assignee in (data.get("assignees") or [])
                           if isinstance(assignee, dict) and isinstance(assignee.get("userId"), int)],
-            description=data.get("description"),
+            description=_strip_inline_images(data.get("description")),
             created_at=_parse_datetime(data.get("createdAt")),
             updated_at=_parse_datetime(data.get("updatedAt")),
             last_completed_date=_parse_datetime(data.get("lastCompletedDate")),

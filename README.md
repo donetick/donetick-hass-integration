@@ -1,13 +1,19 @@
 
 # Donetick Home Assistant Integration
 
-
-
 A Home Assistant integration for Donetick that provides support for managing todo lists and controlling "things" as Home Assistant entities.
+
+## Contents
+
+- [Features](#features)
+- [Services](#services)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Task card and advanced actions](#task-card-and-advanced-actions)
 
 ## Features
 
-### 📋 Todo Lists
+### Todo lists
 - **Multiple Todo Lists**: "All Tasks" view, individual assignee lists, and optional project lists
 - **Task Management**: Create, update, delete, and complete tasks
 - **Task attributes**: Task descriptions, due dates can be managed in Home Assistant
@@ -41,14 +47,23 @@ Tasks assigned to Anyone are not counted for any member. The task lists are not 
 in the recorder history. Members who join the circle get a sensor on the next refresh;
 members who leave or are deactivated become unavailable.
 
-### 🔧 Things Integration  
+### Member points controls
+
+The number platform creates a writable **Points** number entity for each active
+circle member. Its value is the member's available balance (`points` minus
+`pointsRedeemed`). Set it to a higher or lower whole number to add or remove that
+many points; the step is 1, and the balance cannot be reduced below zero. Changes
+are recorded in Donetick's points history. The connected Donetick account must be
+a circle admin, and the server must support the member points adjustment API.
+
+### Things integration
 - **Sync things**: Control Donetick "things" as Home Assistant entities
 - **Multiple Entity Types**: 
   - **Switch**: Boolean things (true/false)
   - **Number**: Numeric things with increment/decrement
   - **Text**: Text input things
 
-### 🔧 Services
+### Services
 - `donetick.create_task` - Create new tasks
 - `donetick.update_task` - Update existing tasks
 - `donetick.delete_task` - Delete tasks
@@ -56,8 +71,11 @@ members who leave or are deactivated become unavailable.
 - `donetick.delete_history` - Delete one history entry of a task, e.g. to undo a completion
 - `donetick.complete_assigned_task` - Complete a task as its current assignee, or as the API token owner for tasks assigned to Anyone
 - `donetick.postpone_task` - Move a task to its next scheduled occurrence without recording a completion
+- `donetick.complete_chore` - Complete a chore through Donetick's full API and credit any active circle member, not only its assignees; the assignees stay unchanged. Choose the task from the searchable picker or by task ID, as with `update_task`. Needs an API token of a circle admin or manager, so everyone who can call this action can record completions for any member
+- `donetick.redeem_reward` - Request a reward for the owner of the selected integration's API token. The searchable reward dropdown shows the point price; Donetick may require an admin or manager to approve the request.
+- `donetick.get_reward_webhook_url` - Return the Home Assistant callback URL to configure in Donetick for reward approval events.
 
-The bundled task card uses the last two for its completion control and its **Skip
+The bundled task card uses `complete_assigned_task` for its completion control and `postpone_task` for its **Skip
 occurrence** action; both resolve the task on the server before acting.
 
 To undo a completion, call `donetick.complete_task` with `response_variable`. The response holds `history_id` (the history entry the completion created), `due_date` (the due date before the completion) and `next_due_date`. Pass `task_id` and `history_id` to `donetick.delete_history`, then restore `due_date` with `donetick.update_task` (with `force_unarchive: true` for a one-off task). A failed completion now raises an error instead of only logging it.
@@ -66,12 +84,68 @@ To reactivate an archived task with `donetick.update_task`, set `force_unarchive
 
 When calling `donetick.create_task`, set `created_by` to a Donetick circle member's user ID to create and assign the task to that member. Omitting it uses the API token owner. Tasks created from a member's todo list also belong to that member. The optional `due_date` is sent in RFC3339 format.
 
-To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick circle member's user ID, or `null` for Anyone. Selecting a member outside the task's assignee list adds them to that list while preserving the existing members and assignment strategy. This and switching to or from Anyone use Donetick's task editor and require permission to edit the task. Donetick remains authoritative on membership and private-project restrictions.
+### Assignment, points, priority, and repeats in automations
+
+`create_task` also accepts `assigned_to` (a Donetick user ID, or `null` for Anyone)
+or `assigned_to_username`, independently of `created_by`. Omit both assignee fields
+to keep the existing creator-as-assignee behavior. Username choices are scoped to
+their integration, as in Update Task. Do not supply both assignee fields.
+
+Both `create_task` and `update_task` accept `points`: a non-negative whole number.
+Set `0` for no reward; omit to retain the current value when updating. They also accept
+`priority`, Donetick's levels from `1` (urgent) to `4` (low); `0` means none. The repeatable
+Reminders selector supports up to five offsets. Add each with **When** (Before, On due
+date, or After), **Amount**, and **Unit** (Minutes, Hours, or Days). Reminder choices
+are summarized on one line. On update, leave Reminders unset to
+keep existing reminders, or remove all entries to disable them.
+
+`create_task` takes the same repeat-schedule fields as `update_task`
+(`frequency_type`, `interval_unit`, `weekdays`, `schedule_from`, ...), so a repeating
+task can be created in one action. A repeating task needs a first `due_date`.
+
+For example, an automation triggered when the dishwasher finishes can create:
+
+```yaml
+action: donetick.create_task
+data:
+  name: Empty the dishwasher
+  assigned_to_username: son
+  due_date: "{{ (now() + timedelta(minutes=30)).isoformat() }}"
+  points: 3
+  reminders:
+    - when: "Before due date"
+      amount: 30
+      unit: minutes
+```
+
+A weekly task that is due again one week after it was completed:
+
+```yaml
+action: donetick.create_task
+data:
+  name: Water the plants
+  due_date: "2026-11-15"
+  frequency_type: weekly
+  schedule_from: completion
+  priority: 3
+```
+
+Extra creation settings are saved through Donetick's task editor after the task is
+created, retaining the existing `created_by` behavior. The token needs permission
+to edit that task (for another creator, use an authorized circle admin/manager).
+If this second step fails, the action reports the created task ID and refreshes
+the list. Recover with `update_task` on that ID rather than repeating creation.
+Updates preserve unrelated task settings and use the current concurrency timestamp;
+points and reminders can be combined with the existing repeat-schedule fields.
+Thing trigger configuration remains managed in Donetick.
+
+To assign a task, call `donetick.update_task` with `task_id` and `assigned_to` set to a Donetick circle member's user ID, or `null` for Anyone. Selecting a member outside the task's assignee list adds them to that list while preserving the existing members and assignment strategy; a list with a single person is replaced by the new member instead, keeping its strategy. This and switching to or from Anyone use Donetick's task editor and require permission to edit the task. Donetick remains authoritative on membership and private-project restrictions.
+See the [services and automation guide](docs/actions.md) for completion behavior, undoing completions, task creation, points, reminders, and assignment.
 
 ## Installation
 
-### Via HACS
-1. Open HACS in Home Assistant
+### Install from Marketplace
+1. Open Marketplace in Home Assistant
 2. Navigate to Integrations  
 3. Click "⋮" → "Custom repositories"
 4. Add repository: `https://github.com/donetick/donetick-hass-integration/`
@@ -89,17 +163,42 @@ Configure via **Settings** → **Devices & Services** → **Add Integration** �
   - Self-hosted: `http://your-host:2021` (or your port)
 - **API Token**: Generate from Donetick user settings
 
+### Connecting to the Home Assistant app
+
+For the [Donetick Home Assistant app](https://github.com/donetick/hassio-addons),
+use `http://<HA-host-IP>:2021`, for example `http://192.168.1.50:2021`.
+When Home Assistant and the app run on the same host, `http://localhost:2021`
+can also work. If you changed the app's exposed port under its **Network**
+settings, use that port instead of `2021`.
+
+The URL must reach Donetick from Home Assistant, rather than from your browser.
+Your Home Assistant dashboard URL, ingress URL, or DuckDNS address does not
+automatically route to Donetick. A hostname such as `homeassistant.local` only
+works if Home Assistant can resolve it and reach Donetick on the specified port.
+
+### Changing the server URL or API token
+
+Go to **Settings > Devices & services > Donetick**, open the integration entry's
+three-dot menu, and choose **Reconfigure**. Update the server URL and optionally
+enter a replacement API token; leave the token blank to keep the existing one.
+The connection is checked before saving, then the integration reloads. Existing
+entity IDs, task settings, and user mappings are retained. A failed connection
+leaves the saved configuration unchanged.
+
+Use this for an address change or token replacement on the same Donetick server
+and circle. To connect to a different server or circle, add a separate integration:
+user, task, and project IDs and existing mappings may refer to different records.
+
+### Task list settings
+
 **Optional:**
 - **Show Due In**: Days ahead to display upcoming tasks (default: 7)
 - **Create Unified List**: Enable "All Tasks" todo list (default: true)  
 - **Create Assignee Lists**: Individual todo lists per user (default: false) 
 
-## Per-user task card
+## Task card and advanced actions
 
-The existing card includes a **Completed today** section by default, showing the
-completion time and performer. **Task view** can show pending tasks, completed
-tasks only, or both (`task_view: pending`, `completed`, or `both`). History survives
-a browser refresh and includes completions made outside Home Assistant.
+The integration bundles two dashboard cards. **Donetick User Tasks** lists and manages existing tasks. **Donetick Create Task** opens a task form with native date and time pickers and a visual editor for the form layout and defaults. Both cards appear in the picker after the integration is configured and work in UI and YAML dashboards.
 
 Expand **Completed tasks** in the editor to adjust:
 
@@ -209,11 +308,12 @@ Tap it to choose **Anyone** or a user, then confirm with the save icon; tap agai
 The picker includes Anyone even in a single-user circle. By default, user choices
 are active members already in the task's eligible assignee list. Tasks without an
 eligible list, including Anyone tasks, offer all active circle members.
+The current assignee stays listed even after being deactivated.
 Enable **Allow assigning any circle member** under **Available actions**
 (`allow_any_assignee: true`) to also offer members outside an existing eligible list.
 This option is off by default. Selecting a new member adds them to the eligible list,
 so they may receive future assignments. Existing members and the assignment strategy
-are retained. Selecting Anyone disables automatic user assignment;
+are retained. A list with a single person is replaced by the new member instead. Selecting Anyone disables automatic user assignment;
 selecting a user for an Anyone task keeps that user assigned on future occurrences.
 Switching to or from Anyone requires permission to edit the task. This uses `donetick.update_task`
 with `assigned_to`, preserves recurrence, and refreshes all lists. A reassigned task
@@ -319,6 +419,36 @@ extra confirmation text; failures remain visible. A failure is shown in the pane
 task it belongs to, or above the list naming that task when its panel has since been
 closed or another row's panel is open. An action that succeeds closes its own row's
 panel and leaves any other open.
+
+Enable **Mark completed immediately** under **Available actions** (YAML:
+`optimistic_completion: true`) to check and strike through the row immediately
+while Donetick completes it in the background. This is off by default. Other tasks
+remain usable, and duplicate completion clicks are blocked while waiting. On failure,
+the row returns to pending and the card shows the error. This also applies to
+**Complete as**, after choosing the performer.
+**Strike through tasks when completing** is a separate toggle, on by default.
+Set `completion_strikethrough: false` to keep task names unchanged while still
+checking the checkbox immediately with `optimistic_completion: true`.
+With optimistic completion enabled, known one-time tasks disappear immediately
+instead of keeping a feedback row. A rejected completion restores the row and
+shows the error. Recurring tasks retain the brief completion feedback.
+Accepted completions stay hidden while Home Assistant refreshes its task list.
+Recurring tasks return as a new occurrence with their next due date, if it matches
+the card's date filters.
+Rejected completions restore the task and refresh its data without reloading the
+dashboard or interrupting other completions. Errors for different tasks remain
+visible independently. Duplicate in-flight actions on the same task are rejected;
+scheduled completions also check that the occurrence's due date has not changed.
+
+**Complete tasks with** offers a third control besides the checkbox and the button: an
+**Initials circle on the left** showing the assignee's initials, which completes the task
+on tap like the checkbox does. One letter is used unless another circle member's name
+starts with the same letter, in which case both get two; the full name stays in the
+control's tooltip, and a task assigned to **Anyone** shows an empty circle. The circle
+keeps the checkbox's 44 × 44 pixel tap target and its accessible name, and the right-hand
+action icons are unaffected. YAML supports `complete_control: checkbox`,
+`complete_control: initials` and `complete_control: button`; the appearance presets all
+use the checkbox, so choosing the circle reports the starting style as Custom.
 The card editor uses native Home Assistant form controls: entity and user selectors,
 searchable icon pickers, theme color choices, and helper text explaining each setting.
 Choose a **Starting style** (HA todo, icons with labels, outlined or filled buttons), then
@@ -498,10 +628,19 @@ Thing triggers in Donetick. Switching to a Thing-trigger or always-available
 schedule disables reminders, as required by Donetick. Switching away from a
 Thing-trigger schedule removes that trigger association.
 
-## Releasing
+### Reward catalog and approval events
 
-Merging a pull request into `main` publishes a release when the PR has a `major`,
-`minor` or `patch` label. The Release workflow bumps `version` in `manifest.json`,
-commits it to `main`, tags the commit (for example `v2.1.0`) and creates a GitHub
-release with generated notes. If a PR has more than one of these labels, the largest
-bump wins. PRs without any of them are merged without a release.
+The **Donetick Rewards** card lists active rewards with descriptions and point prices, shows the existing per-member Points entities, and can request a reward. Add it independently with `type: custom:donetick-rewards-card`.
+
+To configure approval webhooks:
+
+1. In Home Assistant, open **Developer tools → Actions** and run **Donetick: Get Reward Approval Webhook URL**. If you have multiple Donetick entries, select the one for this circle. Copy the `url` from the action response.
+2. In Donetick, open **Settings → Integrations → Webhooks** as a circle admin with a Donetick Plus account. Enable the webhook, paste the URL from Home Assistant, and save.
+3. Request a reward, then approve that redemption in Donetick. HA fires the `donetick_reward_redeem_approved` event with `redemption_id`, `reward_id`, `recipient_user_id`, `timestamp`, and `config_entry_id`, and immediately refreshes point balances. Use that event as the trigger for automations.
+
+Donetick has one webhook destination per circle. Saving the HA URL replaces the circle's existing webhook destination. The Donetick server must be able to reach the URL HA returned; for Docker or reverse-proxy setups, check the hostname and port from the Donetick container. Delivery is best effort, so the configured HA refresh interval remains the fallback if a webhook is missed. The integration records handled redemption IDs to avoid firing the HA event twice.
+
+Member point balances use the configured Donetick refresh interval. When an approval webhook arrives, the integration refreshes its existing coordinator immediately instead of waiting for that interval.
+
+This integration change depends on Donetick's reward API-token access and `reward.redeem_approved` webhook support. Keep this PR unmerged until both Donetick-side changes are available upstream.
+- [Task card guide](docs/task-card.md)

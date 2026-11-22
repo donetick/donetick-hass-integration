@@ -9,6 +9,18 @@
           "token": "API Token"
         }
       },
+      "reconfigure": {
+        "title": "Update Donetick connection",
+        "description": "Change the URL or API token for the same Donetick server and circle. Existing entities, task settings and user mappings are kept. To use a different server or circle, add a separate integration.",
+        "data": {
+          "url": "Donetick URL",
+          "token": "Replacement API token"
+        },
+        "data_description": {
+          "url": "For the Home Assistant app, use http://<HA-host-IP>:2021 or your configured app port.",
+          "token": "Leave blank to keep the current API token."
+        }
+      },
       "options": {
         "title": "Organize Your Tasks",
         "description": "Choose how you'd like to organize your Donetick tasks in Home Assistant",
@@ -22,10 +34,32 @@
         }
       }
     },
+    "abort": {
+      "reconfigure_successful": "Donetick connection updated successfully."
+    },
     "error": {
       "cannot_connect": "Failed to connect to Donetick",
       "invalid_auth": "Invalid authentication",
       "unknown": "Unexpected error"
+    }
+  },
+  "services": {
+    "redeem_reward": {
+      "name": "Redeem Reward",
+      "description": "Request a reward for the selected Donetick circle member.",
+      "fields": {
+        "reward": {"name": "Reward", "description": "Choose an active reward; its point price is shown."},
+        "reward_id": {"name": "Reward ID", "description": "Use this instead of the reward picker."},
+        "config_entry_id": {"name": "Donetick integration", "description": "Choose a Donetick circle."},
+        "user_id": {"name": "Claiming member", "description": "Choose whose points to use. Claiming for another member requires admin or manager access."}
+      }
+    },
+    "get_reward_webhook_url": {
+      "name": "Get Reward Approval Webhook URL",
+      "description": "Return the callback URL to configure in Donetick.",
+      "fields": {
+        "config_entry_id": {"name": "Donetick integration", "description": "Choose a Donetick circle."}
+      }
     }
   },
   "options": {

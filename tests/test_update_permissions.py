@@ -194,7 +194,7 @@ class UpdatePermissionTests(unittest.IsolatedAsyncioTestCase):
         async def refresh():
             calls.append(("refresh", ()))
 
-        namespace = {"HomeAssistant": object, "ServiceCall": object, "DOMAIN": "donetick",
+        namespace = {"HomeAssistant": object, "ServiceCall": object, "PROPERTY_FIELDS": ("points",), "DOMAIN": "donetick",
                      "_get_config_entry": resolve, "HomeAssistantError": ValueError,
                      "RECURRENCE_FIELDS": ("frequency_type", "frequency"),
                      "_LOGGER": logging.getLogger(__name__)}

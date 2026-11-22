@@ -86,7 +86,7 @@ class TaskFilteringTests(unittest.TestCase):
         base = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'DonetickTodoListBase')
         method = next(node for node in base.body if isinstance(node, ast.FunctionDef) and node.name == 'extra_state_attributes')
         method.decorator_list = []
-        namespace = {'CONF_URL': 'url'}
+        namespace = {'CONF_URL': 'url', 'CONF_USER_MAPPING': 'user_mapping'}
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
         def task(task_id, assigned_to, due, active=True):
             return SimpleNamespace(id=task_id, assigned_to=assigned_to, next_due_date=due,
@@ -115,7 +115,7 @@ class TaskFilteringTests(unittest.TestCase):
         method = next(node for node in base.body if isinstance(node, ast.FunctionDef)
                       and node.name == "extra_state_attributes")
         method.decorator_list = []
-        namespace = {"CONF_URL": "url"}
+        namespace = {"CONF_URL": "url", "CONF_USER_MAPPING": "user_mapping"}
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
         labels = [{"id": 7, "name": "maintenance"}]
         task = SimpleNamespace(id=1, name="HVAC", assigned_to=2, assignee_ids=[2],

@@ -2,8 +2,10 @@
 import ast
 from dataclasses import dataclass
 from datetime import datetime
+from html.parser import HTMLParser
 import logging
 from pathlib import Path
+import re
 from types import SimpleNamespace
 from typing import Any, List, Optional
 import unittest
@@ -21,6 +23,15 @@ def load_definitions(filename, names, namespace):
     exec(compile(module, str(source), "exec"), namespace)
 
 
+def load_task_model(namespace):
+    namespace.update(HTMLParser=HTMLParser, re=re)
+    load_definitions(
+        "model.py",
+        {"_InlineImageParser", "_strip_inline_images", "_parse_datetime", "DonetickTask"},
+        namespace,
+    )
+
+
 class CoordinatorStub:
     def __init__(self, coordinator):
         self.coordinator = coordinator
@@ -32,7 +43,7 @@ class TaskSensorAttributeTests(unittest.TestCase):
         namespace = dict(dataclass=dataclass, datetime=datetime, Any=Any, List=List,
                          Optional=Optional, _LOGGER=logging.getLogger(__name__),
                          CoordinatorEntity=CoordinatorStub, SensorEntity=type("SensorStub", (), {}))
-        load_definitions("model.py", {"_parse_datetime", "DonetickTask"}, namespace)
+        load_task_model(namespace)
         load_definitions("chore_sensor.py", {"DonetickChoreSensor"}, namespace)
         cls.task_class = namespace["DonetickTask"]
         cls.sensor_class = namespace["DonetickChoreSensor"]
@@ -41,6 +52,24 @@ class TaskSensorAttributeTests(unittest.TestCase):
         task = self.task_class.from_json({"id": 1, "name": "Maintenance", **fields})
         sensor = self.sensor_class(SimpleNamespace(data=[task]), SimpleNamespace(entry_id="test"), task.id)
         return sensor.extra_state_attributes
+
+    def test_inline_images_are_removed_without_changing_surrounding_html(self):
+        prefix = '<p>Clean &amp; inspect.</p>\n'
+        link_image = '<img src="https://example.invalid/chore.jpg" alt="Example">'
+        suffix = '<p><strong>Replace</strong> if worn.</p>'
+        large_image = '<img src="data:image/png;base64,' + "A" * 4_500_000 + '">'
+        other_image = "<IMG alt='angle > limit'\n SRC='DATA:IMAGE/JPEG;BASE64,AAAA' />"
+        attributes = self.attributes(
+            description=prefix + large_image + link_image + other_image + suffix,
+            points=5,
+        )
+        self.assertEqual(attributes["description"], prefix + link_image + suffix)
+        self.assertEqual(attributes["points"], 5)
+
+    def test_preserves_empty_and_text_only_descriptions(self):
+        for value in (None, "", "Plain text\nCheck the filter."):
+            with self.subTest(value=value):
+                self.assertEqual(self.attributes(description=value)["description"], value)
 
     def test_points_preserve_zero_and_unset_values(self):
         for value in (10, 0, None):

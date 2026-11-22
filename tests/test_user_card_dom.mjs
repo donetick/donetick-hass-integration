@@ -250,9 +250,14 @@ root.querySelector('form').dispatchEvent(new window.KeyboardEvent('keydown',{key
 fail=false;click('Change due date: One-off');click('Skip occurrence: Weekly');
 assert.equal(root.querySelectorAll('form').length,1);assert.equal(root.querySelector('form').getAttribute('aria-label'),'Skip occurrence: Weekly');
 document.body.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true}));assert.equal(root.querySelector('form'),null);
+const completingDue=hass.states['todo.all'].attributes.tasks[0].next_due_date;
 root.querySelector('[aria-label="Complete: Weekly"]').dispatchEvent(new window.Event('change'));await tick();
-assert.deepEqual(calls.pop(),['donetick_dev','complete_assigned_task',{task_id:1,config_entry_id:'entry'}]);assert.ok(root.querySelector('.completed input').checked);
+assert.deepEqual(calls.pop(),['donetick','complete_assigned_task',{task_id:1,config_entry_id:'entry',expected_due_date:completingDue}]);assert.ok(root.querySelector('.completed input').checked);
 await new Promise(resolve=>setTimeout(resolve,1050));
+assert.equal(root.querySelector('[aria-label="Complete: Weekly"]'),null,'Accepted completion stays hidden while HA has the old occurrence');
+// Simulate the coordinator delivering the recurring task's next occurrence.
+hass.states['todo.all'].attributes.tasks[0].next_due_date='2026-10-27T16:00:00Z';
+card.hass=hass;
 card.setConfig({entity:'todo.all',user_id:1,complete_control:'button',button_content:'icon_and_label'});
 assert.equal(root.querySelectorAll('input[type=checkbox]').length,0);
 // Multi-user labels depend on the view's scope, even when only one user's tasks match.
@@ -311,6 +316,16 @@ click('Reassign: Weekly');assert.equal(root.querySelector('select').value,'anyon
 assert.equal(root.querySelector('.save-action').disabled,true);
 assert.deepEqual([...root.querySelector('select').options].map(option=>option.value),['anyone','1','2','3']);
 click('Reassign: Weekly');
+// A deactivated current assignee stays listed and selected; other inactive members are not offered.
+hass.states['todo.all'].attributes.tasks[0].assigned_to=4;
+hass.states['todo.all'].attributes.tasks[0].assignee_ids=[4,1];card.hass=hass;
+click('Reassign: Weekly');assert.equal(root.querySelector('select').value,'4');
+assert.deepEqual([...root.querySelector('select').options].map(option=>option.value),['anyone','1','4']);
+assert.equal(root.querySelector('.save-action').disabled,true);
+assignee=root.querySelector('select');assignee.value='1';assignee.dispatchEvent(new window.Event('change'));
+assert.equal(root.querySelector('.save-action').disabled,false);
+click('Reassign: Weekly');
+hass.states['todo.all'].attributes.tasks[0].assignee_ids=[];
 hass.states['todo.all'].attributes.tasks[0].assigned_to=2;card.hass=hass;
 assert.match(root.querySelector('.assignee').textContent,/Melissa/);
 card.setConfig({entity:'todo.all',user_id:1});assert.equal(root.querySelectorAll('.assignee').length,0);
@@ -326,14 +341,20 @@ card.setConfig({entity:'todo.all'});assert.equal(root.querySelectorAll('.row').l
 card.setConfig({entity:'todo.all',user_id:2});assert.equal(root.querySelectorAll('.row').length,1);
 delete hass.states['todo.all'].attributes.donetick_user_id;
 // Every action can be hidden independently, for either completion style.
-for (const complete_control of ['checkbox','button']) {
+for (const complete_control of ['checkbox','initials','button']) {
   for (let mask=0;mask<16;mask++) {
     const visibility = Object.fromEntries(['show_complete','show_postpone','show_due_date','show_reassign'].map((key,index)=>[key,!!(mask & (1<<index))]));
     card.setConfig({entity:'todo.all',user_id:'all',complete_control,...visibility});
     for (const [key,label] of [['show_complete','Complete'],['show_postpone','Skip occurrence'],['show_due_date','Change due date'],['show_reassign','Reassign']]) {
       assert.equal(!!root.querySelector(`[aria-label="${label}: Weekly"]`),visibility[key],`${key} in ${complete_control} mode`);
     }
-    if (!mask) { assert.equal(root.querySelectorAll('.actions,.complete-checkbox').length,0); }
+    // The control itself must match the mode, not just carry the right accessible name.
+    const rows = root.querySelectorAll('.row').length;
+    for (const [selector,expected] of [['.complete-checkbox',complete_control==='checkbox'],
+      ['.complete-initials',complete_control==='initials'],['.actions [aria-label^="Complete: "]',complete_control==='button']]) {
+      assert.equal(root.querySelectorAll(selector).length,visibility.show_complete && expected ? rows : 0,`${selector} in ${complete_control} mode`);
+    }
+    if (!mask) { assert.equal(root.querySelectorAll('.actions,.complete-checkbox,.complete-initials').length,0); }
   }
 }
 card.setConfig({entity:'todo.all',user_id:'all'});click('Change due date: Weekly');
@@ -367,4 +388,30 @@ assert.deepEqual([...root.querySelectorAll('.name')].map(node=>node.textContent)
 card.setConfig({entity:'todo.all',user_id:'all',sort_by:'name'});
 assert.deepEqual([...root.querySelectorAll('.name')].map(node=>node.textContent),['One-off','Other user','Weekly']);
 assert.throws(()=>card.setConfig({entity:'todo.all',user_id:1,sort_by:'unknown'}),/valid sort order/);
+
+const attributes = hass.states['todo.all'].attributes;
+attributes.donetick_url = 'https://donetick.example.test';
+weeklyTask.description = '<p>Inspect &amp; repair.</p>'
+  + '<img src="https://images.example.test/photo.jpg?sig=one&amp;size=2" alt="Reference photo" onerror="bad()">'
+  + '<img src="/assets/image.png">'
+  + '<img src="data:image/png;base64,AAAA"><img src="javascript:bad()">'
+  + '<img src="blob:https://donetick.example.test/image">';
+attributes.tasks[1].description = '<img src="/assets/other.png">';
+card.hass = hass;
+click('Show description: Weekly');
+const details = root.querySelector('.description');
+assert.equal(details.firstChild.textContent, 'Inspect & repair.');
+assert.equal(details.querySelector('img'), null);
+const links = [...details.querySelectorAll('a')];
+assert.deepEqual(links.map(link => [link.href, link.textContent]), [
+  ['https://images.example.test/photo.jpg?sig=one&size=2', 'Reference photo'],
+  ['https://donetick.example.test/assets/image.png', 'Open image'],
+]);
+assert.ok(links.every(link => link.target === '_blank' && link.rel === 'noopener noreferrer'));
+click('Show description: One-off');
+assert.equal(root.querySelector('.description a').href, 'https://donetick.example.test/assets/other.png');
+attributes.tasks[1].description = '<img src="data:image/png;base64,AAAA">';
+card.hass = hass;
+assert.equal(root.querySelector('.description'), null);
+assert.equal(root.querySelector('[aria-label="Show description: One-off"]'), null);
 console.log('Compact inline editing, repeated-tap toggles, preserved time, confirmed actions and feedback passed');
