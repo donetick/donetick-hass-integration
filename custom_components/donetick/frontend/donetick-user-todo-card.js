@@ -530,6 +530,7 @@ class DonetickUserTodoCard extends HTMLElement {
     </style><ha-card></ha-card>`;
     const card=this._card ||= this.shadowRoot.querySelector('ha-card');
     card.replaceChildren();
+    delete card.dataset.labels;
     card.dataset.style = this._config.button_style;
     card.dataset.size = this._config.button_size;
     card.dataset.shape = this._config.button_shape;
