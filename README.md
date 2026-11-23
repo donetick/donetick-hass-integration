@@ -278,7 +278,12 @@ Use the All Tasks entity to display any user's tasks; individual assignee entiti
 Enable **Include tasks assigned to Anyone** to show Anyone tasks alongside the selected
 user's tasks. This is off by default and works with both All Tasks and individual
 assignee entities. YAML supports `include_anyone: true`. Date filters and sorting
-apply to both groups, and Anyone completions are credited to the API token owner.
+apply to both groups. **Only tasks assigned to Anyone** filters out assigned tasks;
+select **Anyone tasks only** in the Assigned user field (YAML: `user_id: anyone`).
+The older `anyone_only: true` YAML option remains supported. Under **Available actions → Credit completion to**, choose
+a Donetick member or a mapped Home Assistant user to always credit them without a prompt.
+Donetick still enforces whether that person may complete each task. Without a fixed
+completion user or performer prompt, Anyone tasks continue to credit the API token owner.
 Select **All users** to combine their tasks. **Show assigned user** adds the assignee's
 name beside the due date in this view, or when Anyone tasks are included beside a selected user.
 Views containing only one user's tasks omit the name. The setting depends on the view's scope, so it stays
@@ -444,7 +449,9 @@ and **Credit completion to** set to *Ask who completed it* (`credit_completion: 
 makes the completion control itself, checkbox or button, ask instead of crediting the
 assignee, or the mapped user when HA user mapping (below) is enabled. The default,
 `credit_completion: assignee`, keeps the one-tap completion. Either way the same inline
-panel opens below the task. With **Complete as picker** on *Chips*
+panel opens below the task. You can also set `credit_completion: 'donetick:2'` or
+`credit_completion: 'ha:<user_id>'` to always credit a specific Donetick member or a
+mapped Home Assistant user without opening the picker. With **Complete as picker** on *Chips*
 (the default, `complete_as_picker: chips`) it lists the people on offer by full name, and one tap
 on a person completes the task for them. *Dropdown* (`complete_as_picker: dropdown`)
 scales better to a long list: choose the person, then confirm. Tapping the control

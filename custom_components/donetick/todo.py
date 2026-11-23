@@ -60,6 +60,20 @@ async def async_setup_entry(
             
     except Exception as e:
         _LOGGER.error("Failed to get circle members: %s", e)
+
+    # The card editor can offer only HA users that already have a Donetick mapping.
+    mapped_ha_users = []
+    try:
+        mappings = config_entry.data.get(CONF_USER_MAPPING, {})
+        ha_users = await hass.auth.async_get_users()
+        mapped_ha_users = [
+            {"user_id": user.id, "name": user.name or user.id,
+             "donetick_user_id": mappings[user.id]}
+            for user in ha_users
+            if user.is_active and not user.system_generated and user.id in mappings
+        ]
+    except Exception:
+        _LOGGER.debug("Unable to load mapped HA users for the Donetick card", exc_info=True)
     
     # Create per-assignee lists if enabled (check options first, then data)
     create_assignee_lists = config_entry.options.get(CONF_CREATE_ASSIGNEE_LISTS, config_entry.data.get(CONF_CREATE_ASSIGNEE_LISTS, False))
@@ -89,6 +103,8 @@ async def async_setup_entry(
             _LOGGER.error("Failed to get projects: %s", e)
     
     _LOGGER.debug("Creating %d total entities", len(entities))
+    for entity in entities:
+        entity._mapped_ha_users = mapped_ha_users
     async_add_entities(entities)
 
 # Remove old assignee detection function since we now use circle members
@@ -183,6 +199,7 @@ class DonetickTodoListBase(CoordinatorEntity, TodoListEntity):
             "donetick_url": self._config_entry.data[CONF_URL],
             "donetick_project_id": hasattr(self, '_project') and self._project.id or None,
             "donetick_user_mapping": self._config_entry.data.get(CONF_USER_MAPPING, {}),
+            "donetick_mapped_ha_users": getattr(self, "_mapped_ha_users", []),
         }
         
         # Add circle members data for custom card user selection
