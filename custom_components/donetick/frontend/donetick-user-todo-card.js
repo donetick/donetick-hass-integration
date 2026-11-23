@@ -5,7 +5,9 @@ await customElements.whenDefined('home-assistant');
 
 function compareTasks(a, b, sortBy, language) {
   const timestamp = value => Number.isFinite(Date.parse(value)) ? Date.parse(value) : Infinity;
-  const primary = sortBy === 'priority' ? (Number(b.priority) || 0) - (Number(a.priority) || 0)
+  // Donetick priority 1 is P1 (most urgent) and 0 means none, so sort 1 to 4, then unprioritized.
+  const rank = value => Number(value) > 0 ? Number(value) : Infinity;
+  const primary = sortBy === 'priority' ? (rank(a.priority) - rank(b.priority) || 0)
     : sortBy === 'name' ? (a.name || '').localeCompare(b.name || '', language, {sensitivity:'base',numeric:true}) : 0;
   return primary || timestamp(a.next_due_date) - timestamp(b.next_due_date) || a.task_id - b.task_id;
 }
