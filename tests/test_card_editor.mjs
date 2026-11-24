@@ -88,7 +88,7 @@ assert.equal(latest.button_style,undefined); // Editing a user must not persist 
 update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');
 assert.equal(latest.sort_by,'priority');
 assert.equal(form.data.credit_completion,'assignee');
-assert.deepEqual(editorFields().find(field=>field.name==='credit_completion').selector.select.options.map(option=>option.value),['assignee','choose']);
+assert.deepEqual(editorFields().find(field=>field.name==='credit_completion').selector.select.options.map(option=>option.value),['assignee','choose','donetick:1','donetick:2']);
 // The picker style only shows once something opens Complete as.
 const pickerField=()=>editorFields().find(field=>field.name==='complete_as_picker');
 assert.equal(pickerField(),undefined);
