@@ -17,7 +17,13 @@ ROOT = Path(__file__).resolve().parents[1] / "custom_components/donetick"
 def load_definitions(filename, names, namespace):
     source = ROOT / filename
     tree = ast.parse(source.read_text(encoding="utf-8"))
-    definitions = [node for node in tree.body if getattr(node, "name", None) in names]
+    def definition_name(node):
+        if getattr(node, "name", None):
+            return node.name
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+        return next((target.id for target in targets if isinstance(target, ast.Name)), None)
+
+    definitions = [node for node in tree.body if definition_name(node) in names]
     future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
     module = ast.fix_missing_locations(ast.Module(body=[future, *definitions], type_ignores=[]))
     exec(compile(module, str(source), "exec"), namespace)
@@ -27,7 +33,15 @@ def load_task_model(namespace):
     namespace.update(HTMLParser=HTMLParser, re=re)
     load_definitions(
         "model.py",
-        {"_InlineImageParser", "_strip_inline_images", "_parse_datetime", "DonetickTask"},
+        {
+            "_INLINE_IMAGE_DATA_URI_PATTERN",
+            "_INLINE_IMAGE_TAG_PATTERN",
+            "_NEWLINE_PATTERN",
+            "_InlineImageParser",
+            "_strip_inline_images",
+            "_parse_datetime",
+            "DonetickTask",
+        },
         namespace,
     )
 

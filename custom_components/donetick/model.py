@@ -14,13 +14,19 @@ from homeassistant.components.todo import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_NEWLINE_PATTERN = re.compile("\n")
+_INLINE_IMAGE_DATA_URI_PATTERN = re.compile(
+    r"data:image/[\w.+-]+(?:;[^;,\s]+)*;base64,", re.IGNORECASE
+)
+_INLINE_IMAGE_TAG_PATTERN = re.compile(r"<img[\s/>]", re.IGNORECASE)
+
 
 class _InlineImageParser(HTMLParser):
     """Record the source spans of HTML images with embedded base64 data."""
 
     def __init__(self, description: str) -> None:
         super().__init__(convert_charrefs=False)
-        self.line_starts = [0, *(match.end() for match in re.finditer("\n", description))]
+        self.line_starts = [0, *(match.end() for match in _NEWLINE_PATTERN.finditer(description))]
         self.spans: list[tuple[int, int]] = []
         self.feed(description)
         self.close()
@@ -29,9 +35,7 @@ class _InlineImageParser(HTMLParser):
         if tag != "img":
             return
         if any(
-            name == "src" and value and re.match(
-                r"data:image/[\w.+-]+(?:;[^;,\s]+)*;base64,", value.lstrip(), re.IGNORECASE
-            )
+            name == "src" and value and _INLINE_IMAGE_DATA_URI_PATTERN.match(value.lstrip())
             for name, value in attrs
         ):
             line, column = self.getpos()
@@ -41,7 +45,7 @@ class _InlineImageParser(HTMLParser):
 
 def _strip_inline_images(description: str | None) -> str | None:
     """Remove inline images while retaining the original surrounding HTML."""
-    if not description or not re.search(r"<img[\s/>]", description, re.IGNORECASE):
+    if not description or not _INLINE_IMAGE_TAG_PATTERN.search(description):
         return description
     spans = _InlineImageParser(description).spans
     if not spans:

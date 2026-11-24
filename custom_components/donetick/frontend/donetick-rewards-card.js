@@ -1,3 +1,5 @@
+const HTML_ESCAPE_PATTERN = /[&<>"']/g;
+
 class DonetickRewardsCard extends HTMLElement {
   constructor() {
     super();
@@ -94,7 +96,7 @@ class DonetickRewardsCard extends HTMLElement {
   }
 
   escape(value) {
-    return String(value).replace(/[&<>"']/g, char => ({
+    return String(value).replace(HTML_ESCAPE_PATTERN, char => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[char]));
   }
