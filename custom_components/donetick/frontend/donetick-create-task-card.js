@@ -1,6 +1,9 @@
 await customElements.whenDefined("home-assistant");
 
 const cardType = "donetick-create-task-card";
+const ASSIGNEE_ANYONE_OPTION = "anyone";
+const ASSIGNEE_USER_PREFIX = "user:";
+const ISO_DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const defaultFields = ["name", "description", "due_date", "due_time", "assignee"];
 const defaultSections = {
   "Priority and points": ["priority", "points"],
@@ -66,7 +69,7 @@ export function buildActionData(values, serviceFields) {
   ));
   data.name = name;
   if (due_date) {
-    if (due_time && !/^\d{4}-\d{2}-\d{2}$/.test(due_date)) {
+    if (due_time && !ISO_DATE_ONLY_PATTERN.test(due_date)) {
       throw new Error("Use YYYY-MM-DD when setting a separate due time.");
     }
     data.due_date = due_time ? `${due_date}T${due_time}` : due_date;
@@ -75,8 +78,8 @@ export function buildActionData(values, serviceFields) {
   if (assignee && (Object.hasOwn(data, "assigned_to") || data.assigned_to_username)) {
     throw new Error("Use either Assignee or the advanced assignee ID.");
   }
-  if (assignee === "anyone") data.assigned_to = null;
-  if (assignee?.startsWith("user:")) data.assigned_to_username = assignee.slice(5);
+  if (assignee === ASSIGNEE_ANYONE_OPTION) data.assigned_to = null;
+  if (assignee?.startsWith(ASSIGNEE_USER_PREFIX)) data.assigned_to_username = assignee.slice(ASSIGNEE_USER_PREFIX.length);
   return data;
 }
 
@@ -103,10 +106,10 @@ function nativeFields(fields) {
       name: "Assignee",
       shortHelp: "Leave blank to use the action’s default assignment.",
       selector: { select: { mode: "dropdown", options: [
-        { value: "anyone", label: "Anyone" },
+        { value: ASSIGNEE_ANYONE_OPTION, label: "Anyone" },
         ...options.map((option) => typeof option === "string"
-          ? { value: `user:${option}`, label: option }
-          : { ...option, value: `user:${option.value}` }),
+          ? { value: `${ASSIGNEE_USER_PREFIX}${option}`, label: option }
+          : { ...option, value: `${ASSIGNEE_USER_PREFIX}${option.value}` }),
       ] } },
     };
   }
