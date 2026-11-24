@@ -1169,7 +1169,7 @@ class DonetickUserTodoEditor extends HTMLElement {
     const schema=[
       {...group('basics','Basics',[
       {name:'entity',required:true,selector:{entity:{include_entities:entities,filter:{domain:'todo'}}}},
-      {...select('user_id',userOptions),required:true,disabled:!members.length},
+      ...(owner === undefined ? [{...select('user_id',userOptions),required:true,disabled:!members.length}] : []),
       ...(hasPending && !this._config.anyone_only && selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'all' && selectedUser(this._hass.states[this._config.entity], this._config.user_id) !== 'anyone' ? [{name:'include_anyone',selector:{boolean:{}}}] : []),
       {name:'title',selector:{text:{}}},
       select('task_view',[['both','Pending and completed'],['pending','Pending tasks only'],['completed','Completed tasks only']])
