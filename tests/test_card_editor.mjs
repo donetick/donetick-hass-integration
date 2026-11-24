@@ -38,7 +38,7 @@ assert.ok(editorFields().find(field=>field.name==='include_anyone').selector.boo
 assert.match(form.computeHelper({name:'display_filters'}),/any selected group/);
 assert.deepEqual(editorFields().find(field=>field.name==='entity').selector.entity.include_entities,['todo.all','todo.other']);
 const appearance=editorFields().find(field=>field.name==='appearance');assert.equal(appearance.type,'expandable');assert.equal(appearance.expanded,false);
-const actions=()=>editorFields().find(field=>field.name==='customization_options')?.schema.filter(field=>field.type==='grid') || [];
+const actions=()=>editorFields().find(field=>field.name==='appearance')?.schema.filter(field=>field.type==='grid') || [];
 assert.equal(actions().some(group=>group.name==='complete'),false);
 assert.ok(actions()[0].schema[0].selector.icon);
 assert.ok(actions()[0].schema[2].selector.ui_color);
@@ -88,7 +88,7 @@ assert.equal(latest.button_style,undefined); // Editing a user must not persist 
 update({appearance_preset:'filled'});assert.equal(latest.button_style,'filled');assert.equal(latest.button_size,'normal');
 assert.equal(latest.sort_by,'priority');
 assert.equal(form.data.credit_completion,'assignee');
-assert.deepEqual(editorFields().find(field=>field.name==='credit_completion').selector.select.options.map(option=>option.value),['assignee','choose']);
+assert.deepEqual(editorFields().find(field=>field.name==='credit_completion').selector.select.options.map(option=>option.value),['assignee','choose','donetick:1','donetick:2']);
 // The picker style only shows once something opens Complete as.
 const pickerField=()=>editorFields().find(field=>field.name==='complete_as_picker');
 assert.equal(pickerField(),undefined);
@@ -176,7 +176,7 @@ update({appearance_preset:'filled'});
 assert.equal(form.data.complete_label,'Complete');assert.equal(form.data.complete_icon,'mdi:check');assert.equal(form.data.complete_color,'primary');
 console.log('All action labels, icons and colors can be cleared and replaced across HA editor feedback');
 editor.setConfig({entity:'todo.all',user_id:1,display_filters:['future'],sort_by:'priority',completed_days:3});
-assert.deepEqual(form.schema.map(field=>field.name),['basics','filters','completed_options','display_options','actions_options','appearance','customization_options']);
+assert.deepEqual(form.schema.map(field=>field.name),['basics','filters','completed_options','display_options','actions_options','appearance']);
 assert.equal(form.schema[0].expanded,true);assert.equal(form.schema[1].expanded,true);
 assert.deepEqual(form.schema[1].schema.map(field=>field.name),['labels','display_filters','upcoming_days','sort_by']);
 assert.equal(editorFields().some(field=>field.name==='actions'),false);
@@ -274,6 +274,6 @@ update({task_view:'pending'});assert.ok(filtersGroup().schema.find(field=>field.
 assert.ok(form.schema.find(field=>field.name==='display_options').schema.every(field=>!['show_complete','show_postpone','show_due_date','show_reassign'].includes(field.name)));
 assert.ok(form.schema.find(field=>field.name==='actions_options').schema.every(field=>field.name.startsWith('show_')));
 assert.equal(form.schema.find(field=>field.name==='appearance').schema.some(field=>field.type==='grid'),false);
-assert.equal(form.schema.find(field=>field.name==='customization_options').expanded,false);
+assert.ok(editorFields().find(field=>field.name==='appearance').schema.some(field=>field.type==='grid'));
 assert.deepEqual(latest.labels,['saved']);
 console.log('Stable shared filters, separated details/actions, and complete label choices passed');

@@ -69,7 +69,7 @@ console.log('List, selector choices, locale, theme, time boundaries, and config 
 // presentation only, never config; closing must retain values for reopening.
 const historyGroup=()=>form.schema.find(field=>field.name==='completed_options');
 assert.equal(historyGroup().expanded,false);assert.deepEqual(historyGroup().schema,[]);
-assert.deepEqual(form.schema.find(field=>field.name==='customization_options').schema,[]);
+assert.deepEqual(form.schema.find(field=>field.name==='appearance').schema,[]);
 const expandable=document.createElement('ha-form-expandable');
 form.append(expandable);
 const toggle=expanded=>{

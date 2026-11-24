@@ -54,8 +54,11 @@ The editor groups options into **Basics**, **Task filters**, **Completed tasks**
 | All Tasks entity | Tasks across assignees; individual assignee entities also work | Set `entity` to the todo list |
 | Assigned user | One person's tasks; per-user entities use their owner automatically | `user_id: 1`; omit `user_id` for an individual assignee entity |
 | All users | Tasks for everyone | `user_id: all` |
-| Include tasks assigned to Anyone | Adds Anyone tasks to the selected user's tasks; their completions credit the API token owner | `include_anyone: true` |
+| Anyone tasks only | Only unassigned tasks, independent of the selected user | `user_id: anyone` |
+| Include tasks assigned to Anyone | Adds Anyone tasks to the selected user's tasks; they credit the API token owner by default | `include_anyone: true` |
 | Show assigned user | Shows the assignee beside the due date in multi-user or Anyone views | `show_assignee: true` |
+
+For compatibility with older YAML, `anyone_only: true` is also accepted and is equivalent to `user_id: anyone`.
 
 Each card stores its own filters. A card cannot show tasks excluded by the integration's upcoming-task window. Set that integration setting to `0` (unlimited) to make all future tasks available.
 
@@ -133,6 +136,8 @@ Rows have a completion control on the left, task and due date in the middle, and
 ### Completion and skipping
 
 Completion fetches the current task from Donetick and credits its assignee, even if another person clicks. Anyone tasks credit the API token owner. `donetick.complete_assigned_task` can accept `completed_by` to credit another circle member; Donetick decides whether that person is allowed based on assignment, privacy, and project access.
+
+Under **Available actions → Credit completion to**, choose a specific Donetick member or a mapped Home Assistant user to always credit them for completions from that card, without asking at completion time. The YAML value is `donetick:<user_id>` for a Donetick member or `ha:<home_assistant_user_id>` for a mapped HA user. For example, `credit_completion: 'donetick:2'`. HA user choices appear only when mapped to an active Donetick member. Donetick still validates whether the selected person may complete each task; a fixed user who is not eligible for a task will receive the server's error.
 
 Enable **Mark completed immediately** under **Available actions** (YAML:
 `optimistic_completion: true`) to check and strike through the row immediately
